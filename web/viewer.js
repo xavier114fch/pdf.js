@@ -35,6 +35,11 @@ var MAX_SCALE = 4.0;
 var SETTINGS_MEMORY = 20;
 var SCALE_SELECT_CONTAINER_PADDING = 8;
 var SCALE_SELECT_PADDING = 22;
+var THUMBNAIL_SCROLL_MARGIN = -19;
+var USE_ONLY_CSS_ZOOM = false;
+//#if B2G
+//USE_ONLY_CSS_ZOOM = true;
+//#endif
 var RenderingStates = {
   INITIAL: 0,
   RUNNING: 1,
@@ -56,6 +61,11 @@ PDFJS.imageResourcesPath = './images/';
 var mozL10n = document.mozL10n || document.webL10n;
 
 //#include ui_utils.js
+
+//#if !(FIREFOX || MOZCENTRAL || B2G)
+//#include mozPrintCallback_polyfill.js
+//#endif
+
 //#if GENERIC || CHROME
 //#include download_manager.js
 //#endif
@@ -148,7 +158,12 @@ var PDFView = {
     });
 
     PresentationMode.initialize({
-      container: container
+      container: container,
+      secondaryToolbar: SecondaryToolbar,
+      firstPage: document.getElementById('contextFirstPage'),
+      lastPage: document.getElementById('contextLastPage'),
+      pageRotateCw: document.getElementById('contextPageRotateCw'),
+      pageRotateCcw: document.getElementById('contextPageRotateCcw')
     });
 
     this.initialized = true;
@@ -185,7 +200,7 @@ var PDFView = {
 
     var pages = this.pages;
     for (var i = 0; i < pages.length; i++)
-      pages[i].update(val * CSS_UNITS);
+      pages[i].update(val);
 
     if (!noScroll && this.currentScale != val)
       this.pages[this.page - 1].scrollIntoView();
@@ -216,9 +231,9 @@ var PDFView = {
     }
 
     var pageWidthScale = (container.clientWidth - SCROLLBAR_PADDING) /
-                          currentPage.width * currentPage.scale / CSS_UNITS;
+                          currentPage.width * currentPage.scale;
     var pageHeightScale = (container.clientHeight - VERTICAL_PADDING) /
-                           currentPage.height * currentPage.scale / CSS_UNITS;
+                           currentPage.height * currentPage.scale;
     switch (value) {
       case 'page-actual':
         scale = 1;
@@ -807,7 +822,7 @@ var PDFView = {
     // Fetch a single page so we can get a viewport that will be the default
     // viewport for all pages
     firstPagePromise.then(function(pdfPage) {
-      var viewport = pdfPage.getViewport(scale || 1.0);
+      var viewport = pdfPage.getViewport((scale || 1.0) * CSS_UNITS);
       var pagePromises = [];
       for (var pageNum = 1; pageNum <= pagesCount; ++pageNum) {
         var viewportClone = viewport.clone();
@@ -1504,6 +1519,10 @@ document.addEventListener('DOMContentLoaded', function webViewerLoad(evt) {
     PDFJS.disableHistory = (hashParams['disableHistory'] === 'true');
   }
 
+  if ('useOnlyCssZoom' in hashParams) {
+    USE_ONLY_CSS_ZOOM = (hashParams['useOnlyCssZoom'] === 'true');
+  }
+
 //#if !(FIREFOX || MOZCENTRAL)
   var locale = navigator.language;
   if ('locale' in hashParams)
@@ -1649,18 +1668,6 @@ document.addEventListener('DOMContentLoaded', function webViewerLoad(evt) {
 
   document.getElementById('download').addEventListener('click',
     SecondaryToolbar.downloadClick.bind(SecondaryToolbar));
-
-  document.getElementById('contextFirstPage').addEventListener('click',
-    SecondaryToolbar.firstPageClick.bind(SecondaryToolbar));
-
-  document.getElementById('contextLastPage').addEventListener('click',
-    SecondaryToolbar.lastPageClick.bind(SecondaryToolbar));
-
-  document.getElementById('contextPageRotateCw').addEventListener('click',
-    SecondaryToolbar.pageRotateCwClick.bind(SecondaryToolbar));
-
-  document.getElementById('contextPageRotateCcw').addEventListener('click',
-    SecondaryToolbar.pageRotateCcwClick.bind(SecondaryToolbar));
 
 //#if (FIREFOX || MOZCENTRAL)
 //PDFView.setTitleUsingUrl(file);
@@ -1848,22 +1855,23 @@ window.addEventListener('pagechange', function pagechange(evt) {
   if (PDFView.previousPageNumber !== page) {
     document.getElementById('pageNumber').value = page;
     var selected = document.querySelector('.thumbnail.selected');
-    if (selected)
+    if (selected) {
       selected.classList.remove('selected');
+    }
     var thumbnail = document.getElementById('thumbnailContainer' + page);
     thumbnail.classList.add('selected');
     var visibleThumbs = PDFView.getVisibleThumbs();
     var numVisibleThumbs = visibleThumbs.views.length;
-    // If the thumbnail isn't currently visible scroll it into view.
+
+    // If the thumbnail isn't currently visible, scroll it into view.
     if (numVisibleThumbs > 0) {
       var first = visibleThumbs.first.id;
       // Account for only one thumbnail being visible.
-      var last = numVisibleThumbs > 1 ?
-                  visibleThumbs.last.id : first;
-      if (page <= first || page >= last)
-        scrollIntoView(thumbnail);
+      var last = (numVisibleThumbs > 1 ? visibleThumbs.last.id : first);
+      if (page <= first || page >= last) {
+        scrollIntoView(thumbnail, { top: THUMBNAIL_SCROLL_MARGIN });
+      }
     }
-
   }
   document.getElementById('previous').disabled = (page <= 1);
   document.getElementById('next').disabled = (page >= PDFView.pages.length);
