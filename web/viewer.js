@@ -138,8 +138,10 @@ var PDFView = {
 
     SecondaryToolbar.initialize({
       toolbar: document.getElementById('secondaryToolbar'),
+      presentationMode: PresentationMode,
       toggleButton: document.getElementById('secondaryToolbarToggle'),
-      presentationMode: document.getElementById('secondaryPresentationMode'),
+      presentationModeButton:
+        document.getElementById('secondaryPresentationMode'),
       openFile: document.getElementById('secondaryOpenFile'),
       print: document.getElementById('secondaryPrint'),
       download: document.getElementById('secondaryDownload'),
@@ -194,66 +196,67 @@ var PDFView = {
     }, true);
   },
 
-  setScale: function pdfViewSetScale(val, resetAutoSettings, noScroll) {
-    if (val == this.currentScale)
+  setScale: function pdfViewSetScale(value, resetAutoSettings, noScroll) {
+    if (value === 'custom') {
       return;
-
+    }
     var pages = this.pages;
-    for (var i = 0; i < pages.length; i++)
-      pages[i].update(val);
+    var currentPage = pages[this.page - 1];
+    var number = parseFloat(value);
+    var scale;
 
-    if (!noScroll && this.currentScale != val)
-      this.pages[this.page - 1].scrollIntoView();
-    this.currentScale = val;
+    if (number) {
+      scale = number;
+      resetAutoSettings = true;
+    } else {
+      if (!currentPage) {
+        return;
+      }
+      var pageWidthScale = (this.container.clientWidth - SCROLLBAR_PADDING) /
+                            currentPage.width * currentPage.scale;
+      var pageHeightScale = (this.container.clientHeight - VERTICAL_PADDING) /
+                             currentPage.height * currentPage.scale;
+      switch (value) {
+        case 'page-actual':
+          scale = 1;
+          break;
+        case 'page-width':
+          scale = pageWidthScale;
+          break;
+        case 'page-height':
+          scale = pageHeightScale;
+          break;
+        case 'page-fit':
+          scale = Math.min(pageWidthScale, pageHeightScale);
+          break;
+        case 'auto':
+          scale = Math.min(1.0, pageWidthScale);
+          break;
+      }
+    }
+    this.currentScaleValue = value;
+
+    if (scale === this.currentScale) {
+      return;
+    }
+    for (var i = 0, ii = pages.length; i < ii; i++) {
+      pages[i].update(scale);
+    }
+    this.currentScale = scale;
+
+    if (!noScroll) {
+      currentPage.scrollIntoView();
+    }
 
     var event = document.createEvent('UIEvents');
     event.initUIEvent('scalechange', false, false, window, 0);
-    event.scale = val;
+    event.scale = scale;
     event.resetAutoSettings = resetAutoSettings;
     window.dispatchEvent(event);
-  },
 
-  parseScale: function pdfViewParseScale(value, resetAutoSettings, noScroll) {
-    if ('custom' == value)
-      return;
-
-    var scale = parseFloat(value);
-    this.currentScaleValue = value;
-    if (scale) {
-      this.setScale(scale, true, noScroll);
-      return;
+    if (!number) {
+      selectScaleOption(value);
     }
-
-    var container = this.container;
-    var currentPage = this.pages[this.page - 1];
-    if (!currentPage) {
-      return;
-    }
-
-    var pageWidthScale = (container.clientWidth - SCROLLBAR_PADDING) /
-                          currentPage.width * currentPage.scale;
-    var pageHeightScale = (container.clientHeight - VERTICAL_PADDING) /
-                           currentPage.height * currentPage.scale;
-    switch (value) {
-      case 'page-actual':
-        scale = 1;
-        break;
-      case 'page-width':
-        scale = pageWidthScale;
-        break;
-      case 'page-height':
-        scale = pageHeightScale;
-        break;
-      case 'page-fit':
-        scale = Math.min(pageWidthScale, pageHeightScale);
-        break;
-      case 'auto':
-        scale = Math.min(1.0, pageWidthScale);
-        break;
-    }
-    this.setScale(scale, resetAutoSettings, noScroll);
-
-    selectScaleOption(value);
   },
 
   zoomIn: function pdfViewZoomIn(ticks) {
@@ -263,7 +266,7 @@ var PDFView = {
       newScale = Math.ceil(newScale * 10) / 10;
       newScale = Math.min(MAX_SCALE, newScale);
     } while (--ticks && newScale < MAX_SCALE);
-    this.parseScale(newScale, true);
+    this.setScale(newScale, true);
   },
 
   zoomOut: function pdfViewZoomOut(ticks) {
@@ -273,7 +276,7 @@ var PDFView = {
       newScale = Math.floor(newScale * 10) / 10;
       newScale = Math.max(MIN_SCALE, newScale);
     } while (--ticks && newScale > MIN_SCALE);
-    this.parseScale(newScale, true);
+    this.setScale(newScale, true);
   },
 
   set page(val) {
@@ -394,8 +397,8 @@ var PDFView = {
   },
 
   get isHorizontalScrollbarEnabled() {
-    var div = document.getElementById('viewerContainer');
-    return div.scrollWidth > div.clientWidth;
+    return (PresentationMode.active ? false :
+            (this.container.scrollWidth > this.container.clientWidth));
   },
 
   initPassiveLoading: function pdfViewInitPassiveLoading() {
@@ -669,18 +672,21 @@ var PDFView = {
   },
 
   /**
-   * For the firefox extension we prefix the full url on anchor links so they
-   * don't come up as resource:// urls and so open in new tab/window works.
-   * @param {String} anchor The anchor hash include the #.
+   * Prefix the full url on anchor links to make sure that links are resolved
+   * relative to the current URL instead of the one defined in <base href>.
+   * @param {String} anchor The anchor hash, including the #.
    */
   getAnchorUrl: function getAnchorUrl(anchor) {
-//#if !(FIREFOX || MOZCENTRAL)
+//#if (GENERIC || B2G)
     return anchor;
-//#else
+//#endif
+//#if (FIREFOX || MOZCENTRAL)
 //  return this.url.split('#')[0] + anchor;
 //#endif
+//#if CHROME
+//  return location.href.split('#')[0] + anchor;
+//#endif
   },
-
 
   /**
    * Show the error box.
@@ -1018,14 +1024,14 @@ var PDFView = {
     } else if (storedHash) {
       this.setHash(storedHash);
     } else if (scale) {
-      this.parseScale(scale, true);
+      this.setScale(scale, true);
       this.page = 1;
     }
 
     if (PDFView.currentScale === UNKNOWN_SCALE) {
       // Scale was not initialized: invalid bookmark or scale was not specified.
       // Setting the default one.
-      this.parseScale(DEFAULT_SCALE, true);
+      this.setScale(DEFAULT_SCALE, true);
     }
   },
 
@@ -1326,7 +1332,7 @@ var PDFView = {
       thumb.update(this.pageRotation);
     }
 
-    this.parseScale(this.currentScaleValue, true);
+    this.setScale(this.currentScaleValue, true);
 
     this.renderHighestPriority();
 
@@ -1458,14 +1464,35 @@ var DocumentOutlineView = function documentOutlineView(outline) {
   }
 };
 
+//#if CHROME
+//(function rewriteUrlClosure() {
+//  // Run this code outside DOMContentLoaded to make sure that the URL
+//  // is rewritten as soon as possible.
+//  if (location.origin + '/' !== chrome.extension.getURL('/')) {
+//    DEFAULT_URL = window.location.href.split('#')[0];
+//  } else {
+//    var params = PDFView.parseQueryString(document.location.search.slice(1));
+//    DEFAULT_URL = params.file || DEFAULT_URL;
+//
+//    // Example: chrome-extension://.../http://example.com/file.pdf
+//    var humanReadableUrl = '/' + DEFAULT_URL + location.hash;
+//    history.replaceState(history.state, '', humanReadableUrl);
+//  }
+//})();
+//#endif
+
 document.addEventListener('DOMContentLoaded', function webViewerLoad(evt) {
   PDFView.initialize();
 
-//#if !(FIREFOX || MOZCENTRAL)
+//#if (GENERIC || B2G)
   var params = PDFView.parseQueryString(document.location.search.substring(1));
   var file = params.file || DEFAULT_URL;
-//#else
+//#endif
+//#if (FIREFOX || MOZCENTRAL)
 //var file = window.location.href.split('#')[0];
+//#endif
+//#if CHROME
+//var file = DEFAULT_URL;
 //#endif
 
 //#if CHROME
@@ -1654,7 +1681,7 @@ document.addEventListener('DOMContentLoaded', function webViewerLoad(evt) {
 
   document.getElementById('scaleSelect').addEventListener('change',
     function() {
-      PDFView.parseScale(this.value);
+      PDFView.setScale(this.value);
     });
 
   document.getElementById('presentationMode').addEventListener('click',
@@ -1750,7 +1777,7 @@ window.addEventListener('resize', function webViewerResize(evt) {
       (document.getElementById('pageWidthOption').selected ||
        document.getElementById('pageFitOption').selected ||
        document.getElementById('pageAutoOption').selected)) {
-    PDFView.parseScale(document.getElementById('scaleSelect').value);
+    PDFView.setScale(document.getElementById('scaleSelect').value);
   }
   updateViewarea();
 
@@ -1893,7 +1920,7 @@ window.addEventListener('DOMMouseScroll', function(evt) {
 
 window.addEventListener('click', function click(evt) {
   if (!PresentationMode.active) {
-    if (SecondaryToolbar.isOpen && PDFView.container.contains(evt.target)) {
+    if (SecondaryToolbar.opened && PDFView.container.contains(evt.target)) {
       SecondaryToolbar.close();
     }
   } else if (evt.button === 0) {
@@ -1949,7 +1976,7 @@ window.addEventListener('keydown', function keydown(evt) {
         // keeping it unhandled (to restore page zoom to 100%)
         setTimeout(function () {
           // ... and resetting the scale after browser adjusts its scale
-          PDFView.parseScale(DEFAULT_SCALE, true);
+          PDFView.setScale(DEFAULT_SCALE, true);
         });
         handled = false;
         break;
@@ -2012,7 +2039,7 @@ window.addEventListener('keydown', function keydown(evt) {
         handled = true;
         break;
       case 27: // esc key
-        if (SecondaryToolbar.isOpen) {
+        if (SecondaryToolbar.opened) {
           SecondaryToolbar.close();
           handled = true;
         }

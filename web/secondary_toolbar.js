@@ -14,7 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/* globals PDFView, PresentationMode, SCROLLBAR_PADDING */
+/* globals PDFView, SCROLLBAR_PADDING */
 
 'use strict';
 
@@ -25,12 +25,12 @@ var SecondaryToolbar = {
 
   initialize: function secondaryToolbarInitialize(options) {
     this.toolbar = options.toolbar;
-    this.toggleButton = options.toggleButton;
-
+    this.presentationMode = options.presentationMode;
     this.buttonContainer = this.toolbar.firstElementChild;
 
     // Define the toolbar buttons.
-    this.presentationMode = options.presentationMode;
+    this.toggleButton = options.toggleButton;
+    this.presentationModeButton = options.presentationModeButton;
     this.openFile = options.openFile;
     this.print = options.print;
     this.download = options.download;
@@ -40,26 +40,30 @@ var SecondaryToolbar = {
     this.pageRotateCcw = options.pageRotateCcw;
 
     // Attach the event listeners.
-    this.toggleButton.addEventListener('click', this.toggle.bind(this));
+    var elements = [
+      { element: this.toggleButton, handler: this.toggle },
+      { element: this.presentationModeButton,
+        handler: this.presentationModeClick },
+      { element: this.openFile, handler: this.openFileClick },
+      { element: this.print, handler: this.printClick },
+      { element: this.download, handler: this.downloadClick },
+      { element: this.firstPage, handler: this.firstPageClick },
+      { element: this.lastPage, handler: this.lastPageClick },
+      { element: this.pageRotateCw, handler: this.pageRotateCwClick },
+      { element: this.pageRotateCcw, handler: this.pageRotateCcwClick }
+    ];
 
-    this.presentationMode.addEventListener('click',
-      this.presentationModeClick.bind(this));
-    this.openFile.addEventListener('click', this.openFileClick.bind(this));
-    this.print.addEventListener('click', this.printClick.bind(this));
-    this.download.addEventListener('click', this.downloadClick.bind(this));
-
-    this.firstPage.addEventListener('click', this.firstPageClick.bind(this));
-    this.lastPage.addEventListener('click', this.lastPageClick.bind(this));
-
-    this.pageRotateCw.addEventListener('click',
-      this.pageRotateCwClick.bind(this));
-    this.pageRotateCcw.addEventListener('click',
-      this.pageRotateCcwClick.bind(this));
+    for (var item in elements) {
+      var element = elements[item].element;
+      if (element) {
+        element.addEventListener('click', elements[item].handler.bind(this));
+      }
+    }
   },
 
   // Event handling functions.
   presentationModeClick: function secondaryToolbarPresentationModeClick(evt) {
-    PresentationMode.request();
+    this.presentationMode.request();
     this.close();
   },
 
@@ -96,7 +100,7 @@ var SecondaryToolbar = {
 
   // Misc. functions for interacting with the toolbar.
   setMaxHeight: function secondaryToolbarSetMaxHeight(container) {
-    if (!container) {
+    if (!container || !this.buttonContainer) {
       return;
     }
     this.newContainerHeight = container.clientHeight;
@@ -134,9 +138,5 @@ var SecondaryToolbar = {
     } else {
       this.open();
     }
-  },
-
-  get isOpen() {
-    return this.opened;
   }
 };

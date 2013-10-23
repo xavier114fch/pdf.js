@@ -33,6 +33,8 @@ var PresentationMode = {
     this.container = options.container;
     this.secondaryToolbar = options.secondaryToolbar;
 
+    this.viewer = this.container.firstElementChild;
+
     this.firstPage = options.firstPage;
     this.lastPage = options.lastPage;
     this.pageRotateCw = options.pageRotateCw;
@@ -65,7 +67,8 @@ var PresentationMode = {
   },
 
   request: function presentationModeRequest() {
-    if (!PDFView.supportsFullscreen || this.isFullscreen) {
+    if (!PDFView.supportsFullscreen || this.isFullscreen ||
+        !this.viewer.hasChildNodes()) {
       return false;
     }
 
@@ -93,7 +96,7 @@ var PresentationMode = {
     this.active = true;
 
     PDFView.page = this.args.page;
-    PDFView.parseScale('page-fit', true);
+    PDFView.setScale('page-fit', true);
 
     window.addEventListener('mousemove', this.mouseMove, false);
     window.addEventListener('mousedown', this.mouseDown, false);
@@ -108,7 +111,7 @@ var PresentationMode = {
     this.active = false;
 
     var page = PDFView.page;
-    PDFView.parseScale(this.args.previousScale);
+    PDFView.setScale(this.args.previousScale);
     PDFView.page = page;
 
     window.removeEventListener('mousemove', this.mouseMove, false);
