@@ -1162,6 +1162,13 @@
       "type": "eq",
       "about": "A CIDFontType0 font with a CFF font that isn't actually CID."
     },
+    {  "id": "bug921409",
+      "file": "pdfs/bug921409.pdf",
+      "md5": "920e88dde0f5436ebe0df0281e1c30ca",
+      "rounds": 1,
+      "type": "eq",
+      "about": "A CIDFontType0 font that actually has a Type1C font file."
+    },
     {  "id": "noembed-identity-2",
       "file": "pdfs/noembed-identity-2.pdf",
       "md5": "13b7d9ab9579d45c10bc8d499d087f21",
@@ -1356,6 +1363,12 @@
        "lastPage": 1,
        "type": "eq"
     },
+    {  "id": "calgray",
+       "file": "pdfs/calgray.pdf",
+       "md5": "ee784999bfa1ed373f55cdabbb580df1",
+       "rounds": 1,
+       "type": "eq"
+    },
     {  "id": "issue2853",
        "file": "pdfs/issue2853.pdf",
        "md5": "9f0ad95ef0b243ee8813c4eca0f7a042",
@@ -1364,5 +1377,14 @@
        "firstPage": 1,
        "lastPage": 1,
        "type": "load"
+    },
+    {  "id": "issue3666",
+       "file": "pdfs/issue3666.pdf",
+       "md5": "c2156a34b9634b174556910732ab9df0",
+       "rounds": 1,
+       "link": true,
+       "firstPage": 1,
+       "lastPage": 2,
+       "type": "eq"
     }
 ]

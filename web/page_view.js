@@ -15,9 +15,9 @@
  * limitations under the License.
  */
 /* globals RenderingStates, PDFView, PDFHistory, PDFFindBar, PDFJS, mozL10n,
-           CustomStyle, scrollIntoView, SCROLLBAR_PADDING, CSS_UNITS,
-           UNKNOWN_SCALE, DEFAULT_SCALE, getOutputScale, TextLayerBuilder,
-           cache, Stats */
+           CustomStyle, PresentationMode, scrollIntoView, SCROLLBAR_PADDING,
+           CSS_UNITS, UNKNOWN_SCALE, DEFAULT_SCALE, getOutputScale,
+           TextLayerBuilder, cache, Stats, USE_ONLY_CSS_ZOOM */
 
 'use strict';
 
@@ -36,6 +36,8 @@ var PageView = function pageView(container, id, scale,
   this.textContent = null;
   this.textLayer = null;
 
+  this.zoomLayer = null;
+
   this.annotationLayer = null;
 
   var anchor = document.createElement('a');
@@ -53,42 +55,36 @@ var PageView = function pageView(container, id, scale,
   this.setPdfPage = function pageViewSetPdfPage(pdfPage) {
     this.pdfPage = pdfPage;
     this.pdfPageRotate = pdfPage.rotate;
-    this.viewport = pdfPage.getViewport(this.scale);
+    this.viewport = pdfPage.getViewport(this.scale * CSS_UNITS);
     this.stats = pdfPage.stats;
-    this.update();
+    this.reset();
   };
 
   this.destroy = function pageViewDestroy() {
-    this.update();
+    this.zoomLayer = null;
+    this.reset();
     if (this.pdfPage) {
       this.pdfPage.destroy();
     }
   };
 
-  this.update = function pageViewUpdate(scale, rotation) {
+  this.reset = function pageViewReset() {
     if (this.renderTask) {
       this.renderTask.cancel();
     }
     this.resume = null;
     this.renderingState = RenderingStates.INITIAL;
 
-    if (typeof rotation !== 'undefined') {
-      this.rotation = rotation;
-    }
-
-    this.scale = scale || this.scale;
-
-    var totalRotation = (this.rotation + this.pdfPageRotate) % 360;
-    this.viewport = this.viewport.clone({
-      scale: this.scale,
-      rotation: totalRotation
-    });
-
     div.style.width = Math.floor(this.viewport.width) + 'px';
     div.style.height = Math.floor(this.viewport.height) + 'px';
 
-    while (div.hasChildNodes()) {
-      div.removeChild(div.lastChild);
+    var childNodes = div.childNodes;
+    for (var i = div.childNodes.length - 1; i >= 0; i--) {
+      var node = childNodes[i];
+      if (this.zoomLayer && this.zoomLayer === node) {
+        continue;
+      }
+      div.removeChild(node);
     }
     div.removeAttribute('data-loaded');
 
@@ -99,6 +95,95 @@ var PageView = function pageView(container, id, scale,
     this.loadingIconDiv = document.createElement('div');
     this.loadingIconDiv.className = 'loadingIcon';
     div.appendChild(this.loadingIconDiv);
+  };
+
+  this.update = function pageViewUpdate(scale, rotation) {
+    this.scale = scale || this.scale;
+
+    if (typeof rotation !== 'undefined') {
+      this.rotation = rotation;
+    }
+
+    var totalRotation = (this.rotation + this.pdfPageRotate) % 360;
+    this.viewport = this.viewport.clone({
+      scale: this.scale * CSS_UNITS,
+      rotation: totalRotation
+    });
+
+    if (USE_ONLY_CSS_ZOOM && this.canvas) {
+      this.cssTransform(this.canvas);
+      return;
+    } else if (this.canvas && !this.zoomLayer) {
+      this.zoomLayer = this.canvas.parentNode;
+      this.zoomLayer.style.position = 'absolute';
+    }
+    if (this.zoomLayer) {
+      this.cssTransform(this.zoomLayer.firstChild);
+    }
+    this.reset();
+  };
+
+  this.cssTransform = function pageCssTransform(canvas) {
+    // Scale canvas, canvas wrapper, and page container.
+    var width = this.viewport.width;
+    var height = this.viewport.height;
+    canvas.style.width = canvas.parentNode.style.width = div.style.width =
+        Math.floor(width) + 'px';
+    canvas.style.height = canvas.parentNode.style.height = div.style.height =
+        Math.floor(height) + 'px';
+    // The canvas may have been originally rotated, so rotate relative to that.
+    var relativeRotation = this.viewport.rotation - canvas._viewport.rotation;
+    var absRotation = Math.abs(relativeRotation);
+    var scaleX = 1, scaleY = 1;
+    if (absRotation === 90 || absRotation === 270) {
+      // Scale x and y because of the rotation.
+      scaleX = height / width;
+      scaleY = width / height;
+    }
+    var cssTransform = 'rotate(' + relativeRotation + 'deg) ' +
+                       'scale(' + scaleX + ',' + scaleY + ')';
+    CustomStyle.setProp('transform', canvas, cssTransform);
+
+    if (this.textLayer) {
+      // Rotating the text layer is more complicated since the divs inside the
+      // the text layer are rotated.
+      // TODO: This could probably be simplified by drawing the text layer in
+      // one orientation then rotating overall.
+      var textRelativeRotation = this.viewport.rotation -
+                                 this.textLayer.viewport.rotation;
+      var textAbsRotation = Math.abs(textRelativeRotation);
+      var scale = (width / canvas.width);
+      if (textAbsRotation === 90 || textAbsRotation === 270) {
+        scale = width / canvas.height;
+      }
+      var textLayerDiv = this.textLayer.textLayerDiv;
+      var transX, transY;
+      switch (textAbsRotation) {
+        case 0:
+          transX = transY = 0;
+          break;
+        case 90:
+          transX = 0;
+          transY = '-' + textLayerDiv.style.height;
+          break;
+        case 180:
+          transX = '-' + textLayerDiv.style.width;
+          transY = '-' + textLayerDiv.style.height;
+          break;
+        case 270:
+          transX = '-' + textLayerDiv.style.width;
+          transY = 0;
+          break;
+        default:
+          console.error('Bad rotation value.');
+          break;
+      }
+      CustomStyle.setProp('transform', textLayerDiv,
+                          'rotate(' + textAbsRotation + 'deg) ' +
+                            'scale(' + scale + ', ' + scale + ') ' +
+                            'translate(' + transX + ', ' + transY + ')');
+      CustomStyle.setProp('transformOrigin', textLayerDiv, '0% 0%');
+    }
   };
 
   Object.defineProperty(this, 'width', {
@@ -127,7 +212,9 @@ var PageView = function pageView(container, id, scale,
         }
         return false;
       };
-      link.className = 'internalLink';
+      if (dest) {
+        link.className = 'internalLink';
+      }
     }
 
     function bindNamedAction(link, action) {
@@ -238,8 +325,9 @@ var PageView = function pageView(container, id, scale,
   };
 
   this.scrollIntoView = function pageViewScrollIntoView(dest) {
-    if (PDFView.isPresentationMode) { // Avoid breaking presentation mode.
+    if (PresentationMode.active) { // Avoid breaking presentation mode.
       dest = null;
+      PDFView.setScale(PDFView.currentScaleValue, true, true);
     }
     if (!dest) {
       scrollIntoView(div);
@@ -291,9 +379,9 @@ var PageView = function pageView(container, id, scale,
     }
 
     if (scale && scale !== PDFView.currentScale) {
-      PDFView.parseScale(scale, true, true);
+      PDFView.setScale(scale, true, true);
     } else if (PDFView.currentScale === UNKNOWN_SCALE) {
-      PDFView.parseScale(DEFAULT_SCALE, true, true);
+      PDFView.setScale(DEFAULT_SCALE, true, true);
     }
 
     if (scale === 'page-fit' && !dest[4]) {
@@ -360,10 +448,21 @@ var PageView = function pageView(container, id, scale,
     var ctx = canvas.getContext('2d');
     var outputScale = getOutputScale(ctx);
 
-    canvas.width = Math.floor(viewport.width) * outputScale.sx;
-    canvas.height = Math.floor(viewport.height) * outputScale.sy;
+    if (USE_ONLY_CSS_ZOOM) {
+      var actualSizeViewport = viewport.clone({ scale: CSS_UNITS });
+      // Use a scale that will make the canvas be the original intended size
+      // of the page.
+      outputScale.sx *= actualSizeViewport.width / viewport.width;
+      outputScale.sy *= actualSizeViewport.height / viewport.height;
+      outputScale.scaled = true;
+    }
+
+    canvas.width = Math.floor(viewport.width * outputScale.sx);
+    canvas.height = Math.floor(viewport.height * outputScale.sy);
     canvas.style.width = Math.floor(viewport.width) + 'px';
     canvas.style.height = Math.floor(viewport.height) + 'px';
+    // Add the viewport so it's known what it was originally drawn with.
+    canvas._viewport = viewport;
 
     var textLayerDiv = null;
     if (!PDFJS.disableTextLayer) {
@@ -379,7 +478,7 @@ var PageView = function pageView(container, id, scale,
         pageIndex: this.id - 1,
         lastScrollSource: PDFView,
         viewport: this.viewport,
-        isViewerInPresentationMode: PDFView.isPresentationMode
+        isViewerInPresentationMode: PresentationMode.active
       }) : null;
     // TODO(mack): use data attributes to store these
     ctx._scaleX = outputScale.sx;
@@ -419,6 +518,11 @@ var PageView = function pageView(container, id, scale,
       if (self.loadingIconDiv) {
         div.removeChild(self.loadingIconDiv);
         delete self.loadingIconDiv;
+      }
+
+      if (self.zoomLayer) {
+        div.removeChild(self.zoomLayer);
+        self.zoomLayer = null;
       }
 
 //#if (FIREFOX || MOZCENTRAL)
@@ -512,7 +616,7 @@ var PageView = function pageView(container, id, scale,
     // Use the same hack we use for high dpi displays for printing to get better
     // output until bug 811002 is fixed in FF.
     var PRINT_OUTPUT_SCALE = 2;
-    var canvas = this.canvas = document.createElement('canvas');
+    var canvas = document.createElement('canvas');
     canvas.width = Math.floor(viewport.width) * PRINT_OUTPUT_SCALE;
     canvas.height = Math.floor(viewport.height) * PRINT_OUTPUT_SCALE;
     canvas.style.width = (PRINT_OUTPUT_SCALE * viewport.width) + 'pt';
@@ -523,7 +627,11 @@ var PageView = function pageView(container, id, scale,
     CustomStyle.setProp('transformOrigin' , canvas, '0% 0%');
 
     var printContainer = document.getElementById('printContainer');
-    printContainer.appendChild(canvas);
+    var canvasWrapper = document.createElement('div');
+    canvasWrapper.style.width = viewport.width + 'pt';
+    canvasWrapper.style.height = viewport.height + 'pt';
+    canvasWrapper.appendChild(canvas);
+    printContainer.appendChild(canvasWrapper);
 
     var self = this;
     canvas.mozPrintCallback = function(obj) {
