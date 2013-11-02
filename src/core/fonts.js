@@ -3507,6 +3507,11 @@ var Font = (function FontClosure() {
                 callstack.push({data: data, i: i, stackTop: stack.length - 1});
                 functionsCalled.push(funcId);
                 var pc = ttContext.functionsDefined[funcId];
+                if (!pc) {
+                  warn('TT: CALL non-existent function');
+                  ttContext.hintsValid = false;
+                  return;
+                }
                 data = pc.data;
                 i = pc.i;
               }
@@ -3527,6 +3532,11 @@ var Font = (function FontClosure() {
               lastEndf = i;
             } else {
               var pc = callstack.pop();
+              if (!pc) {
+                warn('TT: ENDF bad stack');
+                ttContext.hintsValid = false;
+                return;
+              }
               var funcId = functionsCalled.pop();
               data = pc.data;
               i = pc.i;
@@ -5195,19 +5205,34 @@ var Type1Parser = (function Type1ParserClosure() {
 
               for (var j = 0; j < size; j++) {
                 var token = this.getToken();
-                if (token === 'dup') {
-                  var index = this.readInt();
-                  this.getToken(); // read in '/'
-                  var glyph = this.getToken();
-                  encoding[index] = glyph;
-                  this.getToken(); // read the in 'put'
+                // skipping till first dup or def (e.g. ignoring for statement)
+                while (token !== 'dup' && token !== 'def') {
+                  token = this.getToken();
+                  if (token === null) {
+                    return; // invalid header
+                  }
                 }
+                if (token === 'def') {
+                  break; // read all array data
+                }
+                var index = this.readInt();
+                this.getToken(); // read in '/'
+                var glyph = this.getToken();
+                encoding[index] = glyph;
+                this.getToken(); // read the in 'put'
               }
             }
             if (properties.overridableEncoding && encoding) {
               properties.baseEncoding = encoding;
               break;
             }
+            break;
+          case 'FontBBox':
+            var fontBBox = this.readNumberArray();
+            // adjusting ascent/descent
+            properties.ascent = fontBBox[3];
+            properties.descent = fontBBox[1];
+            properties.ascentScaled = true;
             break;
         }
       }
