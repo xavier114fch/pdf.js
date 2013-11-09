@@ -33,6 +33,15 @@
        "type": "load",
        "about": "PDF with undefined stream length."
     },
+    {  "id": "issue3879",
+       "file": "pdfs/issue3879.pdf",
+       "md5": "1cd1f1c3271515a14e65ff2980e14663",
+       "rounds": 1,
+       "link": true,
+       "firstPage": 2,
+       "lastPage": 2,
+       "type": "eq"
+    },
     {  "id": "issue2833",
        "file": "pdfs/issue2833.pdf",
        "md5": "7bc6e17c41586155c188d7408bcb9ab5",
@@ -732,6 +741,13 @@
       "link": true,
       "type": "load"
     },
+    {  "id": "bug860632",
+      "file": "pdfs/bug860632.pdf",
+      "md5": "b3cabf9249c8fee76f61f6b3b7fdd5fd",
+      "rounds": 1,
+      "lastPage": 1,
+      "type": "eq"
+    },
     {  "id": "issue1466",
       "file": "pdfs/issue1466.pdf",
       "md5": "8a8877432e5bb10cfd50d60488d947bb",
@@ -1288,6 +1304,12 @@
       "rounds": 1,
       "type": "eq"
     },
+    {  "id": "issue3438",
+      "file": "pdfs/issue3438.pdf",
+      "md5": "5aa3340b0920b65a377f697587668f89",
+      "rounds": 1,
+      "type": "eq"
+    },
     {  "id": "bug886717",
       "file": "pdfs/bug886717.pdf",
       "md5": "8ba614192797a1324765610231a1bc9d",
@@ -1350,6 +1372,12 @@
       "rounds": 1,
       "type": "eq"
     },
+    {  "id": "issue1171.pdf",
+       "file": "pdfs/issue1171.pdf",
+       "md5": "2a6188a42a5874c7874b88eebd4acaf0",
+       "rounds": 1,
+       "type": "eq"
+    },
     {  "id": "issue3521.pdf",
        "file": "pdfs/issue3521.pdf",
        "md5": "df95d31443e20a38efa29c3a635a045b",
@@ -1367,6 +1395,20 @@
     {  "id": "issue2956",
       "file": "pdfs/issue2956.pdf",
       "md5": "d8f68cbbb4bf54cde9f7f878acb6d7cd",
+      "rounds": 1,
+      "type": "eq"
+    },
+    {  "id": "issue2799",
+      "file": "pdfs/issue2799.pdf",
+      "md5": "3d3224eae54bbae5fc76224a2af49486",
+      "rounds": 1,
+      "lastPage": 1,
+      "link": true,
+      "type": "eq"
+    },
+    {  "id": "issue3025",
+      "file": "pdfs/issue3025.pdf",
+      "md5": "8e4e8eacbd7c4c248deeca0ec49d38da",
       "rounds": 1,
       "type": "eq"
     },
@@ -1407,6 +1449,15 @@
        "link": true,
        "firstPage": 1,
        "lastPage": 2,
+       "type": "eq"
+    },
+    {  "id": "issue3205",
+       "file": "pdfs/issue3205.pdf",
+       "md5": "e833326f69f2fdf7c1c8438fe1d3b622",
+       "rounds": 1,
+       "link": true,
+       "firstPage": 4,
+       "lastPage": 4,
        "type": "eq"
     }
 ]

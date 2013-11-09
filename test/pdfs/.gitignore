@@ -21,8 +21,10 @@
 !devicen.pdf
 !cmykjpeg.pdf
 !issue840.pdf
+!issue3438.pdf
 !issue2074.pdf
 !scan-bad.pdf
+!bug860632.pdf
 !pdfjsbad1586.pdf
 !freeculture.pdf
 !pdfkit_compressed.pdf
@@ -32,6 +34,7 @@
 !issue2833.pdf
 !rotated.pdf
 !issue1249.pdf
+!issue1171.pdf
 !smaskdim.pdf
 !endchar.pdf
 !type4psfunc.pdf
@@ -51,6 +54,7 @@
 !noembed-eucjp.pdf
 !noembed-sjis.pdf
 !vertical.pdf
+!issue3025.pdf
 !issue2099-1.pdf
 !issue3371.pdf
 !issue2956.pdf
