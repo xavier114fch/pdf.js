@@ -3163,8 +3163,8 @@ var Font = (function FontClosure() {
         for (var i = 0; i < flagsCount; i++) {
           var flag = glyf[j++];
           if (flag & 0xC0) {
-            // reserved flags must be zero, rejecting
-            return 0;
+            // reserved flags must be zero, cleaning up
+            glyf[j - 1] = flag & 0x3F;
           }
           var xyLength = ((flag & 2) ? 1 : (flag & 16) ? 0 : 2) +
                          ((flag & 4) ? 1 : (flag & 32) ? 0 : 2);
@@ -3277,6 +3277,13 @@ var Font = (function FontClosure() {
           };
         }
         var locaData = loca.data;
+        var locaDataSize = itemSize * (1 + numGlyphs);
+        // is loca.data too short or long?
+        if (locaData.length !== locaDataSize) {
+          locaData = new Uint8Array(locaDataSize);
+          locaData.set(loca.data.subarray(0, locaDataSize));
+          loca.data = locaData;
+        }
         // removing the invalid glyphs
         var oldGlyfData = glyf.data;
         var oldGlyfDataLength = oldGlyfData.length;
@@ -3320,9 +3327,7 @@ var Font = (function FontClosure() {
             glyf.data.set(newGlyfData.subarray(0, writeOffset));
           }
           glyf.data.set(newGlyfData.subarray(0, firstEntryLength), writeOffset);
-          loca.data = new Uint8Array(locaData.length + itemSize);
-          loca.data.set(locaData);
-          itemEncode(loca.data, locaData.length,
+          itemEncode(loca.data, locaData.length - itemSize,
                      writeOffset + firstEntryLength);
         } else {
           glyf.data = newGlyfData.subarray(0, writeOffset);
@@ -3729,7 +3734,14 @@ var Font = (function FontClosure() {
       var numGlyphs = int16(font.getBytes(2));
       var maxFunctionDefs = 0;
       if (version >= 0x00010000 && tables.maxp.length >= 22) {
-        font.pos += 14;
+        // maxZones can be invalid
+        font.pos += 8;
+        var maxZones = int16(font.getBytes(2));
+        if (maxZones > 2) { // reset to 2 if font has invalid maxZones
+          tables.maxp.data[14] = 0;
+          tables.maxp.data[15] = 2;
+        }
+        font.pos += 4;
         maxFunctionDefs = int16(font.getBytes(2));
       }
 
@@ -5599,6 +5611,9 @@ var CFFFont = (function CFFFontClosure() {
       var unassignedUnicodeItems = [];
       var inverseEncoding = [];
       var gidStart = 0;
+      if (charsets[0] === '.notdef') {
+        gidStart = 1;
+      }
       // According to section 9.7.4.2 CIDFontType0C glyph selection should be
       // handled differently.
       if (this.properties.subtype === 'CIDFontType0C') {
@@ -5630,9 +5645,6 @@ var CFFFont = (function CFFFontClosure() {
           } else {
             inverseEncoding[gid] = charcode | 0;
           }
-        }
-        if (charsets[0] === '.notdef') {
-          gidStart = 1;
         }
       }
 

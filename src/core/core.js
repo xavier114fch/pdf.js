@@ -184,7 +184,6 @@ var Page = (function PageClosure() {
         var annotations = datas[1];
 
         if (annotations.length === 0) {
-          PartialEvaluator.optimizeQueue(pageOpList);
           pageOpList.flush(true);
           promise.resolve(pageOpList);
           return;
@@ -193,7 +192,6 @@ var Page = (function PageClosure() {
         var annotationsReadyPromise = Annotation.appendToOperatorList(
           annotations, pageOpList, pdfManager, partialEvaluator);
         annotationsReadyPromise.then(function () {
-          PartialEvaluator.optimizeQueue(pageOpList);
           pageOpList.flush(true);
           promise.resolve(pageOpList);
         }, reject);
@@ -494,10 +492,6 @@ var PDFDocument = (function PDFDocumentClosure() {
       }
 
       return shadow(this, 'fingerprint', fileID);
-    },
-
-    traversePages: function PDFDocument_traversePages() {
-      this.catalog.traversePages();
     },
 
     getPage: function PDFDocument_getPage(pageIndex) {

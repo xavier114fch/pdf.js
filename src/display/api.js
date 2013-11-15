@@ -188,6 +188,14 @@ var PDFDocumentProxy = (function PDFDocumentProxyClosure() {
       return this.transport.getPage(number);
     },
     /**
+     * @param {object} Must have 'num' and 'gen' properties.
+     * @return {Promise} A promise that is resolved with the page index that is
+     * associated with the reference.
+     */
+    getPageIndex: function PDFDocumentProxy_getPageIndex(ref) {
+      return this.transport.getPageIndex(ref);
+    },
+    /**
      * @return {Promise} A promise that is resolved with a lookup table for
      * mapping named destinations to reference numbers.
      */
@@ -481,10 +489,10 @@ var PDFPageProxy = (function PDFPageProxyClosure() {
      */
     _renderPageChunk: function PDFPageProxy_renderPageChunk(operatorListChunk) {
       // Add the new chunk to the current operator list.
-      Util.concatenateToArray(this.operatorList.fnArray,
-                              operatorListChunk.fnArray);
-      Util.concatenateToArray(this.operatorList.argsArray,
-                              operatorListChunk.argsArray);
+      for (var i = 0, ii = operatorListChunk.length; i < ii; i++) {
+        this.operatorList.fnArray.push(operatorListChunk.fnArray[i]);
+        this.operatorList.argsArray.push(operatorListChunk.argsArray[i]);
+      }
       this.operatorList.lastChunk = operatorListChunk.lastChunk;
 
       // Notify all the rendering tasks there are more operators to be consumed.
@@ -861,6 +869,16 @@ var WorkerTransport = (function WorkerTransportClosure() {
       return promise;
     },
 
+    getPageIndex: function WorkerTransport_getPageIndexByRef(ref) {
+      var promise = new PDFJS.Promise();
+      this.messageHandler.send('GetPageIndex', { ref: ref },
+        function (pageIndex) {
+          promise.resolve(pageIndex);
+        }
+      );
+      return promise;
+    },
+
     getAnnotations: function WorkerTransport_getAnnotations(pageIndex) {
       this.messageHandler.send('GetAnnotationsRequest',
         { pageIndex: pageIndex });
@@ -1094,7 +1112,7 @@ var InternalRenderTask = (function InternalRenderTaskClosure() {
                                         this.operatorListIdx,
                                         this._continue.bind(this),
                                         this.stepper);
-      if (this.operatorListIdx === this.operatorList.fnArray.length) {
+      if (this.operatorListIdx === this.operatorList.argsArray.length) {
         this.running = false;
         if (this.operatorList.lastChunk) {
           this.gfx.endDrawing();
