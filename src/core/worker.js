@@ -173,6 +173,9 @@ var WorkerMessageHandler = PDFJS.WorkerMessageHandler = {
         handler.send('test', false);
         return;
       }
+      // making sure postMessage transfers are working
+      var supportTransfers = data[0] === 255;
+      handler.postMessageTransfers = supportTransfers;
       // check if the response property is supported by xhr
       var xhr = new XMLHttpRequest();
       var responseExists = 'response' in xhr;
@@ -186,7 +189,10 @@ var WorkerMessageHandler = PDFJS.WorkerMessageHandler = {
         handler.send('test', false);
         return;
       }
-      handler.send('test', true);
+      handler.send('test', {
+        supportTypedArray: true,
+        supportTransfers: supportTransfers
+      });
     });
 
     handler.on('GetDocRequest', function wphSetupDoc(data) {
@@ -371,6 +377,11 @@ var WorkerMessageHandler = PDFJS.WorkerMessageHandler = {
           promise.reject(e);
         });
       });
+    });
+
+    handler.on('Cleanup', function wphCleanup(data, promise) {
+      pdfManager.cleanup();
+      promise.resolve(true);
     });
 
     handler.on('Terminate', function wphTerminate(data, promise) {

@@ -86,6 +86,12 @@ PDFJS.disableAutoFetch = PDFJS.disableAutoFetch === undefined ?
 PDFJS.pdfBug = PDFJS.pdfBug === undefined ? false : PDFJS.pdfBug;
 
 /**
+ * Enables transfer usage in postMessage for ArrayBuffers.
+ * @var {boolean}
+ */
+PDFJS.postMessageTransfers = PDFJS.postMessageTransfers === undefined ?
+                             true : PDFJS.postMessageTransfers;
+/**
  * This is the main entry point for loading a PDF and interacting with it.
  * NOTE: If a URL is used to fetch the PDF data a standard XMLHttpRequest(XHR)
  * is used, which means it must follow the same origin rules that any XHR does
@@ -269,6 +275,9 @@ var PDFDocumentProxy = (function PDFDocumentProxyClosure() {
      */
     dataLoaded: function PDFDocumentProxy_dataLoaded() {
       return this.transport.dataLoaded();
+    },
+    cleanup: function PDFDocumentProxy_cleanup() {
+      this.transport.startCleanup();
     },
     destroy: function PDFDocumentProxy_destroy() {
       this.transport.destroy();
@@ -544,9 +553,13 @@ var WorkerTransport = (function WorkerTransportClosure() {
         var messageHandler = new MessageHandler('main', worker);
         this.messageHandler = messageHandler;
 
-        messageHandler.on('test', function transportTest(supportTypedArray) {
+        messageHandler.on('test', function transportTest(data) {
+          var supportTypedArray = data && data.supportTypedArray;
           if (supportTypedArray) {
             this.worker = worker;
+            if (!data.supportTransfers) {
+              PDFJS.postMessageTransfers = false;
+            }
             this.setupMessageHandler(messageHandler);
             workerInitializedPromise.resolve();
           } else {
@@ -558,10 +571,16 @@ var WorkerTransport = (function WorkerTransportClosure() {
           }
         }.bind(this));
 
-        var testObj = new Uint8Array(1);
-        // Some versions of Opera throw a DATA_CLONE_ERR on
-        // serializing the typed array.
-        messageHandler.send('test', testObj);
+        var testObj = new Uint8Array([PDFJS.postMessageTransfers ? 255 : 0]);
+        // Some versions of Opera throw a DATA_CLONE_ERR on serializing the
+        // typed array. Also, checking if we can use transfers.
+        try {
+          messageHandler.send('test', testObj, null, [testObj.buffer]);
+        } catch (ex) {
+          info('Cannot use postMessage transfers');
+          testObj[0] = 0;
+          messageHandler.send('test', testObj);
+        }
         return;
       } catch (e) {
         info('The worker has been disabled.');
@@ -799,7 +818,7 @@ var WorkerTransport = (function WorkerTransportClosure() {
       }, this);
 
       messageHandler.on('JpegDecode', function(data, promise) {
-        var imageData = data[0];
+        var imageUrl = data[0];
         var components = data[1];
         if (components != 3 && components != 1)
           error('Only 3 component or 1 component can be returned');
@@ -829,8 +848,7 @@ var WorkerTransport = (function WorkerTransportClosure() {
           }
           promise.resolve({ data: buf, width: width, height: height});
         }).bind(this);
-        var src = 'data:image/jpeg;base64,' + window.btoa(imageData);
-        img.src = src;
+        img.src = imageUrl;
       });
     },
 
@@ -892,6 +910,21 @@ var WorkerTransport = (function WorkerTransportClosure() {
         }
       );
       return promise;
+    },
+
+    startCleanup: function WorkerTransport_startCleanup() {
+      this.messageHandler.send('Cleanup', null,
+        function endCleanup() {
+          for (var i = 0, ii = this.pageCache.length; i < ii; i++) {
+            var page = this.pageCache[i];
+            if (page) {
+              page.destroy();
+            }
+          }
+          this.commonObjs.clear();
+          FontLoader.clear();
+        }.bind(this)
+      );
     }
   };
   return WorkerTransport;
