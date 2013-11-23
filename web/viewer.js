@@ -452,7 +452,8 @@ var PDFView = {
       switch (args.pdfjsLoadAction) {
         case 'supportsRangedLoading':
           PDFView.open(args.pdfUrl, 0, undefined, pdfDataRangeTransport, {
-            length: args.length
+            length: args.length,
+            initialData: args.data
           });
           break;
         case 'range':
@@ -1065,8 +1066,9 @@ var PDFView = {
 
   cleanup: function pdfViewCleanup() {
     for (var i = 0, ii = this.pages.length; i < ii; i++) {
-      if (this.pages[i]) {
-        this.pages[i].resetRenderingState();
+      if (this.pages[i] &&
+          this.pages[i].renderingState !== RenderingStates.FINISHED) {
+        this.pages[i].reset();
       }
     }
     this.pdfDocument.cleanup();
@@ -2008,6 +2010,11 @@ window.addEventListener('keydown', function keydown(evt) {
     switch (evt.keyCode) {
       case 80: // p
         SecondaryToolbar.presentationModeClick();
+        handled = true;
+        break;
+      case 71: // g
+        // focuses input#pageNumber field
+        document.getElementById('pageNumber').select();
         handled = true;
         break;
     }
