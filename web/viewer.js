@@ -209,7 +209,7 @@ var PDFView = {
     var number = parseFloat(value);
     var scale;
 
-    if (number) {
+    if (number > 0) {
       scale = number;
       resetAutoSettings = true;
     } else {
@@ -850,6 +850,13 @@ var PDFView = {
         bindOnAfterDraw(pageView, thumbnailView);
         pages.push(pageView);
         thumbnails.push(thumbnailView);
+        if (!PDFJS.disableAutoFetch) {
+          pagePromises.push(pdfDocument.getPage(pageNum).then(
+            function (pageView, pdfPage) {
+              pageView.setPdfPage(pdfPage);
+            }.bind(this, pageView)
+          ));
+        }
       }
 
       var event = document.createEvent('CustomEvent');
