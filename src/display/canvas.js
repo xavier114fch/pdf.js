@@ -16,7 +16,7 @@
  */
 /* globals ColorSpace, DeviceCmykCS, DeviceGrayCS, DeviceRgbCS, error,
            FONT_IDENTITY_MATRIX, IDENTITY_MATRIX, ImageData, isArray, isNum,
-           Pattern, TilingPattern, Util, warn, assert, info,
+           Pattern, TilingPattern, Util, warn, assert, info, shadow,
            TextRenderingMode, OPS, Promise */
 
 'use strict';
@@ -191,6 +191,18 @@ function compileType3Glyph(imgData) {
   var points = new Uint8Array(width1 * (height + 1));
   var POINT_TYPES =
       new Uint8Array([0, 2, 4, 0, 1, 0, 5, 4, 8, 10, 0, 8, 0, 2, 1, 0]);
+
+  // decodes bit-packed mask data
+  var lineSize = (width + 7) & ~7, data0 = imgData.data;
+  var data = new Uint8Array(lineSize * height), pos = 0, ii;
+  for (i = 0, ii = data0.length; i < ii; i++) {
+    var mask = 128, elem = data0[i];
+    while (mask > 0) {
+      data[pos++] = (elem & mask) ? 0 : 255;
+      mask >>= 1;
+    }
+  }
+
   // finding iteresting points: every point is located between mask pixels,
   // so there will be points of the (width + 1)x(height + 1) grid. Every point
   // will have flags assigned based on neighboring mask pixels:
@@ -201,24 +213,25 @@ function compileType3Glyph(imgData) {
   //   - outside corners: 1, 2, 4, 8;
   //   - inside corners: 7, 11, 13, 14;
   //   - and, intersections: 5, 10.
-  var pos = 3, data = imgData.data, lineSize = width * 4, count = 0;
-  if (data[3] !== 0) {
+  var count = 0;
+  pos = 0;
+  if (data[pos] !== 0) {
     points[0] = 1;
     ++count;
   }
   for (j = 1; j < width; j++) {
-    if (data[pos] !== data[pos + 4]) {
+    if (data[pos] !== data[pos + 1]) {
       points[j] = data[pos] ? 2 : 1;
       ++count;
     }
-    pos += 4;
+    pos++;
   }
   if (data[pos] !== 0) {
     points[j] = 2;
     ++count;
   }
-  pos += 4;
   for (i = 1; i < height; i++) {
+    pos = i * lineSize;
     j0 = i * width1;
     if (data[pos - lineSize] !== data[pos]) {
       points[j0] = data[pos] ? 1 : 8;
@@ -228,37 +241,36 @@ function compileType3Glyph(imgData) {
     // array (in order 8-1-2-4, so we can use '>>2' to shift the column).
     var sum = (data[pos] ? 4 : 0) + (data[pos - lineSize] ? 8 : 0);
     for (j = 1; j < width; j++) {
-      sum = (sum >> 2) + (data[pos + 4] ? 4 : 0) +
-            (data[pos - lineSize + 4] ? 8 : 0);
+      sum = (sum >> 2) + (data[pos + 1] ? 4 : 0) +
+            (data[pos - lineSize + 1] ? 8 : 0);
       if (POINT_TYPES[sum]) {
         points[j0 + j] = POINT_TYPES[sum];
         ++count;
       }
-      pos += 4;
+      pos++;
     }
     if (data[pos - lineSize] !== data[pos]) {
       points[j0 + j] = data[pos] ? 2 : 4;
       ++count;
     }
-    pos += 4;
 
     if (count > POINT_TO_PROCESS_LIMIT) {
       return null;
     }
   }
 
-  pos -= lineSize;
+  pos = lineSize * (height - 1);
   j0 = i * width1;
   if (data[pos] !== 0) {
     points[j0] = 8;
     ++count;
   }
   for (j = 1; j < width; j++) {
-    if (data[pos] !== data[pos + 4]) {
+    if (data[pos] !== data[pos + 1]) {
       points[j0 + j] = data[pos] ? 4 : 8;
       ++count;
     }
-    pos += 4;
+    pos++;
   }
   if (data[pos] !== 0) {
     points[j0 + j] = 4;
@@ -364,7 +376,6 @@ var CanvasExtraState = (function CanvasExtraStateClosure() {
     this.fillAlpha = 1;
     this.strokeAlpha = 1;
     this.lineWidth = 1;
-    this.paintFormXObjectDepth = 0;
 
     this.old = old;
   }
@@ -416,16 +427,77 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
       return;
     }
 
-    var tmpImgData = ctx.createImageData(imgData.width, imgData.height);
+    // Put the image data to the canvas in chunks, rather than putting the
+    // whole image at once.  This saves JS memory, because the ImageData object
+    // is smaller. It also possibly saves C++ memory within the implementation
+    // of putImageData(). (E.g. in Firefox we make two short-lived copies of
+    // the data passed to putImageData()). |n| shouldn't be too small, however,
+    // because too many putImageData() calls will slow things down.
 
+    var rowsInFullChunks = 16;
+    var fullChunks = (imgData.height / rowsInFullChunks) | 0;
+    var rowsInLastChunk = imgData.height - fullChunks * rowsInFullChunks;
+    var elemsInFullChunks = imgData.width * rowsInFullChunks * 4;
+    var elemsInLastChunk = imgData.width * rowsInLastChunk * 4;
+
+    var chunkImgData = ctx.createImageData(imgData.width, rowsInFullChunks);
+    var srcPos = 0;
+    var src = imgData.data;
+    var dst = chunkImgData.data;
+    var haveSetAndSubarray = 'set' in dst && 'subarray' in src;
+
+    // Do all the full-size chunks.
+    for (var i = 0; i < fullChunks; i++) {
+      if (haveSetAndSubarray) {
+        dst.set(src.subarray(srcPos, srcPos + elemsInFullChunks));
+        srcPos += elemsInFullChunks;
+      } else {
+        for (var j = 0; j < elemsInFullChunks; j++) {
+          chunkImgData.data[j] = imgData.data[srcPos++];
+        }
+      }
+      ctx.putImageData(chunkImgData, 0, i * rowsInFullChunks);
+    }
+
+    // Do the final, partial chunk, if required.
+    if (rowsInLastChunk !== 0) {
+      if (haveSetAndSubarray) {
+        dst.set(src.subarray(srcPos, srcPos + elemsInLastChunk));
+        srcPos += elemsInLastChunk;
+      } else {
+        for (var j = 0; j < elemsInLastChunk; j++) {
+          chunkImgData.data[j] = imgData.data[srcPos++];
+        }
+      }
+      // This (conceptually) puts pixels past the bounds of the canvas.  But
+      // that's ok; any such pixels are ignored.
+      ctx.putImageData(chunkImgData, 0, fullChunks * rowsInFullChunks);
+    }
+  }
+
+  function putBinaryImageMask(ctx, imgData) {
+    var width = imgData.width, height = imgData.height;
+    var tmpImgData = ctx.createImageData(width, height);
     var data = imgData.data;
     var tmpImgDataPixels = tmpImgData.data;
-    if ('set' in tmpImgDataPixels)
-      tmpImgDataPixels.set(data);
-    else {
-      // Copy over the imageData pixel by pixel.
-      for (var i = 0, ii = tmpImgDataPixels.length; i < ii; i++)
-        tmpImgDataPixels[i] = data[i];
+    var dataPos = 0;
+
+    // Expand the mask so it can be used by the canvas.  Any required inversion
+    // has already been handled.
+    var tmpPos = 3; // alpha component offset
+    for (var i = 0; i < height; i++) {
+      var mask = 0;
+      for (var j = 0; j < width; j++) {
+        if (!mask) {
+          var elem = data[dataPos++];
+          mask = 128;
+        }
+        if (!(elem & mask)) {
+          tmpImgDataPixels[tmpPos] = 255;
+        }
+        tmpPos += 4;
+        mask >>= 1;
+      }
     }
 
     ctx.putImageData(tmpImgData, 0, 0);
@@ -954,6 +1026,8 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
       geometry.fontName = font.loadedName;
       geometry.fontFamily = font.fallbackName;
       geometry.fontSize = this.current.fontSize;
+      geometry.ascent = font.ascent;
+      geometry.descent = font.descent;
       return geometry;
     },
 
@@ -1008,6 +1082,23 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
           addToPath: addToPath
         });
       }
+    },
+
+    get isFontSubpixelAAEnabled() {
+      // Checks if anti-aliasing is enabled when scaled text is painted.
+      // On Windows GDI scaled fonts looks bad.
+      var ctx = document.createElement('canvas').getContext('2d');
+      ctx.scale(1.5, 1);
+      ctx.fillText('I', 0, 10);
+      var data = ctx.getImageData(0, 0, 10, 10).data;
+      var enabled = false;
+      for (var i = 3; i < data.length; i += 4) {
+        if (data[i] > 0 && data[i] < 255) {
+          enabled = true;
+          break;
+        }
+      }
+      return shadow(this, 'isFontSubpixelAAEnabled', enabled);
     },
 
     showText: function CanvasGraphics_showText(glyphs, skipTextSelection) {
@@ -1124,7 +1215,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
               scaledY = 0;
             }
 
-            if (font.remeasure && width > 0) {
+            if (font.remeasure && width > 0 && this.isFontSubpixelAAEnabled) {
               // some standard fonts may not have the exact width, trying to
               // rescale per character
               var measuredWidth = ctx.measureText(character).width * 1000 /
@@ -1411,7 +1502,6 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
     paintFormXObjectBegin: function CanvasGraphics_paintFormXObjectBegin(matrix,
                                                                         bbox) {
       this.save();
-      this.current.paintFormXObjectDepth++;
       this.baseTransformStack.push(this.baseTransform);
 
       if (matrix && isArray(matrix) && 6 == matrix.length)
@@ -1429,12 +1519,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
     },
 
     paintFormXObjectEnd: function CanvasGraphics_paintFormXObjectEnd() {
-      var depth = this.current.paintFormXObjectDepth;
-      do {
-        this.restore();
-        // some pdf don't close all restores inside object
-        // closing those for them
-      } while (this.current.paintFormXObjectDepth >= depth);
+      this.restore();
       this.baseTransform = this.baseTransformStack.pop();
     },
 
@@ -1611,7 +1696,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
       var maskCtx = maskCanvas.context;
       maskCtx.save();
 
-      putBinaryImageData(maskCtx, img);
+      putBinaryImageMask(maskCtx, img);
 
       maskCtx.globalCompositeOperation = 'source-in';
 
@@ -1638,7 +1723,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
         var maskCtx = maskCanvas.context;
         maskCtx.save();
 
-        putBinaryImageData(maskCtx, image);
+        putBinaryImageMask(maskCtx, image);
 
         maskCtx.globalCompositeOperation = 'source-in';
 

@@ -19,7 +19,7 @@
            getFileName, scrollIntoView, getPDFFileNameFromURL, PDFHistory,
            Preferences, ViewHistory, PageView, ThumbnailView,
            noContextMenuHandler, SecondaryToolbar, PasswordPrompt,
-           PresentationMode, HandTool, Promise */
+           PresentationMode, HandTool, Promise, DocumentProperties */
 
 'use strict';
 
@@ -40,6 +40,7 @@ var SCALE_SELECT_PADDING = 22;
 var THUMBNAIL_SCROLL_MARGIN = -19;
 var USE_ONLY_CSS_ZOOM = false;
 var CLEANUP_TIMEOUT = 30000;
+var IGNORE_CURRENT_POSITION_ON_ZOOM = false;
 //#if B2G
 //USE_ONLY_CSS_ZOOM = true;
 //#endif
@@ -89,6 +90,7 @@ var currentPageNumber = 1;
 //#include password_prompt.js
 //#include presentation_mode.js
 //#include hand_tool.js
+//#include document_properties.js
 
 var PDFView = {
   pages: [],
@@ -111,6 +113,7 @@ var PDFView = {
   previousPageNumber: 1,
   isViewerEmbedded: (window.parent !== window),
   idleTimeout: null,
+  currentPosition: null,
 
   // called once when the document is loaded
   initialize: function pdfViewInitialize() {
@@ -156,10 +159,13 @@ var PDFView = {
       openFile: document.getElementById('secondaryOpenFile'),
       print: document.getElementById('secondaryPrint'),
       download: document.getElementById('secondaryDownload'),
+      viewBookmark: document.getElementById('secondaryViewBookmark'),
       firstPage: document.getElementById('firstPage'),
       lastPage: document.getElementById('lastPage'),
       pageRotateCw: document.getElementById('pageRotateCw'),
-      pageRotateCcw: document.getElementById('pageRotateCcw')
+      pageRotateCcw: document.getElementById('pageRotateCcw'),
+      documentProperties: DocumentProperties,
+      documentPropertiesButton: document.getElementById('documentProperties')
     });
 
     PasswordPrompt.initialize({
@@ -177,6 +183,23 @@ var PDFView = {
       lastPage: document.getElementById('contextLastPage'),
       pageRotateCw: document.getElementById('contextPageRotateCw'),
       pageRotateCcw: document.getElementById('contextPageRotateCcw')
+    });
+
+    DocumentProperties.initialize({
+      overlayContainer: document.getElementById('overlayContainer'),
+      closeButton: document.getElementById('documentPropertiesClose'),
+      fileNameField: document.getElementById('fileNameField'),
+      fileSizeField: document.getElementById('fileSizeField'),
+      titleField: document.getElementById('titleField'),
+      authorField: document.getElementById('authorField'),
+      subjectField: document.getElementById('subjectField'),
+      keywordsField: document.getElementById('keywordsField'),
+      creationDateField: document.getElementById('creationDateField'),
+      modificationDateField: document.getElementById('modificationDateField'),
+      creatorField: document.getElementById('creatorField'),
+      producerField: document.getElementById('producerField'),
+      versionField: document.getElementById('versionField'),
+      pageCountField: document.getElementById('pageCountField')
     });
 
     this.initialized = true;
@@ -219,7 +242,13 @@ var PDFView = {
     this.currentScale = newScale;
 
     if (!noScroll) {
-      this.pages[this.page - 1].scrollIntoView();
+      var page = this.page, dest;
+      if (this.currentPosition && !IGNORE_CURRENT_POSITION_ON_ZOOM) {
+        page = this.currentPosition.page;
+        dest = [null, { name: 'XYZ' }, this.currentPosition.left,
+                this.currentPosition.top, null];
+      }
+      this.pages[page - 1].scrollIntoView(dest);
     }
     var event = document.createEvent('UIEvents');
     event.initUIEvent('scalechange', false, false, window, 0);
@@ -516,6 +545,10 @@ var PDFView = {
       }
     }
 
+    // Terminate worker of the previous document if any.
+    if (this.pdfDocument) {
+      this.pdfDocument.destroy();
+    }
     this.pdfDocument = null;
     var self = this;
     self.loading = true;
@@ -607,11 +640,13 @@ var PDFView = {
 //    return;
 //  this.fellback = true;
 //  var url = this.url.split('#')[0];
-//  FirefoxCom.request('fallback', featureId, url, function response(download) {
-//    if (!download)
-//      return;
-//    PDFView.download();
-//  });
+//  FirefoxCom.request('fallback', { featureId: featureId, url: url },
+//    function response(download) {
+//      if (!download) {
+//        return;
+//      }
+//      PDFView.download();
+//    });
 //#endif
   },
 
@@ -1049,6 +1084,9 @@ var PDFView = {
     // Reset 'currentPageNumber', since otherwise the page's scale will be wrong
     // if 'currentPageNumber' is larger than the number of pages in the file.
     document.getElementById('pageNumber').value = currentPageNumber = 1;
+    // Reset the current position when loading a new file,
+    // to prevent displaying the wrong position in the document.
+    this.currentPosition = null;
 
     if (PDFHistory.initialDestination) {
       this.navigateTo(PDFHistory.initialDestination);
@@ -1307,7 +1345,7 @@ var PDFView = {
                      Math.max(0, currentHeight + viewHeight - bottom);
       percentHeight = ((viewHeight - hiddenHeight) * 100 / viewHeight) | 0;
 
-      visible.push({ id: view.id, y: currentHeight,
+      visible.push({ id: view.id, x: currentWidth, y: currentHeight,
                      view: view, percent: percentHeight });
     }
 
@@ -1379,7 +1417,7 @@ var PDFView = {
   },
 
   rotatePages: function pdfViewRotatePages(delta) {
-
+    var currentPage = this.pages[this.page - 1];
     this.pageRotation = (this.pageRotation + 360 + delta) % 360;
 
     for (var i = 0, l = this.pages.length; i < l; i++) {
@@ -1392,19 +1430,13 @@ var PDFView = {
       thumb.update(this.pageRotation);
     }
 
-    this.setScale(this.currentScaleValue, true);
+    this.setScale(this.currentScaleValue, true, true);
 
     this.renderHighestPriority();
 
-    var currentPage = this.pages[this.page - 1];
-    if (!currentPage) {
-      return;
-    }
-
-    // Wait for presentation mode to take effect
-    setTimeout(function() {
+    if (currentPage) {
       currentPage.scrollIntoView();
-    }, 0);
+    }
   },
 
   /**
@@ -1562,13 +1594,11 @@ document.addEventListener('DOMContentLoaded', function webViewerLoad(evt) {
 //}
 //#endif
 
-//#if !(FIREFOX || MOZCENTRAL || CHROME)
+//#if !(FIREFOX || MOZCENTRAL || CHROME || B2G)
   var fileInput = document.createElement('input');
   fileInput.id = 'fileInput';
   fileInput.className = 'fileInput';
   fileInput.setAttribute('type', 'file');
-  fileInput.setAttribute('style',
-    'visibility: hidden; position: fixed; right: 0; top: 0');
   fileInput.oncontextmenu = noContextMenuHandler;
   document.body.appendChild(fileInput);
 
@@ -1613,6 +1643,11 @@ document.addEventListener('DOMContentLoaded', function webViewerLoad(evt) {
 
   if ('verbosity' in hashParams) {
     PDFJS.verbosity = hashParams['verbosity'] | 0;
+  }
+
+  if ('ignoreCurrentPositionOnZoom' in hashParams) {
+    IGNORE_CURRENT_POSITION_ON_ZOOM =
+      (hashParams['ignoreCurrentPositionOnZoom'] === 'true');
   }
 
 //#if !(FIREFOX || MOZCENTRAL)
@@ -1812,17 +1847,26 @@ function updateViewarea() {
   var pdfOpenParams = '#page=' + pageNumber;
   pdfOpenParams += '&zoom=' + normalizedScaleValue;
   var currentPage = PDFView.pages[pageNumber - 1];
-  var topLeft = currentPage.getPagePoint(PDFView.container.scrollLeft,
-    (PDFView.container.scrollTop - firstPage.y));
-  pdfOpenParams += ',' + Math.round(topLeft[0]) + ',' + Math.round(topLeft[1]);
+  var container = PDFView.container;
+  var topLeft = currentPage.getPagePoint((container.scrollLeft - firstPage.x),
+                                         (container.scrollTop - firstPage.y));
+  var intLeft = Math.round(topLeft[0]);
+  var intTop = Math.round(topLeft[1]);
+  pdfOpenParams += ',' + intLeft + ',' + intTop;
+
+  if (PresentationMode.active || PresentationMode.switchInProgress) {
+    PDFView.currentPosition = null;
+  } else {
+    PDFView.currentPosition = { page: pageNumber, left: intLeft, top: intTop };
+  }
 
   var store = PDFView.store;
   store.initializedPromise.then(function() {
     store.set('exists', true);
     store.set('page', pageNumber);
     store.set('zoom', normalizedScaleValue);
-    store.set('scrollLeft', Math.round(topLeft[0]));
-    store.set('scrollTop', Math.round(topLeft[1]));
+    store.set('scrollLeft', intLeft);
+    store.set('scrollTop', intTop);
   });
   var href = PDFView.getAnchorUrl(pdfOpenParams);
   document.getElementById('viewBookmark').href = href;
