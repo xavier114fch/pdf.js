@@ -1592,12 +1592,12 @@ var DocumentOutlineView = function documentOutlineView(outline) {
 //})();
 //#endif
 
-document.addEventListener('DOMContentLoaded', function webViewerLoad(evt) {
+function webViewerLoad(evt) {
   PDFView.initialize();
 
 //#if (GENERIC || B2G)
   var params = PDFView.parseQueryString(document.location.search.substring(1));
-  var file = params.file || DEFAULT_URL;
+  var file = 'file' in params ? params.file : DEFAULT_URL;
 //#endif
 //#if (FIREFOX || MOZCENTRAL)
 //var file = window.location.href.split('#')[0];
@@ -1674,6 +1674,8 @@ document.addEventListener('DOMContentLoaded', function webViewerLoad(evt) {
 //#if (FIREFOX || MOZCENTRAL)
 //if (!PDFView.supportsDocumentFonts) {
 //  PDFJS.disableFontFace = true;
+//  console.warn(mozL10n.get('web_fonts_disabled', null,
+//    'Web fonts are disabled: unable to use embedded PDF fonts.'));
 //}
 //#endif
 
@@ -1813,7 +1815,9 @@ document.addEventListener('DOMContentLoaded', function webViewerLoad(evt) {
 //#endif
 
 //#if !B2G && !CHROME
-  PDFView.open(file, 0);
+  if (file) {
+    PDFView.open(file, 0);
+  }
 //#endif
 
 //#if CHROME
@@ -1845,7 +1849,9 @@ document.addEventListener('DOMContentLoaded', function webViewerLoad(evt) {
 //  PDFView.open(file, 0);
 //});
 //#endif
-}, true);
+}
+
+document.addEventListener('DOMContentLoaded', webViewerLoad, true);
 
 function updateViewarea() {
 
@@ -2144,6 +2150,18 @@ window.addEventListener('keydown', function keydown(evt) {
         break;
     }
   }
+
+//#if !(FIREFOX || MOZCENTRAL)
+  // CTRL or META without shift
+  if (cmd === 1 || cmd === 8) {
+    switch (evt.keyCode) {
+      case 83: // s
+        PDFView.download();
+        handled = true;
+        break;
+    }
+  }
+//#endif
 
   // CTRL+ALT or Option+Command
   if (cmd === 3 || cmd === 10) {

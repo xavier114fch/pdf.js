@@ -38,6 +38,12 @@ var TextRenderingMode = {
   ADD_TO_PATH_FLAG: 4
 };
 
+var ImageKind = {
+  GRAYSCALE_1BPP: 1,
+  RGB_24BPP: 2,
+  RGBA_32BPP: 3
+};
+
 // The global PDFJS object exposes the API
 // In production, it will be declared outside a global wrapper
 // In development, it will be declared here
@@ -228,7 +234,11 @@ function combineUrl(baseUrl, url) {
   if (url.charAt(0) == '/') {
     // absolute path
     var i = baseUrl.indexOf('://');
-    i = baseUrl.indexOf('/', i + 3);
+    if (url.charAt(1) === '/') {
+      ++i;
+    } else {
+      i = baseUrl.indexOf('/', i + 3);
+    }
     return baseUrl.substring(0, i) + url;
   } else {
     // relative path
@@ -376,11 +386,12 @@ var XRefParseException = (function XRefParseExceptionClosure() {
 
 
 function bytesToString(bytes) {
-  var str = '';
+  var strBuf = [];
   var length = bytes.length;
-  for (var n = 0; n < length; ++n)
-    str += String.fromCharCode(bytes[n]);
-  return str;
+  for (var n = 0; n < length; ++n) {
+    strBuf.push(String.fromCharCode(bytes[n]));
+  }
+  return strBuf.join('');
 }
 
 function stringToBytes(str) {
@@ -705,19 +716,20 @@ var PDFStringTranslateTable = [
 ];
 
 function stringToPDFString(str) {
-  var i, n = str.length, str2 = '';
+  var i, n = str.length, strBuf = [];
   if (str[0] === '\xFE' && str[1] === '\xFF') {
     // UTF16BE BOM
-    for (i = 2; i < n; i += 2)
-      str2 += String.fromCharCode(
-        (str.charCodeAt(i) << 8) | str.charCodeAt(i + 1));
+    for (i = 2; i < n; i += 2) {
+      strBuf.push(String.fromCharCode(
+        (str.charCodeAt(i) << 8) | str.charCodeAt(i + 1)));
+    }
   } else {
     for (i = 0; i < n; ++i) {
       var code = PDFStringTranslateTable[str.charCodeAt(i)];
-      str2 += code ? String.fromCharCode(code) : str.charAt(i);
+      strBuf.push(code ? String.fromCharCode(code) : str.charAt(i));
     }
   }
-  return str2;
+  return strBuf.join('');
 }
 
 function stringToUTF8String(str) {

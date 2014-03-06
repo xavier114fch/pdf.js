@@ -214,13 +214,6 @@ var PDFDocumentProxy = (function PDFDocumentProxyClosure() {
       return this.pdfInfo.fingerprint;
     },
     /**
-     * @return {boolean} true if embedded document fonts are in use. Will be
-     * set during rendering of the pages.
-     */
-    get embeddedFontsUsed() {
-      return this.transport.embeddedFontsUsed;
-    },
-    /**
      * @param {number} pageNumber The page number to get. The first page is 1.
      * @return {Promise} A promise that is resolved with a {@link PDFPageProxy}
      * object.
@@ -527,6 +520,7 @@ var PDFPageProxy = (function PDFPageProxyClosure() {
 
       delete this.operatorList;
       delete this.displayReadyPromise;
+      delete this.annotationsPromise;
       this.objs.clear();
       this.pendingDestroy = false;
     },
@@ -578,7 +572,6 @@ var WorkerTransport = (function WorkerTransportClosure() {
 
     this.pageCache = [];
     this.pagePromises = [];
-    this.embeddedFontsUsed = false;
     this.downloadInfoPromise = new PDFJS.LegacyPromise();
     this.passwordCallback = null;
 

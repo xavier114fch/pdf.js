@@ -74,11 +74,13 @@ var ColorSpace = (function ColorSpaceClosure() {
       return false;
     },
     /**
-     * Fills in the RGB colors in an RGBA buffer.
+     * Fills in the RGB colors in the destination buffer.  alpha01 indicates
+     * how many alpha components there are in the dest array; it will be either
+     * 0 (RGB array) or 1 (RGBA array).
      */
-    fillRgb: function ColorSpace_fillRgb(rgbaBuf, originalWidth,
+    fillRgb: function ColorSpace_fillRgb(dest, originalWidth,
                                          originalHeight, width, height,
-                                         actualHeight, bpc, comps) {
+                                         actualHeight, bpc, comps, alpha01) {
       var count = originalWidth * originalHeight;
       var rgbBuf = null;
       var numComponentColors = 1 << bpc;
@@ -108,14 +110,14 @@ var ColorSpace = (function ColorSpaceClosure() {
                           /* alpha01 = */ 0);
 
         if (!needsResizing) {
-          // Fill in the RGB values directly into |rgbaBuf|.
-          var rgbaPos = 0;
+          // Fill in the RGB values directly into |dest|.
+          var destPos = 0;
           for (var i = 0; i < count; ++i) {
             var key = comps[i] * 3;
-            rgbaBuf[rgbaPos++] = colorMap[key];
-            rgbaBuf[rgbaPos++] = colorMap[key + 1];
-            rgbaBuf[rgbaPos++] = colorMap[key + 2];
-            rgbaPos++;
+            dest[destPos++] = colorMap[key];
+            dest[destPos++] = colorMap[key + 1];
+            dest[destPos++] = colorMap[key + 2];
+            destPos += alpha01;
           }
         } else {
           rgbBuf = new Uint8Array(count * 3);
@@ -129,9 +131,9 @@ var ColorSpace = (function ColorSpaceClosure() {
         }
       } else {
         if (!needsResizing) {
-          // Fill in the RGB values directly into |rgbaBuf|.
-          this.getRgbBuffer(comps, 0, width * actualHeight, rgbaBuf, 0, bpc,
-                            /* alpha01 = */ 1);
+          // Fill in the RGB values directly into |dest|.
+          this.getRgbBuffer(comps, 0, width * actualHeight, dest, 0, bpc,
+                            alpha01);
         } else {
           rgbBuf = new Uint8Array(count * 3);
           this.getRgbBuffer(comps, 0, count, rgbBuf, 0, bpc,
@@ -145,11 +147,12 @@ var ColorSpace = (function ColorSpaceClosure() {
                                    originalHeight, width, height);
         }
         var rgbPos = 0;
-        var actualLength = width * actualHeight * 4;
-        for (var i = 0; i < actualLength; i += 4) {
-          rgbaBuf[i] = rgbBuf[rgbPos++];
-          rgbaBuf[i + 1] = rgbBuf[rgbPos++];
-          rgbaBuf[i + 2] = rgbBuf[rgbPos++];
+        var destPos = 0;
+        for (var i = 0, ii = width * actualHeight; i < ii; i++) {
+          dest[destPos++] = rgbBuf[rgbPos++];
+          dest[destPos++] = rgbBuf[rgbPos++];
+          dest[destPos++] = rgbBuf[rgbPos++];
+          destPos += alpha01;
         }
       }
     },
@@ -885,9 +888,9 @@ var LabCS = (function LabCSClosure() {
       b = X * 0.0557 + Y * -0.2040 + Z * 1.0570;
     }
     // clamp color values to [0,1] range then convert to [0,255] range.
-    dest[destOffset] = Math.sqrt(r < 0 ? 0 : r > 1 ? 1 : r) * 255;
-    dest[destOffset + 1] = Math.sqrt(g < 0 ? 0 : g > 1 ? 1 : g) * 255;
-    dest[destOffset + 2] = Math.sqrt(b < 0 ? 0 : b > 1 ? 1 : b) * 255;
+    dest[destOffset] = r <= 0 ? 0 : r >= 1 ? 255 : Math.sqrt(r) * 255 | 0;
+    dest[destOffset + 1] = g <= 0 ? 0 : g >= 1 ? 255 : Math.sqrt(g) * 255 | 0;
+    dest[destOffset + 2] = b <= 0 ? 0 : b >= 1 ? 255 : Math.sqrt(b) * 255 | 0;
   }
 
   LabCS.prototype = {
