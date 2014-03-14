@@ -239,6 +239,8 @@ var WorkerMessageHandler = PDFJS.WorkerMessageHandler = {
       PDFJS.disableFontFace = data.disableFontFace;
       PDFJS.disableCreateObjectURL = data.disableCreateObjectURL;
       PDFJS.verbosity = data.verbosity;
+      PDFJS.cMapUrl = data.cMapUrl === undefined ?
+                           null : data.cMapUrl;
 
       getPdfManager(data).then(function () {
         pdfManager.onLoadedStream().then(function(stream) {
@@ -334,7 +336,7 @@ var WorkerMessageHandler = PDFJS.WorkerMessageHandler = {
         var pageNum = data.pageIndex + 1;
         var start = Date.now();
         // Pre compile the pdf page and fetch the fonts/images.
-        page.getOperatorList(handler).then(function(operatorList) {
+        page.getOperatorList(handler, data.intent).then(function(operatorList) {
 
           info('page=' + pageNum + ' - getOperatorList: time=' +
                (Date.now() - start) + 'ms, len=' + operatorList.fnArray.length);
@@ -366,7 +368,8 @@ var WorkerMessageHandler = PDFJS.WorkerMessageHandler = {
 
           handler.send('PageError', {
             pageNum: pageNum,
-            error: wrappedException
+            error: wrappedException,
+            intent: data.intent
           });
         });
       });

@@ -30,6 +30,13 @@
 PDFJS.maxImageSize = PDFJS.maxImageSize === undefined ? -1 : PDFJS.maxImageSize;
 
 /**
+ * The url of where the predefined Adobe CMaps are located. Include trailing
+ * slash.
+ * @var {string}
+ */
+PDFJS.cMapUrl = PDFJS.cMapUrl === undefined ? null : PDFJS.cMapUrl;
+
+/*
  * By default fonts are converted to OpenType fonts and loaded via font face
  * rules. If disabled, the font will be rendered using a built in font renderer
  * that constructs the glyphs with primitive path commands.
@@ -341,10 +348,9 @@ var PDFPageProxy = (function PDFPageProxyClosure() {
     this.stats.enabled = !!globalScope.PDFJS.enableStats;
     this.commonObjs = transport.commonObjs;
     this.objs = new PDFObjects();
-    this.receivingOperatorList  = false;
     this.cleanupAfterRender = false;
     this.pendingDestroy = false;
-    this.renderTasks = [];
+    this.intentStates = {};
   }
   PDFPageProxy.prototype = /** @lends PDFPageProxy.prototype */ {
     /**
@@ -423,12 +429,21 @@ var PDFPageProxy = (function PDFPageProxyClosure() {
       // this call to render.
       this.pendingDestroy = false;
 
+      var renderingIntent = 'intent' in params ?
+        (params.intent == 'print' ? 'print' : 'display') :
+        'display';
+
+      if (!this.intentStates[renderingIntent]) {
+        this.intentStates[renderingIntent] = {};
+      }
+      var intentState = this.intentStates[renderingIntent];
+
       // If there is no displayReadyPromise yet, then the operatorList was never
       // requested before. Make the request and create the promise.
-      if (!this.displayReadyPromise) {
-        this.receivingOperatorList = true;
-        this.displayReadyPromise = new LegacyPromise();
-        this.operatorList = {
+      if (!intentState.displayReadyPromise) {
+        intentState.receivingOperatorList = true;
+        intentState.displayReadyPromise = new LegacyPromise();
+        intentState.operatorList = {
           fnArray: [],
           argsArray: [],
           lastChunk: false
@@ -436,18 +451,23 @@ var PDFPageProxy = (function PDFPageProxyClosure() {
 
         this.stats.time('Page Request');
         this.transport.messageHandler.send('RenderPageRequest', {
-          pageIndex: this.pageNumber - 1
+          pageIndex: this.pageNumber - 1,
+          intent: renderingIntent
         });
       }
 
       var internalRenderTask = new InternalRenderTask(complete, params,
                                        this.objs, this.commonObjs,
-                                       this.operatorList, this.pageNumber);
-      this.renderTasks.push(internalRenderTask);
+                                       intentState.operatorList,
+                                       this.pageNumber);
+      if (!intentState.renderTasks) {
+        intentState.renderTasks = [];
+      }
+      intentState.renderTasks.push(internalRenderTask);
       var renderTask = new RenderTask(internalRenderTask);
 
       var self = this;
-      this.displayReadyPromise.then(
+      intentState.displayReadyPromise.then(
         function pageDisplayReadyPromise(transparency) {
           if (self.pendingDestroy) {
             complete();
@@ -463,9 +483,9 @@ var PDFPageProxy = (function PDFPageProxyClosure() {
       );
 
       function complete(error) {
-        var i = self.renderTasks.indexOf(internalRenderTask);
+        var i = intentState.renderTasks.indexOf(internalRenderTask);
         if (i >= 0) {
-          self.renderTasks.splice(i, 1);
+          intentState.renderTasks.splice(i, 1);
         }
 
         if (self.cleanupAfterRender) {
@@ -513,14 +533,17 @@ var PDFPageProxy = (function PDFPageProxyClosure() {
      */
     _tryDestroy: function PDFPageProxy__destroy() {
       if (!this.pendingDestroy ||
-          this.renderTasks.length !== 0 ||
-          this.receivingOperatorList) {
+          Object.keys(this.intentStates).some(function(intent) {
+            var intentState = this.intentStates[intent];
+            return intentState.renderTasks.length !== 0 ||
+                   intentState.receivingOperatorList;
+          }, this)) {
         return;
       }
 
-      delete this.operatorList;
-      delete this.displayReadyPromise;
-      delete this.annotationsPromise;
+      Object.keys(this.intentStates).forEach(function(intent) {
+        delete this.intentStates[intent];
+      }, this);
       this.objs.clear();
       this.pendingDestroy = false;
     },
@@ -528,28 +551,33 @@ var PDFPageProxy = (function PDFPageProxyClosure() {
      * For internal use only.
      * @ignore
      */
-    _startRenderPage: function PDFPageProxy_startRenderPage(transparency) {
-      this.displayReadyPromise.resolve(transparency);
+    _startRenderPage: function PDFPageProxy_startRenderPage(transparency,
+                                                            intent) {
+      var intentState = this.intentStates[intent];
+      intentState.displayReadyPromise.resolve(transparency);
     },
     /**
      * For internal use only.
      * @ignore
      */
-    _renderPageChunk: function PDFPageProxy_renderPageChunk(operatorListChunk) {
+    _renderPageChunk: function PDFPageProxy_renderPageChunk(operatorListChunk,
+                                                            intent) {
+      var intentState = this.intentStates[intent];
       // Add the new chunk to the current operator list.
       for (var i = 0, ii = operatorListChunk.length; i < ii; i++) {
-        this.operatorList.fnArray.push(operatorListChunk.fnArray[i]);
-        this.operatorList.argsArray.push(operatorListChunk.argsArray[i]);
+        intentState.operatorList.fnArray.push(operatorListChunk.fnArray[i]);
+        intentState.operatorList.argsArray.push(
+          operatorListChunk.argsArray[i]);
       }
-      this.operatorList.lastChunk = operatorListChunk.lastChunk;
+      intentState.operatorList.lastChunk = operatorListChunk.lastChunk;
 
       // Notify all the rendering tasks there are more operators to be consumed.
-      for (var i = 0; i < this.renderTasks.length; i++) {
-        this.renderTasks[i].operatorListChanged();
+      for (var i = 0; i < intentState.renderTasks.length; i++) {
+        intentState.renderTasks[i].operatorListChanged();
       }
 
       if (operatorListChunk.lastChunk) {
-        this.receivingOperatorList = false;
+        intentState.receivingOperatorList = false;
         this._tryDestroy();
       }
     }
@@ -775,13 +803,13 @@ var WorkerTransport = (function WorkerTransportClosure() {
         var page = this.pageCache[data.pageIndex];
 
         page.stats.timeEnd('Page Request');
-        page._startRenderPage(data.transparency);
+        page._startRenderPage(data.transparency, data.intent);
       }, this);
 
       messageHandler.on('RenderPageChunk', function transportRender(data) {
         var page = this.pageCache[data.pageIndex];
 
-        page._renderPageChunk(data.operatorList);
+        page._renderPageChunk(data.operatorList, data.intent);
       }, this);
 
       messageHandler.on('commonobj', function transportObj(data) {
@@ -824,8 +852,9 @@ var WorkerTransport = (function WorkerTransportClosure() {
         var pageIndex = data[1];
         var type = data[2];
         var pageProxy = this.pageCache[pageIndex];
-        if (pageProxy.objs.hasData(id))
+        if (pageProxy.objs.hasData(id)) {
           return;
+        }
 
         switch (type) {
           case 'JpegStream':
@@ -861,10 +890,11 @@ var WorkerTransport = (function WorkerTransportClosure() {
         this.workerReadyPromise.reject(data);
       }, this);
 
-      messageHandler.on('PageError', function transportError(data) {
+      messageHandler.on('PageError', function transportError(data, intent) {
         var page = this.pageCache[data.pageNum - 1];
-        if (page.displayReadyPromise)
-          page.displayReadyPromise.reject(data.error);
+        var intentState = page.intentStates[intent];
+        if (intentState.displayReadyPromise)
+          intentState.displayReadyPromise.reject(data.error);
         else
           error(data.error);
       }, this);
@@ -911,6 +941,7 @@ var WorkerTransport = (function WorkerTransportClosure() {
         source: source,
         disableRange: PDFJS.disableRange,
         maxImageSize: PDFJS.maxImageSize,
+        cMapUrl: PDFJS.cMapUrl,
         disableFontFace: PDFJS.disableFontFace,
         disableCreateObjectURL: PDFJS.disableCreateObjectURL,
         verbosity: PDFJS.verbosity
