@@ -40,7 +40,6 @@ var ROOT_DIR = __dirname + '/', // absolute path to project's root
     GENERIC_DIR = BUILD_DIR + 'generic/',
     MINIFIED_DIR = BUILD_DIR + 'minified/',
     REPO = 'git@github.com:mozilla/pdf.js.git',
-    PYTHON_BIN = 'python2.7',
     MOZCENTRAL_PREF_PREFIX = 'pdfjs',
     FIREFOX_PREF_PREFIX = 'extensions.uriloader@pdf.js',
     MOZCENTRAL_STREAM_CONVERTER_ID = 'd0c5195d-e798-49d4-b1d3-9324328b2291',
@@ -102,6 +101,7 @@ target.generic = function() {
   mkdir('-p', GENERIC_DIR);
   mkdir('-p', GENERIC_DIR + BUILD_DIR);
   mkdir('-p', GENERIC_DIR + '/web');
+  mkdir('-p', GENERIC_DIR + '/web/cmaps');
 
   var defines = builder.merge(DEFINES, {GENERIC: true});
 
@@ -110,10 +110,10 @@ target.generic = function() {
     copy: [
       [COMMON_WEB_FILES, GENERIC_DIR + '/web'],
       ['external/webL10n/l10n.js', GENERIC_DIR + '/web'],
-      ['external/cmaps/', GENERIC_DIR + '/web/cmaps'],
       ['web/viewer.css', GENERIC_DIR + '/web'],
       ['web/compatibility.js', GENERIC_DIR + '/web'],
       ['web/compressed.tracemonkey-pldi-09.pdf', GENERIC_DIR + '/web'],
+      ['external/bcmaps/*', GENERIC_DIR + '/web/cmaps/'],
       ['web/locale', GENERIC_DIR + '/web']
     ],
     preprocess: [
@@ -201,7 +201,7 @@ target.locale = function() {
     if (!test('-d', path)) {
       continue;
     }
-    if (!/^[a-z][a-z](-[A-Z][A-Z])?$/.test(locale)) {
+    if (!/^[a-z][a-z]([a-z])?(-[A-Z][A-Z])?$/.test(locale)) {
       echo('Skipping invalid locale: ' + locale);
       continue;
     }
@@ -230,6 +230,33 @@ target.locale = function() {
   viewerOutput.to(VIEWER_LOCALE_OUTPUT + 'locale.properties');
   metadataContent.to(METADATA_OUTPUT);
   chromeManifestContent.to(CHROME_MANIFEST_OUTPUT);
+};
+
+//
+// make cmaps
+// Compresses cmap files. Ensure that Adobe cmap download and uncompressed at
+// ./external/cmaps location.
+//
+target.cmaps = function (args) {
+  var CMAP_INPUT = 'external/cmaps';
+  var VIEWER_CMAP_OUTPUT = 'external/bcmaps';
+
+  cd(ROOT_DIR);
+  echo();
+  echo('### Building cmaps');
+
+  // testing a file that usually present
+  if (!test('-f', CMAP_INPUT + '/UniJIS-UCS2-H')) {
+    echo('./external/cmaps has no cmap files, please download them from:');
+    echo('  http://sourceforge.net/adobe/cmap/wiki/Home/');
+    exit(1);
+  }
+
+  rm(VIEWER_CMAP_OUTPUT + '*.bcmap');
+
+  var compressCmaps =
+    require('./external/cmapscompress/compress.js').compressCmaps;
+  compressCmaps(CMAP_INPUT, VIEWER_CMAP_OUTPUT, true);
 };
 
 //
@@ -424,6 +451,7 @@ target.minified = function() {
   mkdir('-p', MINIFIED_DIR);
   mkdir('-p', MINIFIED_DIR + BUILD_DIR);
   mkdir('-p', MINIFIED_DIR + '/web');
+  mkdir('-p', MINIFIED_DIR + '/web/cmaps');
 
   var defines = builder.merge(DEFINES, {GENERIC: true, MINIFIED: true});
 
@@ -433,6 +461,7 @@ target.minified = function() {
       [COMMON_WEB_FILES, MINIFIED_DIR + '/web'],
       ['web/viewer.css', MINIFIED_DIR + '/web'],
       ['web/compressed.tracemonkey-pldi-09.pdf', MINIFIED_DIR + '/web'],
+      ['external/bcmaps/*', MINIFIED_DIR + '/web/cmaps'],
       ['web/locale', MINIFIED_DIR + '/web']
     ],
     preprocess: [
@@ -557,6 +586,7 @@ target.firefox = function() {
   mkdir('-p', FIREFOX_BUILD_CONTENT_DIR);
   mkdir('-p', FIREFOX_BUILD_CONTENT_DIR + BUILD_DIR);
   mkdir('-p', FIREFOX_BUILD_CONTENT_DIR + '/web');
+  mkdir('-p', FIREFOX_BUILD_CONTENT_DIR + '/web/cmaps');
 
   cp(FIREFOX_CONTENT_DIR + 'PdfJs-stub.jsm',
      FIREFOX_BUILD_CONTENT_DIR + 'PdfJs.jsm');
@@ -579,15 +609,15 @@ target.firefox = function() {
     defines: defines,
     copy: [
       [COMMON_WEB_FILES, FIREFOX_BUILD_CONTENT_DIR + '/web'],
-      ['external/cmaps/', FIREFOX_BUILD_CONTENT_DIR + '/web/cmaps'],
+      ['external/bcmaps/*', FIREFOX_BUILD_CONTENT_DIR + '/web/cmaps'],
       [FIREFOX_EXTENSION_DIR + 'tools/l10n.js',
-       FIREFOX_BUILD_CONTENT_DIR + '/web'],
-      ['web/default_preferences.js', FIREFOX_BUILD_CONTENT_DIR]
+       FIREFOX_BUILD_CONTENT_DIR + '/web']
     ],
     preprocess: [
       [COMMON_WEB_FILES_PREPROCESS, FIREFOX_BUILD_CONTENT_DIR + '/web'],
       [BUILD_TARGETS, FIREFOX_BUILD_CONTENT_DIR + BUILD_DIR],
-      [SRC_DIR + 'core/network.js', FIREFOX_BUILD_CONTENT_DIR]
+      [SRC_DIR + 'core/network.js', FIREFOX_BUILD_CONTENT_DIR],
+      [FIREFOX_EXTENSION_DIR + 'bootstrap.js', FIREFOX_BUILD_DIR]
     ],
     preprocessCSS: [
       ['firefox', 'web/viewer.css',
@@ -597,6 +627,7 @@ target.firefox = function() {
   builder.build(setup);
 
   cleanupJSSource(FIREFOX_BUILD_CONTENT_DIR + '/web/viewer.js');
+  cleanupJSSource(FIREFOX_BUILD_DIR + 'bootstrap.js');
 
   // Remove '.DS_Store' and other hidden files
   find(FIREFOX_BUILD_DIR).forEach(function(file) {
@@ -679,8 +710,10 @@ target.mozcentral = function() {
   mkdir('-p', MOZCENTRAL_L10N_DIR);
   mkdir('-p', MOZCENTRAL_CONTENT_DIR + BUILD_DIR);
   mkdir('-p', MOZCENTRAL_CONTENT_DIR + '/web');
+  mkdir('-p', MOZCENTRAL_CONTENT_DIR + '/web/cmaps');
 
-  cp(FIREFOX_CONTENT_DIR + 'PdfJs.jsm', MOZCENTRAL_CONTENT_DIR);
+  // Do not copy PdfJs.jsm, since it should be run through the preprocessor.
+
   cp(FIREFOX_CONTENT_DIR + 'PdfJsTelemetry.jsm', MOZCENTRAL_CONTENT_DIR);
   cp(FIREFOX_CONTENT_DIR + 'PdfStreamConverter.jsm', MOZCENTRAL_CONTENT_DIR);
   cp(FIREFOX_CONTENT_DIR + 'PdfRedirector.jsm', MOZCENTRAL_CONTENT_DIR);
@@ -697,14 +730,14 @@ target.mozcentral = function() {
     defines: defines,
     copy: [
       [COMMON_WEB_FILES, MOZCENTRAL_CONTENT_DIR + '/web'],
-      ['external/cmaps/', MOZCENTRAL_CONTENT_DIR + '/web/cmaps'],
-      ['extensions/firefox/tools/l10n.js', MOZCENTRAL_CONTENT_DIR + '/web'],
-      ['web/default_preferences.js', MOZCENTRAL_CONTENT_DIR]
+      ['external/bcmaps/*', MOZCENTRAL_CONTENT_DIR + '/web/cmaps'],
+      ['extensions/firefox/tools/l10n.js', MOZCENTRAL_CONTENT_DIR + '/web']
     ],
     preprocess: [
       [COMMON_WEB_FILES_PREPROCESS, MOZCENTRAL_CONTENT_DIR + '/web'],
       [BUILD_TARGETS, MOZCENTRAL_CONTENT_DIR + BUILD_DIR],
-      [SRC_DIR + 'core/network.js', MOZCENTRAL_CONTENT_DIR]
+      [SRC_DIR + 'core/network.js', MOZCENTRAL_CONTENT_DIR],
+      [FIREFOX_CONTENT_DIR + 'PdfJs.jsm', MOZCENTRAL_CONTENT_DIR]
     ],
     preprocessCSS: [
       ['mozcentral',
@@ -715,6 +748,7 @@ target.mozcentral = function() {
   builder.build(setup);
 
   cleanupJSSource(MOZCENTRAL_CONTENT_DIR + '/web/viewer.js');
+  cleanupJSSource(MOZCENTRAL_CONTENT_DIR + '/PdfJs.jsm');
 
   // Remove '.DS_Store' and other hidden files
   find(MOZCENTRAL_DIR).forEach(function(file) {
@@ -766,15 +800,16 @@ target.b2g = function() {
   mkdir('-p', B2G_BUILD_CONTENT_DIR);
   mkdir('-p', B2G_BUILD_CONTENT_DIR + BUILD_DIR);
   mkdir('-p', B2G_BUILD_CONTENT_DIR + '/web');
+  mkdir('-p', B2G_BUILD_CONTENT_DIR + '/web/cmaps');
 
   var setup = {
     defines: defines,
     copy: [
-      ['external/cmaps/', B2G_BUILD_CONTENT_DIR + '/web/cmaps'],
       ['extensions/b2g/images', B2G_BUILD_CONTENT_DIR + '/web'],
       ['extensions/b2g/viewer.html', B2G_BUILD_CONTENT_DIR + '/web'],
       ['extensions/b2g/viewer.css', B2G_BUILD_CONTENT_DIR + '/web'],
       ['web/locale', B2G_BUILD_CONTENT_DIR + '/web'],
+      ['external/bcmaps/*', B2G_BUILD_CONTENT_DIR + '/web/cmaps'],
       ['external/webL10n/l10n.js', B2G_BUILD_CONTENT_DIR + '/web']
     ],
     preprocess: [
@@ -791,6 +826,8 @@ target.b2g = function() {
 // make chrome
 //
 target.chromium = function() {
+  target.locale();
+
   cd(ROOT_DIR);
   echo();
   echo('### Building Chromium extension');
@@ -811,7 +848,6 @@ target.chromium = function() {
   var setup = {
     defines: defines,
     copy: [
-      ['external/cmaps/', CHROME_BUILD_CONTENT_DIR + '/web/cmaps'],
       [COMMON_WEB_FILES, CHROME_BUILD_CONTENT_DIR + '/web'],
       [['extensions/chromium/*.json',
         'extensions/chromium/*.html',
@@ -821,6 +857,7 @@ target.chromium = function() {
        CHROME_BUILD_DIR],
       ['external/webL10n/l10n.js', CHROME_BUILD_CONTENT_DIR + '/web'],
       ['web/viewer.css', CHROME_BUILD_CONTENT_DIR + '/web'],
+      ['external/bcmaps/*', CHROME_BUILD_CONTENT_DIR + '/web/cmaps'],
       ['web/locale', CHROME_BUILD_CONTENT_DIR + '/web']
     ],
     preprocess: [
@@ -967,7 +1004,7 @@ target.browsertest = function(options) {
   var reftest = (options && options.noreftest) ? '' : '--reftest';
 
   cd('test');
-  exec(PYTHON_BIN + ' -u test.py ' + reftest + ' --browserManifestFile=' +
+  exec('node test.js ' + reftest + ' --browserManifestFile=' +
        PDF_BROWSERS + ' --manifestFile=' + PDF_TEST, {async: true});
 };
 
@@ -989,7 +1026,7 @@ target.unittest = function(options, callback) {
   }
   callback = callback || function() {};
   cd('test');
-  exec(PYTHON_BIN + ' -u test.py --unitTest --browserManifestFile=' +
+  exec('node test.js --unitTest --browserManifestFile=' +
        PDF_BROWSERS, {async: true}, callback);
 };
 
@@ -1011,7 +1048,7 @@ target.fonttest = function(options, callback) {
   }
   callback = callback || function() {};
   cd('test');
-  exec(PYTHON_BIN + ' -u test.py --fontTest --browserManifestFile=' +
+  exec('node test.js --fontTest --browserManifestFile=' +
        PDF_BROWSERS, {async: true}, callback);
 };
 
@@ -1034,7 +1071,7 @@ target.botmakeref = function() {
   }
 
   cd('test');
-  exec(PYTHON_BIN + ' -u test.py --masterMode --noPrompts ' +
+  exec('node test.js --masterMode --noPrompts ' +
        '--browserManifestFile=' + PDF_BROWSERS, {async: true});
 };
 
@@ -1213,8 +1250,10 @@ target.server = function() {
   echo();
   echo('### Starting local server');
 
-  cd('test');
-  exec(PYTHON_BIN + ' -u test.py --port=8888 --noDownload', {async: true});
+  var WebServer = require('./test/webserver.js').WebServer;
+  var server = new WebServer();
+  server.port = 8888;
+  server.start();
 };
 
 //
@@ -1230,8 +1269,7 @@ target.lint = function() {
                     'external/crlfchecker/',
                     'src/',
                     'web/',
-                    'test/driver.js',
-                    'test/reporter.js',
+                    'test/*.js',
                     'test/unit/',
                     'extensions/firefox/',
                     'extensions/chromium/'
@@ -1272,4 +1310,23 @@ target.makefile = function() {
   }
   makefileContent += '.PHONY: ' + targetsNames.join(' ') + '\n';
   makefileContent.to('Makefile');
+};
+
+//
+//make importl10n
+//
+target.importl10n = function() {
+  var locales = require('./external/importL10n/locales.js');
+  var LOCAL_L10N_DIR = 'l10n';
+
+  cd(ROOT_DIR);
+  echo();
+  echo('### Importing translations from mozilla-aurora');
+
+  if (!test('-d', LOCAL_L10N_DIR)) {
+    mkdir(LOCAL_L10N_DIR);
+  }
+  cd(LOCAL_L10N_DIR);
+
+  locales.downloadL10n();
 };

@@ -51,13 +51,14 @@ function setStringPref(pref, value) {
 }
 
 function log(str) {
-  if (!getBoolPref(EXT_PREFIX + '.pdfBugEnabled', false))
+  if (!getBoolPref(EXT_PREFIX + '.pdfBugEnabled', false)) {
     return;
+  }
   dump(str + '\n');
 }
 
 function initializeDefaultPreferences() {
-  Cu.import('resource://' + RESOURCE_NAME + '/default_preferences.js');
+//#include ../../web/default_preferences.js
 
   var defaultBranch = Services.prefs.getDefaultBranch(EXT_PREFIX + '.');
   var defaultValue;
@@ -101,8 +102,9 @@ Factory.prototype = {
 
   // nsIFactory
   createInstance: function createInstance(aOuter, iid) {
-    if (aOuter !== null)
+    if (aOuter !== null) {
       throw Cr.NS_ERROR_NO_AGGREGATION;
+    }
     return (new (this._targetConstructor)()).QueryInterface(iid);
   },
 
@@ -150,8 +152,9 @@ function startup(aData, aReason) {
 }
 
 function shutdown(aData, aReason) {
-  if (aReason == APP_SHUTDOWN)
+  if (aReason == APP_SHUTDOWN) {
     return;
+  }
   var ioService = Services.io;
   var resProt = ioService.getProtocolHandler('resource')
                   .QueryInterface(Ci.nsIResProtocolHandler);

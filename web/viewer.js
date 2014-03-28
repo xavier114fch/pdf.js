@@ -63,9 +63,11 @@ PDFJS.imageResourcesPath = './images/';
 //PDFJS.workerSrc = '../build/pdf.worker.js';
 //#endif
 //#if !PRODUCTION
-PDFJS.cMapUrl = '../external/cmaps/';
+PDFJS.cMapUrl = '../external/bcmaps/';
+PDFJS.cMapPacked = true;
 //#else
 //PDFJS.cMapUrl = '../web/cmaps/';
+//PDFJS.cMapPacked = true;
 //#endif
 
 var mozL10n = document.mozL10n || document.webL10n;
@@ -387,10 +389,6 @@ var PDFView = {
         document.webkitFullscreenEnabled === false ||
         document.msFullscreenEnabled === false) {
       support = false;
-    } else if (this.isViewerEmbedded) {
-      // Need to check if the viewer is embedded as well, to prevent issues with
-      // presentation mode when the viewer is embedded in '<object>' tags.
-      support = false;
     }
 
     Object.defineProperty(this, 'supportsFullscreen', { value: support,
@@ -548,9 +546,43 @@ var PDFView = {
 //#endif
   },
 
+  close: function pdfViewClose() {
+    if (!this.pdfDocument) {
+      return;
+    }
+
+    this.pdfDocument.destroy();
+    this.pdfDocument = null;
+
+    var errorWrapper = document.getElementById('errorWrapper');
+    errorWrapper.setAttribute('hidden', 'true');
+
+    var thumbsView = document.getElementById('thumbnailView');
+    while (thumbsView.hasChildNodes()) {
+      thumbsView.removeChild(thumbsView.lastChild);
+    }
+
+    if ('_loadingInterval' in thumbsView) {
+      clearInterval(thumbsView._loadingInterval);
+    }
+
+    var container = document.getElementById('viewer');
+    while (container.hasChildNodes()) {
+      container.removeChild(container.lastChild);
+    }
+
+    if (typeof PDFBug !== 'undefined') {
+      PDFBug.cleanup();
+    }
+  },
+
   // TODO(mack): This function signature should really be pdfViewOpen(url, args)
   open: function pdfViewOpen(url, scale, password,
                              pdfDataRangeTransport, args) {
+    if (this.pdfDocument) {
+      this.close();
+    }
+
     var parameters = {password: password};
     if (typeof url === 'string') { // URL
       this.setTitleUsingUrl(url);
@@ -564,11 +596,6 @@ var PDFView = {
       }
     }
 
-    // Terminate worker of the previous document if any.
-    if (this.pdfDocument) {
-      this.pdfDocument.destroy();
-    }
-    this.pdfDocument = null;
     var self = this;
     self.loading = true;
     var passwordNeeded = function passwordNeeded(updatePassword, reason) {
@@ -860,30 +887,11 @@ var PDFView = {
 
     this.pdfDocument = pdfDocument;
 
-    var errorWrapper = document.getElementById('errorWrapper');
-    errorWrapper.setAttribute('hidden', 'true');
-
     pdfDocument.getDownloadInfo().then(function() {
       PDFView.loadingBar.hide();
       var outerContainer = document.getElementById('outerContainer');
       outerContainer.classList.remove('loadingInProgress');
     });
-
-    var thumbsView = document.getElementById('thumbnailView');
-    thumbsView.parentNode.scrollTop = 0;
-
-    while (thumbsView.hasChildNodes()) {
-      thumbsView.removeChild(thumbsView.lastChild);
-    }
-
-    if ('_loadingInterval' in thumbsView) {
-      clearInterval(thumbsView._loadingInterval);
-    }
-
-    var container = document.getElementById('viewer');
-    while (container.hasChildNodes()) {
-      container.removeChild(container.lastChild);
-    }
 
     var pagesCount = pdfDocument.numPages;
 
@@ -909,6 +917,8 @@ var PDFView = {
     this.pagesPromise = pagesPromise;
 
     var firstPagePromise = pdfDocument.getPage(1);
+    var container = document.getElementById('viewer');
+    var thumbsView = document.getElementById('thumbnailView');
 
     // Fetch a single page so we can get a viewport that will be the default
     // viewport for all pages
@@ -1686,6 +1696,14 @@ function webViewerLoad(evt) {
     IGNORE_CURRENT_POSITION_ON_ZOOM =
       (hashParams['ignoreCurrentPositionOnZoom'] === 'true');
   }
+
+//#if !PRODUCTION
+  if ('disableBcmaps' in hashParams && hashParams['disableBcmaps']) {
+    PDFJS.cMapUrl = '../external/cmaps/';
+    PDFJS.cMapPacked = false;
+  }
+//#endif
+
 
 //#if !(FIREFOX || MOZCENTRAL)
   var locale = PDFJS.locale || navigator.language;
