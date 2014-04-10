@@ -140,6 +140,8 @@ var PDFView = {
     this.watchScroll(thumbnailContainer, this.thumbnailViewScroll,
                      this.renderHighestPriority.bind(this));
 
+    Preferences.initialize();
+
     PDFFindBar.initialize({
       bar: document.getElementById('findbar'),
       toggleButton: document.getElementById('viewFind'),
@@ -214,10 +216,20 @@ var PDFView = {
       pageCountField: document.getElementById('pageCountField')
     });
 
-    this.initialized = true;
     container.addEventListener('scroll', function() {
       self.lastScroll = Date.now();
     }, false);
+
+    var initializedPromise = Promise.all([
+      Preferences.get('enableWebGL').then(function (value) {
+        PDFJS.disableWebGL = !value;
+      })
+      // TODO move more preferences and other async stuff here
+    ]);
+
+    return initializedPromise.then(function () {
+      PDFView.initialized = true;
+    });
   },
 
   getPage: function pdfViewGetPage(n) {
@@ -283,9 +295,11 @@ var PDFView = {
       if (!currentPage) {
         return;
       }
-      var pageWidthScale = (this.container.clientWidth - SCROLLBAR_PADDING) /
+      var hPadding = PresentationMode.active ? 0 : SCROLLBAR_PADDING;
+      var vPadding = PresentationMode.active ? 0 : VERTICAL_PADDING;
+      var pageWidthScale = (this.container.clientWidth - hPadding) /
                             currentPage.width * currentPage.scale;
-      var pageHeightScale = (this.container.clientHeight - VERTICAL_PADDING) /
+      var pageHeightScale = (this.container.clientHeight - vPadding) /
                              currentPage.height * currentPage.scale;
       switch (value) {
         case 'page-actual':
@@ -581,6 +595,9 @@ var PDFView = {
                              pdfDataRangeTransport, args) {
     if (this.pdfDocument) {
       this.close();
+
+      // Reload the preferences if a document was previously opened.
+      Preferences.reload();
     }
 
     var parameters = {password: password};
@@ -598,6 +615,8 @@ var PDFView = {
 
     var self = this;
     self.loading = true;
+    self.downloadComplete = false;
+
     var passwordNeeded = function passwordNeeded(updatePassword, reason) {
       PasswordPrompt.updatePassword = updatePassword;
       PasswordPrompt.reason = reason;
@@ -649,7 +668,7 @@ var PDFView = {
   },
 
   download: function pdfViewDownload() {
-    function noData() {
+    function downloadByUrl() {
       downloadManager.downloadUrl(url, filename);
     }
 
@@ -663,7 +682,12 @@ var PDFView = {
     };
 
     if (!this.pdfDocument) { // the PDF is not ready yet
-      noData();
+      downloadByUrl();
+      return;
+    }
+
+    if (!this.downloadComplete) { // the PDF is still downloading
+      downloadByUrl();
       return;
     }
 
@@ -672,8 +696,8 @@ var PDFView = {
         var blob = PDFJS.createBlob(data, 'application/pdf');
         downloadManager.download(blob, url, filename);
       },
-      noData // Error occurred try downloading with just the url.
-    ).then(null, noData);
+      downloadByUrl // Error occurred try downloading with just the url.
+    ).then(null, downloadByUrl);
   },
 
   fallback: function pdfViewFallback(featureId) {
@@ -887,7 +911,10 @@ var PDFView = {
 
     this.pdfDocument = pdfDocument;
 
+    DocumentProperties.resolveDataAvailable();
+
     pdfDocument.getDownloadInfo().then(function() {
+      self.downloadComplete = true;
       PDFView.loadingBar.hide();
       var outerContainer = document.getElementById('outerContainer');
       outerContainer.classList.remove('loadingInProgress');
@@ -900,7 +927,6 @@ var PDFView = {
       mozL10n.get('page_of', {pageCount: pagesCount}, 'of {{pageCount}}');
     document.getElementById('pageNumber').max = pagesCount;
 
-    var prefs = PDFView.prefs = new Preferences();
     PDFView.documentFingerprint = id;
     var store = PDFView.store = new ViewHistory(id);
 
@@ -969,15 +995,26 @@ var PDFView = {
       PDFView.loadingBar.setWidth(container);
 
       PDFFindController.resolveFirstPage();
+
+      // Initialize the browsing history.
+      PDFHistory.initialize(self.documentFingerprint);
     });
 
-    var prefsPromise = prefs.initializedPromise;
-    var storePromise = store.initializedPromise;
-    Promise.all([firstPagePromise, prefsPromise, storePromise]).
-        then(function() {
-      var showPreviousViewOnLoad = prefs.get('showPreviousViewOnLoad');
-      var defaultZoomValue = prefs.get('defaultZoomValue');
+    // Fetch the necessary preference values.
+    var showPreviousViewOnLoad;
+    var showPreviousViewOnLoadPromise =
+      Preferences.get('showPreviousViewOnLoad').then(function (prefValue) {
+        showPreviousViewOnLoad = prefValue;
+      });
+    var defaultZoomValue;
+    var defaultZoomValuePromise =
+      Preferences.get('defaultZoomValue').then(function (prefValue) {
+        defaultZoomValue = prefValue;
+      });
 
+    var storePromise = store.initializedPromise;
+    Promise.all([firstPagePromise, storePromise, showPreviousViewOnLoadPromise,
+                 defaultZoomValuePromise]).then(function resolved() {
       var storedHash = null;
       if (showPreviousViewOnLoad && store.get('exists', false)) {
         var pageNum = store.get('page', '1');
@@ -990,9 +1027,6 @@ var PDFView = {
       } else if (defaultZoomValue) {
         storedHash = 'page=1&zoom=' + defaultZoomValue;
       }
-      // Initialize the browsing history.
-      PDFHistory.initialize(self.documentFingerprint);
-
       self.setInitialView(storedHash, scale);
 
       // Make all navigation keys work on document load,
@@ -1003,6 +1037,12 @@ var PDFView = {
 //      self.container.blur();
 //#endif
       }
+    }, function rejected(errorMsg) {
+      console.error(errorMsg);
+
+      firstPagePromise.then(function () {
+        self.setInitialView(null, scale);
+      });
     });
 
     pagesPromise.then(function() {
@@ -1041,11 +1081,16 @@ var PDFView = {
         self.outline = new DocumentOutlineView(outline);
         document.getElementById('viewOutline').disabled = !outline;
 
-        if (outline && prefs.get('ifAvailableShowOutlineOnLoad')) {
-          if (!self.sidebarOpen) {
-            document.getElementById('sidebarToggle').click();
-          }
-          self.switchSidebarView('outline');
+        if (outline) {
+          Preferences.get('ifAvailableShowOutlineOnLoad').then(
+            function (prefValue) {
+              if (prefValue) {
+                if (!self.sidebarOpen) {
+                  document.getElementById('sidebarToggle').click();
+                }
+                self.switchSidebarView('outline');
+              }
+            });
         }
       });
     });
@@ -1625,8 +1670,10 @@ var DocumentOutlineView = function documentOutlineView(outline) {
 //#endif
 
 function webViewerLoad(evt) {
-  PDFView.initialize();
+  PDFView.initialize().then(webViewerInitialized);
+}
 
+function webViewerInitialized() {
 //#if (GENERIC || B2G)
   var params = PDFView.parseQueryString(document.location.search.substring(1));
   var file = 'file' in params ? params.file : DEFAULT_URL;
@@ -1682,6 +1729,10 @@ function webViewerLoad(evt) {
 
   if ('disableHistory' in hashParams) {
     PDFJS.disableHistory = (hashParams['disableHistory'] === 'true');
+  }
+
+  if ('webgl' in hashParams) {
+    PDFJS.disableWebGL = (hashParams['webgl'] !== 'true');
   }
 
   if ('useOnlyCssZoom' in hashParams) {
@@ -1876,9 +1927,10 @@ function webViewerLoad(evt) {
 //      PDFView.setTitleUsingUrl(file);
 //      return;
 //    }
-//    if (isFTPFile) {
-//      // Stream not found, and it's loaded from FTP. Reload the page, because
-//      // it is not possible to get resources over ftp using XMLHttpRequest.
+//    if (isFTPFile && !response.extensionSupportsFTP) {
+//      // Stream not found, and it's loaded from FTP.
+//      // When the browser does not support loading ftp resources over
+//      // XMLHttpRequest, just reload the page.
 //      // NOTE: This will not lead to an infinite redirect loop, because
 //      // if the file exists, then the streamsPrivate API will capture the
 //      // stream and send back the response. If the stream does not exist, then
