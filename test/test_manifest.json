@@ -352,6 +352,12 @@
        "lastPage": 1,
        "type": "eq"
     },
+    {  "id": "issue4550-text",
+       "file": "pdfs/issue4550.pdf",
+       "md5": "d64cfc4b50e225f596130d9938e8d5cc",
+       "rounds": 1,
+       "type": "text"
+    },
     {  "id": "jai-pdf",
        "file": "pdfs/jai.pdf",
        "md5": "1f5dd128c3757420a881a155f2f8ace3",
@@ -658,6 +664,16 @@
       "md5": "7e6027a02ff78577f74dccdf84e37189",
       "rounds": 1,
       "type": "eq"
+    },
+    {  "id": "issue4573",
+       "file": "pdfs/issue4573.pdf",
+       "md5": "34b0c4fdee19e57033275b766c5f57a3",
+       "rounds": 1,
+       "link": false,
+       "firstPage": 1,
+       "lastPage": 1,
+       "type": "eq",
+       "about": "Seac with differences array that messes up mapping."
     },
     {  "id": "ocs",
       "file": "pdfs/ocs.pdf",

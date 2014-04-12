@@ -19,6 +19,7 @@
  * Based on https://code.google.com/p/smhasher/wiki/MurmurHash3.
  * Hashes roughly 100 KB per millisecond on i7 3.4 GHz.
  */
+/* globals Uint32ArrayView */
 
 'use strict';
 
@@ -35,10 +36,12 @@ var MurmurHash3_64 = (function MurmurHash3_64Closure (seed) {
 
   MurmurHash3_64.prototype = {
     update: function MurmurHash3_64_update(input) {
+      var useUint32ArrayView = false;
+      var i;
       if (typeof input == 'string') {
         var data = new Uint8Array(input.length * 2);
         var length = 0;
-        for (var i = 0; i < input.length; i++) {
+        for (i = 0; i < input.length; i++) {
           var code = input.charCodeAt(i);
           if (code <= 0xff) {
             data[length++] = code;
@@ -48,18 +51,25 @@ var MurmurHash3_64 = (function MurmurHash3_64Closure (seed) {
             data[length++] = code & 0xff;
           }
         }
-      } else {
-        if (!(input instanceof Uint8Array)) {
-          throw new Error('Wrong data format in MurmurHash3_64_update. ' +
-                          'Input must be a string or Uint8Array');
-        }
+      } else if (input instanceof Uint8Array) {
         data = input;
         length = data.length;
+      } else if (typeof input === 'object' && ('length' in input)) {
+        // processing regular arrays as well, e.g. for IE9
+        data = input;
+        length = data.length;
+        useUint32ArrayView = true;
+      } else {
+        throw new Error('Wrong data format in MurmurHash3_64_update. ' +
+                        'Input must be a string or array.');
       }
 
       var blockCounts = length >> 2;
       var tailLength = length - blockCounts * 4;
-      var dataUint32 = new Uint32Array(data.buffer, 0, blockCounts);
+      // we don't care about endianness here
+      var dataUint32 = useUint32ArrayView ?
+        new Uint32ArrayView(data, blockCounts) :
+        new Uint32Array(data.buffer, 0, blockCounts);
       var k1 = 0;
       var k2 = 0;
       var h1 = this.h1;
@@ -69,7 +79,7 @@ var MurmurHash3_64 = (function MurmurHash3_64Closure (seed) {
       var C1_LOW = C1 & MASK_LOW;
       var C2_LOW = C2 & MASK_LOW;
 
-      for (var i = 0; i < blockCounts; i++) {
+      for (i = 0; i < blockCounts; i++) {
         if (i & 1) {
           k1 = dataUint32[i];
           k1 = (k1 * C1 & MASK_HIGH) | (k1 * C1_LOW & MASK_LOW);

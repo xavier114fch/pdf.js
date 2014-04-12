@@ -639,7 +639,7 @@ var PDFView = {
 
         if (exception && exception.name === 'InvalidPDFException') {
           // change error message also for other builds
-          var loadingErrorMessage = mozL10n.get('invalid_file_error', null,
+          loadingErrorMessage = mozL10n.get('invalid_file_error', null,
                                         'Invalid or corrupted PDF file.');
 //#if B2G
 //        window.alert(loadingErrorMessage);
@@ -649,7 +649,7 @@ var PDFView = {
 
         if (exception && exception.name === 'MissingPDFException') {
           // special message for missing PDF's
-          var loadingErrorMessage = mozL10n.get('missing_file_error', null,
+          loadingErrorMessage = mozL10n.get('missing_file_error', null,
                                         'Missing PDF file.');
 
 //#if B2G
@@ -1102,9 +1102,10 @@ var PDFView = {
 
       // Provides some basic debug information
       console.log('PDF ' + pdfDocument.fingerprint + ' [' +
-                  info.PDFFormatVersion + ' ' + (info.Producer || '-') +
-                  ' / ' + (info.Creator || '-') + ']' +
-                  (PDFJS.version ? ' (PDF.js: ' + PDFJS.version + ')' : ''));
+                  info.PDFFormatVersion + ' ' + (info.Producer || '-').trim() +
+                  ' / ' + (info.Creator || '-').trim() + ']' +
+                  ' (PDF.js: ' + (PDFJS.version || '-') +
+                  (!PDFJS.disableWebGL ? ' [WebGL]' : '') + ')');
 
       var pdfTitle;
       if (metadata && metadata.has('dc:title')) {
@@ -1478,10 +1479,11 @@ var PDFView = {
     }
 
     var alertNotReady = false;
+    var i, ii;
     if (!this.pages.length) {
       alertNotReady = true;
     } else {
-      for (var i = 0, ii = this.pages.length; i < ii; ++i) {
+      for (i = 0, ii = this.pages.length; i < ii; ++i) {
         if (!this.pages[i].pdfPage) {
           alertNotReady = true;
           break;
@@ -1497,7 +1499,7 @@ var PDFView = {
 
     var body = document.querySelector('body');
     body.setAttribute('data-mozPrintCallback', true);
-    for (var i = 0, ii = this.pages.length; i < ii; ++i) {
+    for (i = 0, ii = this.pages.length; i < ii; ++i) {
       this.pages[i].beforePrint();
     }
   },
@@ -1511,14 +1513,15 @@ var PDFView = {
 
   rotatePages: function pdfViewRotatePages(delta) {
     var currentPage = this.pages[this.page - 1];
+    var i, l;
     this.pageRotation = (this.pageRotation + 360 + delta) % 360;
 
-    for (var i = 0, l = this.pages.length; i < l; i++) {
+    for (i = 0, l = this.pages.length; i < l; i++) {
       var page = this.pages[i];
       page.update(page.scale, this.pageRotation);
     }
 
-    for (var i = 0, l = this.thumbnails.length; i < l; i++) {
+    for (i = 0, l = this.thumbnails.length; i < l; i++) {
       var thumb = this.thumbnails[i];
       thumb.update(this.pageRotation);
     }
@@ -1658,7 +1661,7 @@ var DocumentOutlineView = function documentOutlineView(outline) {
 //  // Run this code outside DOMContentLoaded to make sure that the URL
 //  // is rewritten as soon as possible.
 //  var params = PDFView.parseQueryString(document.location.search.slice(1));
-//  DEFAULT_URL = params.file || DEFAULT_URL;
+//  DEFAULT_URL = params.file || '';
 //
 //  // Example: chrome-extension://.../http://example.com/file.pdf
 //  var humanReadableUrl = '/' + DEFAULT_URL + location.hash;
@@ -1683,9 +1686,6 @@ function webViewerInitialized() {
 //#endif
 //#if CHROME
 //var file = DEFAULT_URL;
-//// XHR cannot get data from drive:-URLs, so expand to filesystem: (Chrome OS)
-//file = file.replace(/^drive:/i,
-//  'filesystem:' + location.origin + '/external/');
 //#endif
 
 //#if !(FIREFOX || MOZCENTRAL || CHROME || B2G)
@@ -1911,36 +1911,10 @@ function webViewerInitialized() {
     PDFView.open(file, 0);
   }
 //#endif
-
 //#if CHROME
-//ChromeCom.request('getPDFStream', file, function(response) {
-//  if (response) {
-//    // We will only get a response when the streamsPrivate API is available.
-//
-//    var isFTPFile = /^ftp:/i.test(file);
-//    var streamUrl = response.streamUrl;
-//    if (streamUrl) {
-//      console.log('Found data stream for ' + file);
-//      PDFView.open(streamUrl, 0, undefined, undefined, {
-//        length: response.contentLength
-//      });
-//      PDFView.setTitleUsingUrl(file);
-//      return;
-//    }
-//    if (isFTPFile && !response.extensionSupportsFTP) {
-//      // Stream not found, and it's loaded from FTP.
-//      // When the browser does not support loading ftp resources over
-//      // XMLHttpRequest, just reload the page.
-//      // NOTE: This will not lead to an infinite redirect loop, because
-//      // if the file exists, then the streamsPrivate API will capture the
-//      // stream and send back the response. If the stream does not exist, then
-//      // a "Webpage not available" error will be shown (not the PDF Viewer).
-//      location.replace(file);
-//      return;
-//    }
-//  }
-//  PDFView.open(file, 0);
-//});
+//if (file) {
+//  ChromeCom.openPDFFile(file);
+//}
 //#endif
 }
 
