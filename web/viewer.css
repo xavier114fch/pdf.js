@@ -90,18 +90,22 @@ select {
 
 :-webkit-full-screen .page {
   margin-bottom: 100%;
+  border: 0;
 }
 
 :-moz-full-screen .page {
   margin-bottom: 100%;
+  border: 0;
 }
 
 :-ms-fullscreen .page {
   margin-bottom: 100% !important;
+  border: 0;
 }
 
 :fullscreen .page {
   margin-bottom: 100%;
+  border: 0;
 }
 
 :-webkit-full-screen a:not(.internalLink) {
@@ -230,6 +234,7 @@ html[dir='rtl'] #outerContainer.sidebarOpen > #mainContainer {
   top: 32px;
   bottom: 0;
   overflow: auto;
+  -webkit-overflow-scrolling: touch;
   position: absolute;
   width: 200px;
   background-color: hsla(0,0%,0%,.1);
@@ -245,6 +250,7 @@ html[dir='rtl'] #sidebarContent {
 
 #viewerContainer {
   overflow: auto;
+  -webkit-overflow-scrolling: touch;
   position: absolute;
   top: 32px;
   right: 0;
@@ -421,6 +427,7 @@ html[dir='rtl'] .secondaryToolbar {
   max-width: 200px;
   max-height: 400px;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   margin-bottom: -4px;
 }
 
@@ -1096,6 +1103,7 @@ html[dir='rtl'] .verticalToolbarSeparator {
   bottom: 0;
   padding: 10px 40px 0;
   overflow: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .thumbnail {
@@ -1164,6 +1172,7 @@ a:focus > .thumbnail > .thumbnailSelectionRing,
   bottom: 0;
   padding: 4px 4px 0;
   overflow: auto;
+  -webkit-overflow-scrolling: touch;
   -webkit-user-select: none;
   -moz-user-select: none;
 }
@@ -1277,7 +1286,6 @@ canvas {
 .textLayer > div {
   color: transparent;
   position: absolute;
-  line-height: 1;
   white-space: pre;
   cursor: text;
 }
@@ -1394,6 +1402,10 @@ canvas {
   height: 100%;
   background-color: hsla(0,0%,0%,.2);
   z-index: 10000;
+}
+#overlayContainer > * {
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 #promptContainer {
@@ -1542,6 +1554,7 @@ html[dir='rtl'] #documentPropertiesContainer .row > * {
   bottom: 0;
   left: 0;
   overflow: auto;
+  -webkit-overflow-scrolling: touch;
   position: absolute;
   right: 0;
   top: 27px;

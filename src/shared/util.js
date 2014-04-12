@@ -152,7 +152,7 @@ var OPS = PDFJS.OPS = {
   paintInlineImageXObjectGroup: 87,
   paintImageXObjectRepeat: 88,
   paintImageMaskXObjectRepeat: 89,
-  paintSolidColorImageMask: 90,
+  paintSolidColorImageMask: 90
 };
 
 // A notice for devs. These are good for things that are helpful to devs, such
@@ -237,9 +237,10 @@ function combineUrl(baseUrl, url) {
   if (/^[a-z][a-z0-9+\-.]*:/i.test(url)) {
     return url;
   }
+  var i;
   if (url.charAt(0) == '/') {
     // absolute path
-    var i = baseUrl.indexOf('://');
+    i = baseUrl.indexOf('://');
     if (url.charAt(1) === '/') {
       ++i;
     } else {
@@ -248,7 +249,7 @@ function combineUrl(baseUrl, url) {
     return baseUrl.substring(0, i) + url;
   } else {
     // relative path
-    var pathLength = baseUrl.length, i;
+    var pathLength = baseUrl.length;
     i = baseUrl.lastIndexOf('#');
     pathLength = i >= 0 ? i : pathLength;
     i = baseUrl.lastIndexOf('?', pathLength);
@@ -393,21 +394,41 @@ var XRefParseException = (function XRefParseExceptionClosure() {
 
 
 function bytesToString(bytes) {
-  var strBuf = [];
   var length = bytes.length;
-  for (var n = 0; n < length; ++n) {
-    strBuf.push(String.fromCharCode(bytes[n]));
+  var MAX_ARGUMENT_COUNT = 8192;
+  if (length < MAX_ARGUMENT_COUNT) {
+    return String.fromCharCode.apply(null, bytes);
+  }
+  var strBuf = [];
+  for (var i = 0; i < length; i += MAX_ARGUMENT_COUNT) {
+    var chunkEnd = Math.min(i + MAX_ARGUMENT_COUNT, length);
+    var chunk = bytes.subarray(i, chunkEnd);
+    strBuf.push(String.fromCharCode.apply(null, chunk));
   }
   return strBuf.join('');
+}
+
+function stringToArray(str) {
+  var length = str.length;
+  var array = [];
+  for (var i = 0; i < length; ++i) {
+    array[i] = str.charCodeAt(i);
+  }
+  return array;
 }
 
 function stringToBytes(str) {
   var length = str.length;
   var bytes = new Uint8Array(length);
-  for (var n = 0; n < length; ++n) {
-    bytes[n] = str.charCodeAt(n) & 0xFF;
+  for (var i = 0; i < length; ++i) {
+    bytes[i] = str.charCodeAt(i) & 0xFF;
   }
   return bytes;
+}
+
+function string32(value) {
+  return String.fromCharCode((value >> 24) & 0xff, (value >> 16) & 0xff,
+                             (value >> 8) & 0xff, value & 0xff);
 }
 
 // Lazy test the endianness of the platform
@@ -445,10 +466,10 @@ Object.defineProperty(PDFJS, 'hasCanvasTypedArrays', {
 
 var Uint32ArrayView = (function Uint32ArrayViewClosure() {
 
-  function Uint32ArrayView(buffer) {
+  function Uint32ArrayView(buffer, length) {
     this.buffer = buffer;
     this.byteLength = buffer.length;
-    this.length = (this.byteLength >> 2);
+    this.length = length === undefined ? (this.byteLength >> 2) : length;
     ensureUint32ArrayViewProps(this.length);
   }
   Uint32ArrayView.prototype = Object.create(null);
@@ -1243,17 +1264,18 @@ var StatTimer = (function StatTimerClosure() {
       delete this.started[name];
     },
     toString: function StatTimer_toString() {
+      var i, ii;
       var times = this.times;
       var out = '';
       // Find the longest name for padding purposes.
       var longest = 0;
-      for (var i = 0, ii = times.length; i < ii; ++i) {
+      for (i = 0, ii = times.length; i < ii; ++i) {
         var name = times[i]['name'];
         if (name.length > longest) {
           longest = name.length;
         }
       }
-      for (var i = 0, ii = times.length; i < ii; ++i) {
+      for (i = 0, ii = times.length; i < ii; ++i) {
         var span = times[i];
         var duration = span.end - span.start;
         out += rpad(span['name'], ' ', longest) + ' ' + duration + 'ms\n';

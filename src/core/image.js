@@ -14,8 +14,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/* globals ColorSpace, DecodeStream, error, isArray, ImageKind, isStream,
-           JpegStream, Name, Promise, Stream, warn, LegacyPromise */
+/* globals ColorSpace, DecodeStream, error, info, isArray, ImageKind, isStream,
+           JpegStream, JpxImage, Name, Promise, Stream, warn, LegacyPromise */
 
 'use strict';
 
@@ -51,16 +51,23 @@ var PDFImage = (function PDFImageClosure() {
   }
   function PDFImage(xref, res, image, inline, smask, mask, isMask) {
     this.image = image;
-    if (image.getParams) {
-      // JPX/JPEG2000 streams directly contain bits per component
-      // and color space mode information.
-      warn('get params from actual stream');
-      // var bits = ...
-      // var colorspace = ...
+    var dict = image.dict;
+    if (dict.has('Filter')) {
+      var filter = dict.get('Filter').name;
+      if (filter === 'JPXDecode') {
+        info('get image params from JPX stream');
+        var jpxImage = new JpxImage();
+        jpxImage.parseImageProperties(image.stream);
+        image.stream.reset();
+        image.bitsPerComponent = jpxImage.bitsPerComponent;
+        image.numComps = jpxImage.componentsCount;
+      } else if (filter === 'JBIG2Decode') {
+        image.bitsPerComponent = 1;
+        image.numComps = 1;
+      }
     }
     // TODO cache rendered images?
 
-    var dict = image.dict;
     this.width = dict.get('Width', 'W');
     this.height = dict.get('Height', 'H');
 
@@ -89,8 +96,19 @@ var PDFImage = (function PDFImageClosure() {
     if (!this.imageMask) {
       var colorSpace = dict.get('ColorSpace', 'CS');
       if (!colorSpace) {
-        warn('JPX images (which do not require color spaces)');
-        colorSpace = Name.get('DeviceRGB');
+        info('JPX images (which do not require color spaces)');
+        switch (image.numComps) {
+          case 1:
+            colorSpace = Name.get('DeviceGray');
+            break;
+          case 3:
+            colorSpace = Name.get('DeviceRGB');
+            break;
+          default:
+            // TODO: Find out how four color channels are handled. CMYK? Alpha?
+            error('JPX images with ' + this.numComps +
+                  ' color components not supported.');
+        }
       }
       this.colorSpace = ColorSpace.parse(colorSpace, xref, res);
       this.numComps = this.colorSpace.numComps;
@@ -250,20 +268,20 @@ var PDFImage = (function PDFImageClosure() {
       var decodeMap = this.decode;
       var numComps = this.numComps;
 
-      var decodeAddends, decodeCoefficients;
       var decodeAddends = this.decodeAddends;
       var decodeCoefficients = this.decodeCoefficients;
       var max = (1 << bpc) - 1;
+      var i, ii;
 
       if (bpc === 1) {
         // If the buffer needed decode that means it just needs to be inverted.
-        for (var i = 0, ii = buffer.length; i < ii; i++) {
+        for (i = 0, ii = buffer.length; i < ii; i++) {
           buffer[i] = +!(buffer[i]);
         }
         return;
       }
       var index = 0;
-      for (var i = 0, ii = this.width * this.height; i < ii; i++) {
+      for (i = 0, ii = this.width * this.height; i < ii; i++) {
         for (var j = 0; j < numComps; j++) {
           buffer[index] = decodeAndClamp(buffer[index], decodeAddends[j],
                                          decodeCoefficients[j], max);
@@ -290,10 +308,11 @@ var PDFImage = (function PDFImageClosure() {
       var rowComps = width * numComps;
 
       var max = (1 << bpc) - 1;
+      var i = 0, ii, buf;
 
       if (bpc === 1) {
         // Optimization for reading 1 bpc images.
-        var i = 0, buf, mask, loop1End, loop2End;
+        var mask, loop1End, loop2End;
         for (var j = 0; j < height; j++) {
           loop1End = i + (rowComps & ~7);
           loop2End = i + rowComps;
@@ -324,8 +343,9 @@ var PDFImage = (function PDFImageClosure() {
         }
       } else {
         // The general case that handles all other bpc values.
-        var bits = 0, buf = 0;
-        for (var i = 0, ii = length; i < ii; ++i) {
+        var bits = 0;
+        buf = 0;
+        for (i = 0, ii = length; i < ii; ++i) {
           if (i % rowComps === 0) {
             buf = 0;
             bits = 0;
@@ -349,11 +369,11 @@ var PDFImage = (function PDFImageClosure() {
                                                actualHeight, image) {
       var smask = this.smask;
       var mask = this.mask;
-      var alphaBuf;
+      var alphaBuf, sw, sh, i, ii, j;
 
       if (smask) {
-        var sw = smask.width;
-        var sh = smask.height;
+        sw = smask.width;
+        sh = smask.height;
         alphaBuf = new Uint8Array(sw * sh);
         smask.fillGrayBuffer(alphaBuf);
         if (sw != width || sh != height) {
@@ -362,14 +382,14 @@ var PDFImage = (function PDFImageClosure() {
         }
       } else if (mask) {
         if (mask instanceof PDFImage) {
-          var sw = mask.width;
-          var sh = mask.height;
+          sw = mask.width;
+          sh = mask.height;
           alphaBuf = new Uint8Array(sw * sh);
           mask.numComps = 1;
           mask.fillGrayBuffer(alphaBuf);
 
           // Need to invert values in rgbaBuf
-          for (var i = 0, ii = sw * sh; i < ii; ++i) {
+          for (i = 0, ii = sw * sh; i < ii; ++i) {
             alphaBuf[i] = 255 - alphaBuf[i];
           }
 
@@ -382,10 +402,10 @@ var PDFImage = (function PDFImageClosure() {
           // then they should be painted.
           alphaBuf = new Uint8Array(width * height);
           var numComps = this.numComps;
-          for (var i = 0, ii = width * height; i < ii; ++i) {
+          for (i = 0, ii = width * height; i < ii; ++i) {
             var opacity = 0;
             var imageOffset = i * numComps;
-            for (var j = 0; j < numComps; ++j) {
+            for (j = 0; j < numComps; ++j) {
               var color = image[imageOffset + j];
               var maskOffset = j * 2;
               if (color < mask[maskOffset] || color > mask[maskOffset + 1]) {
@@ -401,12 +421,12 @@ var PDFImage = (function PDFImageClosure() {
       }
 
       if (alphaBuf) {
-        for (var i = 0, j = 3, ii = width * actualHeight; i < ii; ++i, j += 4) {
+        for (i = 0, j = 3, ii = width * actualHeight; i < ii; ++i, j += 4) {
           rgbaBuf[j] = alphaBuf[i];
         }
       } else {
         // No mask.
-        for (var i = 0, j = 3, ii = width * actualHeight; i < ii; ++i, j += 4) {
+        for (i = 0, j = 3, ii = width * actualHeight; i < ii; ++i, j += 4) {
           rgbaBuf[j] = 255;
         }
       }
@@ -542,18 +562,19 @@ var PDFImage = (function PDFImageClosure() {
       var imgArray = this.getImageBytes(height * rowBytes);
 
       var comps = this.getComponents(imgArray);
+      var i, length;
 
       if (bpc === 1) {
         // inline decoding (= inversion) for 1 bpc images
-        var length = width * height;
+        length = width * height;
         if (this.needsDecode) {
           // invert and scale to {0, 255} 
-          for (var i = 0; i < length; ++i) {
+          for (i = 0; i < length; ++i) {
             buffer[i] = (comps[i] - 1) & 255;
           }
         } else {
           // scale to {0, 255}
-          for (var i = 0; i < length; ++i) {
+          for (i = 0; i < length; ++i) {
             buffer[i] = (-comps[i]) & 255;
           }
         }
@@ -563,10 +584,10 @@ var PDFImage = (function PDFImageClosure() {
       if (this.needsDecode) {
         this.decodeBuffer(comps);
       }
-      var length = width * height;
+      length = width * height;
       // we aren't using a colorspace so we need to scale the value
       var scale = 255 / ((1 << bpc) - 1);
-      for (var i = 0; i < length; ++i) {
+      for (i = 0; i < length; ++i) {
         buffer[i] = (scale * comps[i]) | 0;
       }
     },

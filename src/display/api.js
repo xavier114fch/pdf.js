@@ -116,6 +116,13 @@ PDFJS.disableCreateObjectURL = (PDFJS.disableCreateObjectURL === undefined ?
                                 false : PDFJS.disableCreateObjectURL);
 
 /**
+ * Disables WebGL usage.
+ * @var {boolean}
+ */
+PDFJS.disableWebGL = (PDFJS.disableWebGL === undefined ?
+                      true : PDFJS.disableWebGL);
+
+/**
  * Controls the logging level.
  * The constants from PDFJS.VERBOSITY_LEVELS should be used:
  * - errors
@@ -333,15 +340,51 @@ var PDFDocumentProxy = (function PDFDocumentProxyClosure() {
 })();
 
 /**
+ * Page text content.
+ *
+ * @typedef {Object} TextContent
+ * @property {array} items - array of {@link TextItem}
+ * @property {Object} styles - {@link TextStyles} objects, indexed by font
+ *                    name.
+ */
+
+/**
  * Page text content part.
  *
- * @typedef {Object} BidiText
+ * @typedef {Object} TextItem
  * @property {string} str - text content.
  * @property {string} dir - text direction: 'ttb', 'ltr' or 'rtl'.
- * @property {number} x - x position of the text on the page.
- * @property {number} y - y position of the text on the page.
- * @property {number} angle - text rotation.
- * @property {number} size - font size.
+ * @property {array} transform - transformation matrix.
+ * @property {number} width - width in device space.
+ * @property {number} height - height in device space.
+ * @property {string} fontName - font name used by pdf.js for converted font.
+ */
+
+/**
+ * Text style.
+ *
+ * @typedef {Object} TextStyle
+ * @property {number} ascent - font ascent.
+ * @property {number} descent - font descent.
+ * @property {boolean} vertical - text is in vertical mode.
+ * @property {string} fontFamily - possible font family
+ */
+
+/**
+ * Page render parameters.
+ *
+ * @typedef {Object} RenderParameters
+ * @property {Object} canvasContext - A 2D context of a DOM Canvas object.
+ * @property {PageViewport} viewport - Rendering viewport obtained by
+ *                          calling of PDFPage.getViewport method.
+ * @property {string} intent - Rendering intent, can be 'display' or 'print'
+ *                    (default value is 'display').
+ * @property {Object} imageLayer - (optional) An object that has beginLayout,
+ *                    endLayout and appendImage functions.
+ * @property {function} continueCallback - (optional) A function that will be
+ *                      called each time the rendering is paused.  To continue
+ *                      rendering call the function that is the first argument
+ *                      to the callback.
  */
 
 /**
@@ -416,20 +459,9 @@ var PDFPageProxy = (function PDFPageProxyClosure() {
     },
     /**
      * Begins the process of rendering a page to the desired context.
-     * @param {Object} params A parameter object that supports:
-     * {
-     *   canvasContext(required): A 2D context of a DOM Canvas object.,
-     *   textLayer(optional): An object that has beginLayout, endLayout, and
-     *                        appendText functions.,
-     *   imageLayer(optional): An object that has beginLayout, endLayout and
-     *                         appendImage functions.,
-     *   continueCallback(optional): A function that will be called each time
-     *                               the rendering is paused.  To continue
-     *                               rendering call the function that is the
-     *                               first argument to the callback.
-     * }.
-     * @return {RenderTask} An extended promise that is resolved when the page
-     * finishes rendering (see RenderTask).
+     * @param {RenderParameters} params Page render parameters.
+     * @return {RenderTask} An object that contains the promise, which
+     *                      is resolved when the page finishes rendering.
      */
     render: function PDFPageProxy_render(params) {
       var stats = this.stats;
@@ -515,8 +547,8 @@ var PDFPageProxy = (function PDFPageProxyClosure() {
       return renderTask;
     },
     /**
-     * @return {Promise} That is resolved with the array of {@link BidiText}
-     * objects that represent the page text content.
+     * @return {Promise} That is resolved a {@link TextContent}
+     * object that represent the page text content.
      */
     getTextContent: function PDFPageProxy_getTextContent() {
       var promise = new PDFJS.LegacyPromise();
@@ -573,8 +605,9 @@ var PDFPageProxy = (function PDFPageProxyClosure() {
     _renderPageChunk: function PDFPageProxy_renderPageChunk(operatorListChunk,
                                                             intent) {
       var intentState = this.intentStates[intent];
+      var i, ii;
       // Add the new chunk to the current operator list.
-      for (var i = 0, ii = operatorListChunk.length; i < ii; i++) {
+      for (i = 0, ii = operatorListChunk.length; i < ii; i++) {
         intentState.operatorList.fnArray.push(operatorListChunk.fnArray[i]);
         intentState.operatorList.argsArray.push(
           operatorListChunk.argsArray[i]);
@@ -582,7 +615,7 @@ var PDFPageProxy = (function PDFPageProxyClosure() {
       intentState.operatorList.lastChunk = operatorListChunk.lastChunk;
 
       // Notify all the rendering tasks there are more operators to be consumed.
-      for (var i = 0; i < intentState.renderTasks.length; i++) {
+      for (i = 0; i < intentState.renderTasks.length; i++) {
         intentState.renderTasks[i].operatorListChanged();
       }
 
@@ -665,7 +698,7 @@ var WorkerTransport = (function WorkerTransportClosure() {
         info('The worker has been disabled.');
       }
     }
-//#endif    
+//#endif
     // Either workers are disabled, not supported or have thrown an exception.
     // Thus, we fallback to a faked worker.
     globalScope.PDFJS.disableWorker = true;
@@ -863,17 +896,18 @@ var WorkerTransport = (function WorkerTransportClosure() {
         var pageIndex = data[1];
         var type = data[2];
         var pageProxy = this.pageCache[pageIndex];
+        var imageData;
         if (pageProxy.objs.hasData(id)) {
           return;
         }
 
         switch (type) {
           case 'JpegStream':
-            var imageData = data[3];
+            imageData = data[3];
             loadJpegStream(id, imageData, pageProxy.objs);
             break;
           case 'Image':
-            var imageData = data[3];
+            imageData = data[3];
             pageProxy.objs.resolve(id, imageData);
 
             // heuristics that will allow not to store large data
@@ -929,15 +963,16 @@ var WorkerTransport = (function WorkerTransportClosure() {
           var tmpCtx = tmpCanvas.getContext('2d');
           tmpCtx.drawImage(img, 0, 0);
           var data = tmpCtx.getImageData(0, 0, width, height).data;
+          var i, j;
 
           if (components == 3) {
-            for (var i = 0, j = 0; i < rgbaLength; i += 4, j += 3) {
+            for (i = 0, j = 0; i < rgbaLength; i += 4, j += 3) {
               buf[j] = data[i];
               buf[j + 1] = data[i + 1];
               buf[j + 2] = data[i + 2];
             }
           } else if (components == 1) {
-            for (var i = 0, j = 0; i < rgbaLength; i += 4, j++) {
+            for (i = 0, j = 0; i < rgbaLength; i += 4, j++) {
               buf[j] = data[i];
             }
           }
@@ -980,7 +1015,7 @@ var WorkerTransport = (function WorkerTransportClosure() {
       if (pageIndex in this.pagePromises) {
         return this.pagePromises[pageIndex];
       }
-      var promise = new PDFJS.LegacyPromise();
+      promise = new PDFJS.LegacyPromise();
       this.pagePromises[pageIndex] = promise;
       this.messageHandler.send('GetPageRequest', { pageIndex: pageIndex });
       return promise;
@@ -1159,6 +1194,18 @@ var RenderTask = (function RenderTaskClosure() {
     cancel: function RenderTask_cancel() {
       this.internalRenderTask.cancel();
       this.promise.reject(new Error('Rendering is cancelled'));
+    },
+
+    /**
+     * Registers callback to indicate the rendering task completion.
+     *
+     * @param {function} onFulfilled The callback for the rendering completion.
+     * @param {function} onRejected The callback for the rendering failure.
+     * @return {Promise} A promise that is resolved after the onFulfilled or
+     *                   onRejected callback.
+     */
+    then: function RenderTask_then(onFulfilled, onRejected) {
+      return this.promise.then(onFulfilled, onRejected);
     }
   };
 
@@ -1203,8 +1250,7 @@ var InternalRenderTask = (function InternalRenderTaskClosure() {
 
       var params = this.params;
       this.gfx = new CanvasGraphics(params.canvasContext, this.commonObjs,
-                                    this.objs, params.textLayer,
-                                    params.imageLayer);
+                                    this.objs, params.imageLayer);
 
       this.gfx.beginDrawing(params.viewport, transparency);
       this.operatorListIdx = 0;

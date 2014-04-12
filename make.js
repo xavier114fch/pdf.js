@@ -24,6 +24,14 @@ require('./external/shelljs/make');
 var builder = require('./external/builder/builder.js');
 var crlfchecker = require('./external/crlfchecker/crlfchecker.js');
 var path = require('path');
+var fs = require('fs');
+
+var CONFIG_FILE = 'pdfjs.config';
+var config = JSON.parse(fs.readFileSync(CONFIG_FILE));
+
+// Defined by buildnumber target.
+var BUILD_NUMBER,
+    VERSION;
 
 var ROOT_DIR = __dirname + '/', // absolute path to project's root
     BUILD_DIR = 'build/',
@@ -109,6 +117,7 @@ target.generic = function() {
     defines: defines,
     copy: [
       [COMMON_WEB_FILES, GENERIC_DIR + '/web'],
+      ['LICENSE', GENERIC_DIR],
       ['external/webL10n/l10n.js', GENERIC_DIR + '/web'],
       ['web/viewer.css', GENERIC_DIR + '/web'],
       ['web/compatibility.js', GENERIC_DIR + '/web'],
@@ -156,19 +165,43 @@ target.web = function() {
      GH_PAGES_DIR + EXTENSION_SRC_DIR + 'firefox/');
   cp(CHROME_BUILD_DIR + '/*.crx', FIREFOX_BUILD_DIR + '/*.rdf',
      GH_PAGES_DIR + EXTENSION_SRC_DIR + 'chromium/');
-  cp('web/index.html.template', GH_PAGES_DIR + '/index.html');
   cp('-R', 'test/features', GH_PAGES_DIR);
   cp('-R', B2G_BUILD_DIR, GH_PAGES_DIR + EXTENSION_SRC_DIR + 'b2g/');
 
-  cd(GH_PAGES_DIR);
-  exec('git init');
-  exec('git remote add origin ' + REPO);
-  exec('git add -A');
-  exec('git commit -am "gh-pages site created via make.js script"');
-  exec('git branch -m gh-pages');
+  var wintersmith = require('wintersmith');
+  var env = wintersmith('docs/config.json');
+  env.build(GH_PAGES_DIR, function (error) {
+    if (error) {
+      throw error;
+    }
+    sed('-i', /STABLE_VERSION/g, config.stableVersion,
+        GH_PAGES_DIR + '/getting_started/index.html');
+    sed('-i', /BETA_VERSION/g, config.betaVersion,
+        GH_PAGES_DIR + '/getting_started/index.html');
+    echo('Done building with wintersmith.');
 
-  echo();
-  echo('Website built in ' + GH_PAGES_DIR);
+    cd(GH_PAGES_DIR);
+    exec('git init');
+    exec('git remote add origin ' + REPO);
+    exec('git add -A');
+    exec('git commit -am "gh-pages site created via make.js script"');
+    exec('git branch -m gh-pages');
+
+    echo();
+    echo('Website built in ' + GH_PAGES_DIR);
+  });
+};
+
+target.dist = function() {
+  target.generic();
+  config.stableVersion = config.betaVersion;
+  config.betaVersion = VERSION;
+  fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+  cd(GENERIC_DIR);
+  var distFilename = 'pdfjs-' + VERSION + '-dist.zip';
+  exec('zip -r ' + ROOT_DIR + BUILD_DIR + distFilename + ' *');
+  echo('Built distribution file: ' + distFilename);
+  cd(ROOT_DIR);
 };
 
 //
@@ -284,23 +317,23 @@ target.bundle = function(args) {
       }
     }
 
-    var bundle = cat(SRC_FILES),
-        bundleVersion = EXTENSION_VERSION,
+    var bundleContent = cat(SRC_FILES),
+        bundleVersion = VERSION,
         bundleBuild = exec('git log --format="%h" -n 1',
           {silent: true}).output.replace('\n', '');
 
     crlfchecker.checkIfCrlfIsPresent(SRC_FILES);
 
     // Strip out all the vim/license headers.
-    bundle = bundle.replace(reg, '');
+    bundleContent = bundleContent.replace(reg, '');
 
     // Append external files last since we don't want to modify them.
-    bundle += cat(EXT_SRC_FILES);
+    bundleContent += cat(EXT_SRC_FILES);
 
     // This just preprocesses the empty pdf.js file, we don't actually want to
     // preprocess everything yet since other build targets use this file.
     builder.preprocess(filename, dir, builder.merge(defines,
-                           {BUNDLE: bundle,
+                           {BUNDLE: bundleContent,
                             BUNDLE_VERSION: bundleVersion,
                             BUNDLE_BUILD: bundleBuild}));
   }
@@ -320,36 +353,13 @@ target.bundle = function(args) {
     'display/api.js',
     'display/metadata.js',
     'display/canvas.js',
+    'display/webgl.js',
     'display/pattern_helper.js',
     'display/font_loader.js'
   ]);
 
-  var WORKER_SRC_FILES = [
-    'core/network.js',
-    'core/chunked_stream.js',
-    'core/pdf_manager.js',
-    'core/core.js',
-    'core/obj.js',
-    'core/charsets.js',
-    'core/cidmaps.js',
-    'core/crypto.js',
-    'core/pattern.js',
-    'core/evaluator.js',
-    'core/fonts.js',
-    'core/font_renderer.js',
-    'core/glyphlist.js',
-    'core/image.js',
-    'core/metrics.js',
-    'core/parser.js',
-    'core/ps_parser.js',
-    'core/stream.js',
-    'core/worker.js',
-    'core/arithmetic_decoder.js',
-    'core/jpx.js',
-    'core/jbig2.js',
-    'core/bidi.js',
-    'core/cmap.js'
-  ];
+  var srcFiles = builder.getWorkerSrcFiles('src/worker_loader.js');
+  var WORKER_SRC_FILES = srcFiles.srcFiles;
 
   if (!defines.SINGLE_FILE) {
     // We want shared_src_files in both pdf.js and pdf.worker.js
@@ -361,9 +371,7 @@ target.bundle = function(args) {
     MAIN_SRC_FILES = MAIN_SRC_FILES.concat(WORKER_SRC_FILES);
   }
 
-  var EXT_SRC_FILES = [
-    '../external/jpgjs/jpg.js'
-  ];
+  var EXT_SRC_FILES = srcFiles.externalSrcFiles;
 
   cd(SRC_DIR);
 
@@ -512,11 +520,6 @@ target.minified = function() {
 // Extension stuff
 //
 
-var EXTENSION_BASE_VERSION = '0ac55ac879d1c0eea9c0d155d5bbd9b11560f631',
-    EXTENSION_VERSION_PREFIX = '0.8.',
-    EXTENSION_BUILD_NUMBER,
-    EXTENSION_VERSION;
-
 //
 // make extension
 //
@@ -536,13 +539,13 @@ target.buildnumber = function() {
   echo('### Getting extension build number');
 
   var lines = exec('git log --format=oneline ' +
-                   EXTENSION_BASE_VERSION + '..', {silent: true}).output;
+                   config.baseVersion + '..', {silent: true}).output;
   // Build number is the number of commits since base version
-  EXTENSION_BUILD_NUMBER = lines ? lines.match(/\n/g).length : 0;
+  BUILD_NUMBER = lines ? lines.match(/\n/g).length : 0;
 
-  echo('Extension build number: ' + EXTENSION_BUILD_NUMBER);
+  echo('Extension build number: ' + BUILD_NUMBER);
 
-  EXTENSION_VERSION = EXTENSION_VERSION_PREFIX + EXTENSION_BUILD_NUMBER;
+  VERSION = config.versionPrefix + BUILD_NUMBER;
 };
 
 //
@@ -637,9 +640,9 @@ target.firefox = function() {
   });
 
   // Update the build version number
-  sed('-i', /PDFJSSCRIPT_VERSION/, EXTENSION_VERSION,
+  sed('-i', /PDFJSSCRIPT_VERSION/, VERSION,
       FIREFOX_BUILD_DIR + '/install.rdf');
-  sed('-i', /PDFJSSCRIPT_VERSION/, EXTENSION_VERSION,
+  sed('-i', /PDFJSSCRIPT_VERSION/, VERSION,
       FIREFOX_BUILD_DIR + '/update.rdf');
 
   sed('-i', /PDFJSSCRIPT_STREAM_CONVERTER_ID/, FIREFOX_STREAM_CONVERTER_ID,
@@ -770,7 +773,7 @@ target.mozcentral = function() {
   cp(DEFAULT_LOCALE_FILES, MOZCENTRAL_L10N_DIR);
 
   // Update the build version number
-  sed('-i', /PDFJSSCRIPT_VERSION/, EXTENSION_VERSION,
+  sed('-i', /PDFJSSCRIPT_VERSION/, VERSION,
       MOZCENTRAL_EXTENSION_DIR + 'README.mozilla');
 
   sed('-i', /PDFJSSCRIPT_STREAM_CONVERTER_ID/, MOZCENTRAL_STREAM_CONVERTER_ID,
@@ -870,7 +873,7 @@ target.chromium = function() {
   cleanupJSSource(CHROME_BUILD_CONTENT_DIR + '/web/viewer.js');
 
   // Update the build version number
-  sed('-i', /PDFJSSCRIPT_VERSION/, EXTENSION_VERSION,
+  sed('-i', /PDFJSSCRIPT_VERSION/, VERSION,
       CHROME_BUILD_DIR + '/manifest.json');
 
   // Allow PDF.js resources to be loaded by adding the files to
@@ -1264,35 +1267,16 @@ target.lint = function() {
   echo();
   echo('### Linting JS files');
 
-  var LINT_FILES = ['make.js',
-                    'external/builder/',
-                    'external/crlfchecker/',
-                    'src/',
-                    'web/',
-                    'test/downloadutils.js',
-                    'test/driver.js',
-                    'test/reporter.js',
-                    'test/test.js',
-                    'test/testutils.js',
-                    'test/webbrowser.js',
-                    'test/webserver.js',
-                    'test/font/fontutils.js',
-                    'test/font/ttxdriver.js',
-                    'test/unit/',
-                    'extensions/firefox/',
-                    'extensions/chromium/'
-                    ];
-
   var jshintPath = path.normalize('./node_modules/.bin/jshint');
   if (!test('-f', jshintPath)) {
     echo('jshint is not installed -- installing...');
     exec('npm install jshint@2.4.x'); // TODO read version from package.json
   }
 
-  exit(exec('"' + jshintPath + '" --reporter test/reporter.js ' +
-            LINT_FILES.join(' ')).code);
-
-  crlfchecker.checkIfCrlfIsPresent(LINT_FILES);
+  var exitCode = exec('"' + jshintPath + '" .').code;
+  if (exitCode === 0) {
+    echo('files checked, no errors found');
+  }
 };
 
 //

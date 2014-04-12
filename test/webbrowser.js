@@ -64,17 +64,31 @@ WebBrowser.prototype = {
   startProcess: function (url) {
     var args = this.buildArguments(url);
     var proc = spawn(this.path, args);
-    proc.on('close', function (code) {
+    proc.on('exit', function (code) {
       this.finished = true;
-      if (this.callback) {
-        this.callback.call(null, code);
-      }
-      this.cleanup();
+      this.cleanup(this.callback && this.callback.bind(null, code));
     }.bind(this));
     return proc;
   },
-  cleanup: function () {
-    testUtils.removeDirSync(this.tmpDir);
+  cleanup: function (callback) {
+    try {
+      testUtils.removeDirSync(this.tmpDir);
+      this.process = null;
+      callback();
+    } catch (e) {
+      console.error('Unable to cleanup after the process: ' + e);
+      try {
+        if (this.process) {
+          var pid = this.process.pid;
+          if (process.platform === 'win32') {
+            // kill does not really work on windows
+            spawn('taskkill', ['-F', '-PID', pid]).on('exit', callback);
+          } else {
+            spawn('kill', ['-s', 'SIGKILL', pid]).on('exit', callback);
+          }
+        }
+      } catch (e) {}
+    }
   },
   stop: function (callback) {
     if (this.finished) {
@@ -85,8 +99,9 @@ WebBrowser.prototype = {
       this.callback = callback;
     }
 
-    this.process.kill();
-    this.process = null;
+    if (this.process) {
+      this.process.kill('SIGTERM');
+    }
   }
 };
 
@@ -137,7 +152,7 @@ WebBrowser.create = function (desc) {
   if (/firefox/i.test(name)) {
     return new FirefoxBrowser(desc.name, desc.path);
   }
-  if (/(chrome|chromium)/i.test(name)) {
+  if (/(chrome|chromium|opera)/i.test(name)) {
     return new ChromiumBrowser(desc.name, desc.path);
   }
   return new WebBrowser(desc.name, desc.path);
