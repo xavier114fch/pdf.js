@@ -139,6 +139,10 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
       var w = dict.get('Width', 'W');
       var h = dict.get('Height', 'H');
 
+      if (!(w && isNum(w)) || !(h && isNum(h))) {
+        warn('Image dimensions are missing, or not numbers.');
+        return;
+      }
       if (PDFJS.maxImageSize !== -1 && w * h > PDFJS.maxImageSize) {
         warn('Image exceeded maximum allowed size and was removed.');
         return;
@@ -206,11 +210,15 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         return;
       }
 
-      PDFImage.buildImage(function(imageObj) {
+      PDFImage.buildImage(self.handler, self.xref, resources, image, inline).
+        then(function(imageObj) {
           var imgData = imageObj.createImageData(/* forceRGBA = */ false);
           self.handler.send('obj', [objId, self.pageIndex, 'Image', imgData],
-                            null, [imgData.data.buffer]);
-        }, self.handler, self.xref, resources, image, inline);
+            null, [imgData.data.buffer]);
+        }).then(null, function (reason) {
+          warn('Unable to decode image: ' + reason);
+          self.handler.send('obj', [objId, self.pageIndex, 'Image', null]);
+        });
 
       operatorList.addOp(OPS.paintImageXObject, args);
       if (cacheKey) {
@@ -501,7 +509,6 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
 
       var self = this;
       var xref = this.xref;
-      var handler = this.handler;
       var imageCache = {};
 
       operatorList = (operatorList || new OperatorList());
@@ -512,7 +519,6 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
       var stateManager = new StateManager(initialState || new EvalState());
       var preprocessor = new EvaluatorPreprocessor(stream, xref, stateManager);
 
-      var promise = new LegacyPromise();
       var operation, i, ii;
       while ((operation = preprocessor.read())) {
         var args = operation.args;
@@ -698,7 +704,6 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
       var xobjsCache = {};
 
       var preprocessor = new EvaluatorPreprocessor(stream, xref, stateManager);
-      var res = resources;
 
       var operation;
       var textState;
@@ -760,6 +765,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         for (var i = 0; i < glyphs.length; i++) {
           var glyph = glyphs[i];
           if (!glyph) { // Previous glyph was a space.
+            width += textState.wordSpacing * textState.textHScale;
             continue;
           }
           var vMetricX = null;
@@ -865,10 +871,10 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
                                         args[4], args[5]);
             break;
           case OPS.setCharSpacing:
-            textState.charSpace = args[0];
+            textState.charSpacing = args[0];
             break;
           case OPS.setWordSpacing:
-            textState.wordSpace = args[0];
+            textState.wordSpacing = args[0];
             break;
           case OPS.beginText:
             textState.textMatrix = IDENTITY_MATRIX.slice();
@@ -884,11 +890,12 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
               } else {
                 var val = items[j] / 1000;
                 if (!textState.font.vertical) {
-                  offset = -val * textState.fontSize * textState.textHScale;
+                  offset = -val * textState.fontSize * textState.textHScale *
+                           textState.textMatrix[0];
                   textState.translateTextMatrix(offset, 0);
                   textChunk.width += offset;
                 } else {
-                  offset = -val * textState.fontSize;
+                  offset = -val * textState.fontSize * textState.textMatrix[3];
                   textState.translateTextMatrix(0, offset);
                   textChunk.height += offset;
                 }
@@ -1083,7 +1090,6 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
 
     readToUnicode: function PartialEvaluator_readToUnicode(toUnicode) {
       var cmapObj = toUnicode;
-      var charToUnicode = [];
       if (isName(cmapObj)) {
         return CMapFactory.create(cmapObj).map;
       } else if (isStream(cmapObj)) {

@@ -148,7 +148,7 @@ var ChunkedStream = (function ChunkedStreamClosure() {
       return (b0 << 8) + b1;
     },
 
-    getUint32: function ChunkedStream_getUint32() {
+    getInt32: function ChunkedStream_getInt32() {
       var b0 = this.getByte();
       var b1 = this.getByte();
       var b2 = this.getByte();
@@ -237,7 +237,6 @@ var ChunkedStream = (function ChunkedStreamClosure() {
 var ChunkedStreamManager = (function ChunkedStreamManagerClosure() {
 
   function ChunkedStreamManager(length, chunkSize, url, args) {
-    var self = this;
     this.stream = new ChunkedStream(length, chunkSize, this);
     this.length = length;
     this.chunkSize = chunkSize;

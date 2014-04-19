@@ -462,7 +462,6 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
     // imgData.kind tells us which one this is.
     if (imgData.kind === ImageKind.GRAYSCALE_1BPP) {
       // Grayscale, 1 bit per pixel (i.e. black-and-white).
-      var destDataLength = dest.length;
       var srcLength = src.byteLength;
       var dest32 = PDFJS.hasCanvasTypedArrays ? new Uint32Array(dest.buffer) :
         new Uint32ArrayView(dest);
@@ -733,7 +732,6 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
         return i;
       }
 
-      var executionEndIdx;
       var endTime = Date.now() + EXECUTION_TIME;
 
       var commonObjs = this.commonObjs;
@@ -1309,7 +1307,6 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
       var vertical = font.vertical;
       var defaultVMetrics = font.defaultVMetrics;
       var i, glyph, width;
-      var VERTICAL_TEXT_ROTATION = Math.PI / 2;
 
       if (fontSize === 0) {
         return;
@@ -1437,7 +1434,6 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
       }
     },
     showSpacedText: function CanvasGraphics_showSpacedText(arr) {
-      var ctx = this.ctx;
       var current = this.current;
       var font = current.font;
       var fontSize = current.fontSize;
@@ -1513,8 +1509,6 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
         var base = cs.base;
         var color;
         if (base) {
-          var baseComps = base.numComps;
-
           color = base.getRgb(args, 0);
         }
         pattern = new TilingPattern(IR, color, this.ctx, this.objs,
@@ -1824,7 +1818,8 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
     paintJpegXObject: function CanvasGraphics_paintJpegXObject(objId, w, h) {
       var domImage = this.objs.get(objId);
       if (!domImage) {
-        error('Dependent image isn\'t ready yet');
+        warn('Dependent image isn\'t ready yet');
+        return;
       }
 
       this.save();
@@ -1958,7 +1953,8 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
     paintImageXObject: function CanvasGraphics_paintImageXObject(objId) {
       var imgData = this.objs.get(objId);
       if (!imgData) {
-        error('Dependent image isn\'t ready yet');
+        warn('Dependent image isn\'t ready yet');
+        return;
       }
 
       this.paintInlineImageXObject(imgData);
@@ -1969,7 +1965,8 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
                                                           positions) {
       var imgData = this.objs.get(objId);
       if (!imgData) {
-        error('Dependent image isn\'t ready yet');
+        warn('Dependent image isn\'t ready yet');
+        return;
       }
 
       var width = imgData.width;
