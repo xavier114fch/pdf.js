@@ -283,14 +283,6 @@ function isValidUrl(url, allowRelative) {
 }
 PDFJS.isValidUrl = isValidUrl;
 
-// In a well-formed PDF, |cond| holds.  If it doesn't, subsequent
-// behavior is undefined.
-function assertWellFormed(cond, msg) {
-  if (!cond) {
-    error(msg);
-  }
-}
-
 function shadow(obj, prop, value) {
   Object.defineProperty(obj, prop, { value: value,
                                      enumerable: true,
@@ -429,6 +421,28 @@ function stringToBytes(str) {
 function string32(value) {
   return String.fromCharCode((value >> 24) & 0xff, (value >> 16) & 0xff,
                              (value >> 8) & 0xff, value & 0xff);
+}
+
+function log2(x) {
+  var n = 1, i = 0;
+  while (x > n) {
+    n <<= 1;
+    i++;
+  }
+  return i;
+}
+
+function readInt8(data, start) {
+  return (data[start] << 24) >> 24;
+}
+
+function readUint16(data, offset) {
+  return (data[offset] << 8) | data[offset + 1];
+}
+
+function readUint32(data, offset) {
+  return ((data[offset] << 24) | (data[offset + 1] << 16) |
+         (data[offset + 2] << 8) | data[offset + 3]) >>> 0;
 }
 
 // Lazy test the endianness of the platform
@@ -922,6 +936,7 @@ function isPDFFunction(v) {
 /**
  * Legacy support for PDFJS Promise implementation.
  * TODO remove eventually
+ * @ignore
  */
 var LegacyPromise = PDFJS.LegacyPromise = (function LegacyPromiseClosure() {
   return function LegacyPromise() {

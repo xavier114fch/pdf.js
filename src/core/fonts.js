@@ -2423,7 +2423,6 @@ var Font = (function FontClosure() {
     var isIdentityUnicode = properties.isIdentityUnicode;
     var newMap = Object.create(null);
     var toFontChar = [];
-    var usedCharCodes = [];
     var usedFontCharCodes = [];
     var nextAvailableFontCharCode = PRIVATE_USE_OFFSET_START;
     for (var originalCharCode in charCodeToGlyphId) {
@@ -2541,7 +2540,7 @@ var Font = (function FontClosure() {
     var idRangeOffsets = '';
     var glyphsIds = '';
     var bias = 0;
-    
+
     var range, start, end, codes;
     for (i = 0, ii = bmpLength; i < ii; i++) {
       range = ranges[i];
@@ -2865,9 +2864,9 @@ var Font = (function FontClosure() {
       function readTableEntry(file) {
         var tag = bytesToString(file.getBytes(4));
 
-        var checksum = file.getUint32();
-        var offset = file.getUint32();
-        var length = file.getUint32();
+        var checksum = file.getInt32();
+        var offset = file.getInt32() >>> 0;
+        var length = file.getInt32() >>> 0;
 
         // Read the table associated data
         var previousPosition = file.pos;
@@ -2924,7 +2923,7 @@ var Font = (function FontClosure() {
         for (var i = 0; i < numTables; i++) {
           var platformId = font.getUint16();
           var encodingId = font.getUint16();
-          var offset = font.getUint32();
+          var offset = font.getInt32() >>> 0;
           var useTable = false;
 
           if (platformId == 1 && encodingId === 0) {
@@ -3049,8 +3048,6 @@ var Font = (function FontClosure() {
           var firstCode = font.getUint16();
           var entryCount = font.getUint16();
 
-          var glyphs = [];
-          var ids = [];
           for (j = 0; j < entryCount; j++) {
             glyphId = font.getUint16();
             var charCode = firstCode + j;
@@ -3336,7 +3333,7 @@ var Font = (function FontClosure() {
         font.pos = start;
 
         var length = post.length, end = start + length;
-        var version = font.getUint32();
+        var version = font.getInt32();
         // skip rest to the tables
         font.getBytes(28);
 
@@ -3438,7 +3435,6 @@ var Font = (function FontClosure() {
           }
           font.pos = pos;
           var nameIndex = record.name;
-          var encoding = record.encoding ? 1 : 0;
           if (record.encoding) {
             // unicode
             var str = '';
@@ -3743,7 +3739,7 @@ var Font = (function FontClosure() {
       }
 
       font.pos = (font.start || 0) + tables.maxp.offset;
-      var version = font.getUint32();
+      var version = font.getInt32();
       var numGlyphs = font.getUint16();
       var maxFunctionDefs = 0;
       if (version >= 0x00010000 && tables.maxp.length >= 22) {
@@ -4030,8 +4026,6 @@ var Font = (function FontClosure() {
       // to write the table entry information about a table and another offset
       // representing the offset where to draw the actual data of a particular
       // table
-      var REQ_TABLES_CNT = 9;
-
       var otf = {
         file: '',
         virtualOffset: 9 * (4 * 4)
@@ -4158,17 +4152,17 @@ var Font = (function FontClosure() {
             '\x00\x00' + // -reserved-
             '\x00\x00' + // -reserved-
             '\x00\x00' + // metricDataFormat
-            string16(numGlyphs + 1)); // Number of HMetrics
+            string16(numGlyphs)); // Number of HMetrics
         })(),
 
         // Horizontal metrics
         'hmtx': (function fontFieldsHmtx() {
           var charstrings = font.charstrings;
           var hmtx = '\x00\x00\x00\x00'; // Fake .notdef
-          for (var i = 0, ii = numGlyphs; i < ii; i++) {
+          for (var i = 1, ii = numGlyphs; i < ii; i++) {
             // TODO: For CFF fonts the width should technically match th x in
             // the glyph, but it doesn't seem to matter.
-            var charstring = charstrings ? charstrings[i] : {};
+            var charstring = charstrings ? charstrings[i - 1] : {};
             var width = 'width' in charstring ? charstring.width : 0;
             hmtx += string16(width) + string16(0);
           }
@@ -4179,7 +4173,7 @@ var Font = (function FontClosure() {
         'maxp': (function fontFieldsMaxp() {
           return stringToArray(
             '\x00\x00\x50\x00' + // Version number
-            string16(numGlyphs + 1)); // Num of glyphs
+            string16(numGlyphs)); // Num of glyphs
         })(),
 
         // Naming tables
@@ -4882,18 +4876,46 @@ var Type1Parser = (function Type1ParserClosure() {
   var EEXEC_ENCRYPT_KEY = 55665;
   var CHAR_STRS_ENCRYPT_KEY = 4330;
 
-  function decrypt(stream, key, discardNumber) {
-    var r = key, c1 = 52845, c2 = 22719;
-    var decryptedString = [];
+  function isHexDigit(code) {
+    return code >= 48 && code <= 57 || // '0'-'9'
+           code >= 65 && code <= 70 || // 'A'-'F'
+           code >= 97 && code <= 102;  // 'a'-'f'
+  }
 
-    var value = '';
-    var count = stream.length;
+  function decrypt(data, key, discardNumber) {
+    var r = key | 0, c1 = 52845, c2 = 22719;
+    var count = data.length;
+    var decrypted = new Uint8Array(count);
     for (var i = 0; i < count; i++) {
-      value = stream[i];
-      decryptedString[i] = value ^ (r >> 8);
+      var value = data[i];
+      decrypted[i] = value ^ (r >> 8);
       r = ((value + r) * c1 + c2) & ((1 << 16) - 1);
     }
-    return decryptedString.slice(discardNumber);
+    return Array.prototype.slice.call(decrypted, discardNumber);
+  }
+
+  function decryptAscii(data, key, discardNumber) {
+    var r = key | 0, c1 = 52845, c2 = 22719;
+    var count = data.length, maybeLength = count >>> 1;
+    var decrypted = new Uint8Array(maybeLength);
+    var i, j;
+    for (i = 0, j = 0; i < count; i++) {
+      var digit1 = data[i];
+      if (!isHexDigit(digit1)) {
+        continue;
+      }
+      i++;
+      var digit2;
+      while (i < count && !isHexDigit(digit2 = data[i])) {
+        i++;
+      }
+      if (i < count) {
+        var value = parseInt(String.fromCharCode(digit1, digit2), 16);
+        decrypted[j++] = value ^ (r >> 8);
+        r = ((value + r) * c1 + c2) & ((1 << 16) - 1);
+      }
+    }
+    return Array.prototype.slice.call(decrypted, discardNumber, j);
   }
 
   function isSpecial(c) {
@@ -4905,7 +4927,11 @@ var Type1Parser = (function Type1ParserClosure() {
 
   function Type1Parser(stream, encrypted) {
     if (encrypted) {
-      stream = new Stream(decrypt(stream.getBytes(), EEXEC_ENCRYPT_KEY, 4));
+      var data = stream.getBytes();
+      var isBinary = !(isHexDigit(data[0]) && isHexDigit(data[1]) &&
+                       isHexDigit(data[2]) && isHexDigit(data[3]));
+      stream = new Stream(isBinary ? decrypt(data, EEXEC_ENCRYPT_KEY, 4) :
+                          decryptAscii(data, EEXEC_ENCRYPT_KEY, 4));
     }
     this.stream = stream;
     this.nextChar();
@@ -5296,7 +5322,7 @@ var Type1Font = function Type1Font(name, file, properties) {
 
 Type1Font.prototype = {
   get numGlyphs() {
-    return this.charstrings.length;
+    return this.charstrings.length + 1;
   },
 
   getCharset: function Type1Font_getCharset() {
@@ -5812,7 +5838,6 @@ var CFFParser = (function CFFParserClosure() {
       var bytes = this.bytes;
       var count = (bytes[pos++] << 8) | bytes[pos++];
       var offsets = [];
-      var start = pos;
       var end = pos;
       var i, ii;
 
@@ -5855,7 +5880,7 @@ var CFFParser = (function CFFParserClosure() {
           if ((c < 33 || c > 126) || c === 91 /* [ */ || c === 93 /* ] */ ||
               c === 40 /* ( */ || c === 41 /* ) */ || c === 123 /* { */ ||
               c === 125 /* } */ || c === 60 /* < */ || c === 62 /* > */ ||
-              c === 47 /* / */ || c === 37 /* % */) {
+              c === 47 /* / */ || c === 37 /* % */ || c === 35 /* # */) {
             data[j] = 95;
             continue;
           }
@@ -5875,8 +5900,6 @@ var CFFParser = (function CFFParserClosure() {
     },
     createDict: function CFFParser_createDict(Type, dict, strings) {
       var cffDict = new Type(strings);
-      var types = cffDict.types;
-
       for (var i = 0, ii = dict.length; i < ii; ++i) {
         var pair = dict[i];
         var key = pair[0];
@@ -6444,11 +6467,6 @@ var CFFCharsetPredefinedTypes = {
   EXPERT: 1,
   EXPERT_SUBSET: 2
 };
-var CFFCharsetEmbeddedTypes = {
-  FORMAT0: 0,
-  FORMAT1: 1,
-  FORMAT2: 2
-};
 var CFFCharset = (function CFFCharsetClosure() {
   function CFFCharset(predefined, format, charset, raw) {
     this.predefined = predefined;
@@ -6459,14 +6477,6 @@ var CFFCharset = (function CFFCharsetClosure() {
   return CFFCharset;
 })();
 
-var CFFEncodingPredefinedTypes = {
-  STANDARD: 0,
-  EXPERT: 1
-};
-var CFFCharsetEmbeddedTypes = {
-  FORMAT0: 0,
-  FORMAT1: 1
-};
 var CFFEncoding = (function CFFEncodingClosure() {
   function CFFEncoding(predefined, format, encoding, raw) {
     this.predefined = predefined;
@@ -6930,7 +6940,6 @@ var CFFCompiler = (function CFFCompilerClosure() {
           relativeOffset += objects[i].length;
         }
       }
-      var offset = data.length;
 
       for (i = 0; i < count; i++) {
         // Notify the tracker where the object will be offset in the data.

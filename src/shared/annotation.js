@@ -129,6 +129,7 @@ var Annotation = (function AnnotationClosure() {
 
     this.appearance = getDefaultAppearance(dict);
     data.hasAppearance = !!this.appearance;
+    data.id = params.ref.num;
   }
 
   Annotation.prototype = {
@@ -236,8 +237,6 @@ var Annotation = (function AnnotationClosure() {
       var bbox = appearanceDict.get('BBox') || [0, 0, 1, 1];
       var matrix = appearanceDict.get('Matrix') || [1, 0, 0, 1, 0 ,0];
       var transform = getTransformMatrix(data.rect, bbox, matrix);
-
-      var border = data.border;
 
       resourcesPromise.then(function(resources) {
         var opList = new OperatorList();
@@ -464,7 +463,6 @@ var TextWidgetAnnotation = (function TextWidgetAnnotationClosure() {
   }
 
 
-  var parent = WidgetAnnotation.prototype;
   Util.inherit(TextWidgetAnnotation, WidgetAnnotation, {
     hasHtml: function TextWidgetAnnotation_hasHtml() {
       return !this.data.hasAppearance && !!this.data.fieldValue;
@@ -487,7 +485,7 @@ var TextWidgetAnnotation = (function TextWidgetAnnotationClosure() {
 
       var fontObj = item.fontRefName ?
                     commonObjs.getData(item.fontRefName) : null;
-      var cssRules = setTextStyles(content, item, fontObj);
+      setTextStyles(content, item, fontObj);
 
       element.appendChild(content);
 
@@ -519,7 +517,6 @@ var TextWidgetAnnotation = (function TextWidgetAnnotationClosure() {
       var appearanceFnArray = opList.fnArray;
       var appearanceArgsArray = opList.argsArray;
       var fnArray = [];
-      var argsArray = [];
 
       // TODO(mack): Add support for stroke color
       data.rgb = [0, 0, 0];
@@ -735,7 +732,6 @@ var TextAnnotation = (function TextAnnotationClosure() {
           }
         };
 
-        var self = this;
         image.addEventListener('click', function image_clickHandler() {
           toggleAnnotation();
         }, false);
@@ -840,7 +836,6 @@ var LinkAnnotation = (function LinkAnnotationClosure() {
       container.className = 'annotLink';
 
       var item = this.data;
-      var rect = item.rect;
 
       container.style.borderColor = item.colorCssRgb;
       container.style.borderStyle = 'solid';
