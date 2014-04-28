@@ -19,7 +19,8 @@
            getFileName, scrollIntoView, getPDFFileNameFromURL, PDFHistory,
            Preferences, ViewHistory, PageView, ThumbnailView, URL,
            noContextMenuHandler, SecondaryToolbar, PasswordPrompt,
-           PresentationMode, HandTool, Promise, DocumentProperties */
+           PresentationMode, HandTool, Promise, DocumentProperties,
+           DocumentOutlineView, DocumentAttachmentsView */
 
 'use strict';
 
@@ -242,6 +243,9 @@ var PDFView = {
     state.down = true;
     state.lastY = viewAreaElement.scrollTop;
     viewAreaElement.addEventListener('scroll', function webViewerScroll(evt) {
+      if (!PDFView.pdfDocument) {
+        return;
+      }
       var currentY = viewAreaElement.scrollTop;
       var lastY = state.lastY;
       if (currentY > lastY) {
@@ -883,7 +887,7 @@ var PDFView = {
     // that we discard some of the loaded data. This can cause the loading
     // bar to move backwards. So prevent this by only updating the bar if it
     // increases.
-    if (percent > PDFView.loadingBar.percent) {
+    if (percent > PDFView.loadingBar.percent || isNaN(percent)) {
       PDFView.loadingBar.percent = percent;
     }
   },
@@ -1633,91 +1637,8 @@ var PDFView = {
 //#include page_view.js
 //#include thumbnail_view.js
 //#include text_layer_builder.js
-
-var DocumentOutlineView = function documentOutlineView(outline) {
-  var outlineView = document.getElementById('outlineView');
-  while (outlineView.firstChild) {
-    outlineView.removeChild(outlineView.firstChild);
-  }
-
-  if (!outline) {
-    if (!outlineView.classList.contains('hidden')) {
-      PDFView.switchSidebarView('thumbs');
-    }
-    return;
-  }
-
-  function bindItemLink(domObj, item) {
-    domObj.href = PDFView.getDestinationHash(item.dest);
-    domObj.onclick = function documentOutlineViewOnclick(e) {
-      PDFView.navigateTo(item.dest);
-      return false;
-    };
-  }
-
-
-  var queue = [{parent: outlineView, items: outline}];
-  while (queue.length > 0) {
-    var levelData = queue.shift();
-    var i, n = levelData.items.length;
-    for (i = 0; i < n; i++) {
-      var item = levelData.items[i];
-      var div = document.createElement('div');
-      div.className = 'outlineItem';
-      var a = document.createElement('a');
-      bindItemLink(a, item);
-      a.textContent = item.title;
-      div.appendChild(a);
-
-      if (item.items.length > 0) {
-        var itemsDiv = document.createElement('div');
-        itemsDiv.className = 'outlineItems';
-        div.appendChild(itemsDiv);
-        queue.push({parent: itemsDiv, items: item.items});
-      }
-
-      levelData.parent.appendChild(div);
-    }
-  }
-};
-
-var DocumentAttachmentsView = function documentAttachmentsView(attachments) {
-  var attachmentsView = document.getElementById('attachmentsView');
-  while (attachmentsView.firstChild) {
-    attachmentsView.removeChild(attachmentsView.firstChild);
-  }
-
-  if (!attachments) {
-    if (!attachmentsView.classList.contains('hidden')) {
-      PDFView.switchSidebarView('thumbs');
-    }
-    return;
-  }
-
-  function bindItemLink(domObj, item) {
-    domObj.href = '#';
-    domObj.onclick = function documentAttachmentsViewOnclick(e) {
-      var downloadManager = new DownloadManager();
-      downloadManager.downloadData(item.content, getFileName(item.filename),
-                                   '');
-      return false;
-    };
-  }
-
-  var names = Object.keys(attachments).sort(function(a,b) {
-    return a.toLowerCase().localeCompare(b.toLowerCase());
-  });
-  for (var i = 0, ii = names.length; i < ii; i++) {
-    var item = attachments[names[i]];
-    var div = document.createElement('div');
-    div.className = 'attachmentsItem';
-    var a = document.createElement('a');
-    bindItemLink(a, item);
-    a.textContent = getFileName(item.filename);
-    div.appendChild(a);
-    attachmentsView.appendChild(div);
-  }
-};
+//#include document_outline_view.js
+//#include document_attachments_view.js
 
 //#if CHROME
 //(function rewriteUrlClosure() {
@@ -2049,13 +1970,14 @@ function updateViewarea() {
     PDFView.currentPosition = { page: pageNumber, left: intLeft, top: intTop };
   }
 
-  var store = PDFView.store;
-  store.initializedPromise.then(function() {
-    store.set('exists', true);
-    store.set('page', pageNumber);
-    store.set('zoom', normalizedScaleValue);
-    store.set('scrollLeft', intLeft);
-    store.set('scrollTop', intTop);
+  PDFView.store.initializedPromise.then(function() {
+    PDFView.store.setMultiple({
+      'exists': true,
+      'page': pageNumber,
+      'zoom': normalizedScaleValue,
+      'scrollLeft': intLeft,
+      'scrollTop': intTop
+    });
   });
   var href = PDFView.getAnchorUrl(pdfOpenParams);
   document.getElementById('viewBookmark').href = href;
