@@ -49,16 +49,16 @@ var otherFiles = [
   'core/stream.js',
   'core/worker.js',
   'core/arithmetic_decoder.js',
+  'core/jpg.js',
   'core/jpx.js',
   'core/jbig2.js',
   'core/bidi.js',
-  'core/murmurhash3.js',
-  '../external/jpgjs/jpg.js'
+  'core/murmurhash3.js'
 ];
 
 function loadInOrder(index, path, files) {
   if (index >= files.length) {
-    PDFJS.fakeWorkerFilesLoadedPromise.resolve();
+    PDFJS.fakeWorkerFilesLoadedCapability.resolve();
     return;
   }
   PDFJS.Util.loadScript(path + files[index],
@@ -66,7 +66,7 @@ function loadInOrder(index, path, files) {
 }
 
 // Load all the files.
-if (typeof PDFJS === 'undefined' || !PDFJS.fakeWorkerFilesLoadedPromise) {
+if (typeof PDFJS === 'undefined' || !PDFJS.fakeWorkerFilesLoadedCapability) {
   var files = sharedFiles.concat(otherFiles);
   for (var i = 0; i < files.length; i++) {
     importScripts(files[i]);
