@@ -17,7 +17,7 @@
 /* globals error, globalScope, InvalidPDFException, info,
            MissingPDFException, PasswordException, PDFJS, Promise,
            UnknownErrorException, NetworkManager, LocalPdfManager,
-           NetworkPdfManager, XRefParseException, LegacyPromise,
+           NetworkPdfManager, XRefParseException, createPromiseCapability,
            isInt, PasswordResponses, MessageHandler, Ref, RANGE_CHUNK_SIZE */
 
 'use strict';
@@ -27,36 +27,26 @@ var WorkerMessageHandler = PDFJS.WorkerMessageHandler = {
     var pdfManager;
 
     function loadDocument(recoveryMode) {
-      var loadDocumentPromise = new LegacyPromise();
+      var loadDocumentCapability = createPromiseCapability();
 
       var parseSuccess = function parseSuccess() {
         var numPagesPromise = pdfManager.ensureDoc('numPages');
         var fingerprintPromise = pdfManager.ensureDoc('fingerprint');
-        var outlinePromise = pdfManager.ensureCatalog('documentOutline');
-        var infoPromise = pdfManager.ensureDoc('documentInfo');
-        var metadataPromise = pdfManager.ensureCatalog('metadata');
         var encryptedPromise = pdfManager.ensureXRef('encrypt');
-        var javaScriptPromise = pdfManager.ensureCatalog('javaScript');
-        Promise.all([numPagesPromise, fingerprintPromise, outlinePromise,
-                     infoPromise, metadataPromise, encryptedPromise,
-                     javaScriptPromise]).then(function onDocReady(results) {
-
+        Promise.all([numPagesPromise, fingerprintPromise,
+                     encryptedPromise]).then(function onDocReady(results) {
           var doc = {
             numPages: results[0],
             fingerprint: results[1],
-            outline: results[2],
-            info: results[3],
-            metadata: results[4],
-            encrypted: !!results[5],
-            javaScript: results[6]
+            encrypted: !!results[2],
           };
-          loadDocumentPromise.resolve(doc);
+          loadDocumentCapability.resolve(doc);
         },
         parseFailure);
       };
 
       var parseFailure = function parseFailure(e) {
-        loadDocumentPromise.reject(e);
+        loadDocumentCapability.reject(e);
       };
 
       pdfManager.ensureDoc('checkHeader', []).then(function() {
@@ -66,30 +56,30 @@ var WorkerMessageHandler = PDFJS.WorkerMessageHandler = {
         }, parseFailure);
       }, parseFailure);
 
-      return loadDocumentPromise;
+      return loadDocumentCapability.promise;
     }
 
     function getPdfManager(data) {
-      var pdfManagerPromise = new LegacyPromise();
+      var pdfManagerCapability = createPromiseCapability();
 
       var source = data.source;
       var disableRange = data.disableRange;
       if (source.data) {
         try {
           pdfManager = new LocalPdfManager(source.data, source.password);
-          pdfManagerPromise.resolve();
+          pdfManagerCapability.resolve();
         } catch (ex) {
-          pdfManagerPromise.reject(ex);
+          pdfManagerCapability.reject(ex);
         }
-        return pdfManagerPromise;
+        return pdfManagerCapability.promise;
       } else if (source.chunkedViewerLoading) {
         try {
           pdfManager = new NetworkPdfManager(source, handler);
-          pdfManagerPromise.resolve();
+          pdfManagerCapability.resolve();
         } catch (ex) {
-          pdfManagerPromise.reject(ex);
+          pdfManagerCapability.reject(ex);
         }
-        return pdfManagerPromise;
+        return pdfManagerCapability.promise;
       }
 
       var networkManager = new NetworkManager(source.url, {
@@ -134,9 +124,9 @@ var WorkerMessageHandler = PDFJS.WorkerMessageHandler = {
 
           try {
             pdfManager = new NetworkPdfManager(source, handler);
-            pdfManagerPromise.resolve(pdfManager);
+            pdfManagerCapability.resolve(pdfManager);
           } catch (ex) {
-            pdfManagerPromise.reject(ex);
+            pdfManagerCapability.reject(ex);
           }
         },
 
@@ -144,9 +134,9 @@ var WorkerMessageHandler = PDFJS.WorkerMessageHandler = {
           // the data is array, instantiating directly from it
           try {
             pdfManager = new LocalPdfManager(args.chunk, source.password);
-            pdfManagerPromise.resolve();
+            pdfManagerCapability.resolve();
           } catch (ex) {
-            pdfManagerPromise.reject(ex);
+            pdfManagerCapability.reject(ex);
           }
         },
 
@@ -170,7 +160,7 @@ var WorkerMessageHandler = PDFJS.WorkerMessageHandler = {
         }
       });
 
-      return pdfManagerPromise;
+      return pdfManagerCapability.promise;
     }
 
     handler.on('test', function wphSetupTest(data) {
@@ -253,8 +243,7 @@ var WorkerMessageHandler = PDFJS.WorkerMessageHandler = {
             if (ex instanceof PasswordException) {
               // after password exception prepare to receive a new password
               // to repeat loading
-              pdfManager.passwordChangedPromise = new LegacyPromise();
-              pdfManager.passwordChangedPromise.then(pdfManagerReady);
+              pdfManager.passwordChanged().then(pdfManagerReady);
             }
 
             onFailure(ex);
@@ -310,6 +299,32 @@ var WorkerMessageHandler = PDFJS.WorkerMessageHandler = {
       function wphSetupGetAttachments(data, deferred) {
         pdfManager.ensureCatalog('attachments').then(function(attachments) {
           deferred.resolve(attachments);
+        }, deferred.reject);
+      }
+    );
+
+    handler.on('GetJavaScript',
+      function wphSetupGetJavaScript(data, deferred) {
+        pdfManager.ensureCatalog('javaScript').then(function (js) {
+          deferred.resolve(js);
+        }, deferred.reject);
+      }
+    );
+
+    handler.on('GetOutline',
+      function wphSetupGetOutline(data, deferred) {
+        pdfManager.ensureCatalog('documentOutline').then(function (outline) {
+          deferred.resolve(outline);
+        }, deferred.reject);
+      }
+    );
+
+    handler.on('GetMetadata',
+      function wphSetupGetMetadata(data, deferred) {
+        Promise.all([pdfManager.ensureDoc('documentInfo'),
+                     pdfManager.ensureCatalog('metadata')]).then(
+            function (results) {
+          deferred.resolve(results);
         }, deferred.reject);
       }
     );
