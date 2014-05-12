@@ -370,8 +370,8 @@ var PDFDocumentProxy = (function PDFDocumentProxyClosure() {
  *
  * @typedef {Object} RenderParameters
  * @property {Object} canvasContext - A 2D context of a DOM Canvas object.
- * @property {PageViewport} viewport - Rendering viewport obtained by
- *                          calling of PDFPage.getViewport method.
+ * @property {PDFJS.PageViewport} viewport - Rendering viewport obtained by
+ *                                calling of PDFPage.getViewport method.
  * @property {string} intent - Rendering intent, can be 'display' or 'print'
  *                    (default value is 'display').
  * @property {Object} imageLayer - (optional) An object that has beginLayout,
@@ -429,8 +429,8 @@ var PDFPageProxy = (function PDFPageProxyClosure() {
      * @param {number} scale The desired scale of the viewport.
      * @param {number} rotate Degrees to rotate the viewport. If omitted this
      * defaults to the page rotation.
-     * @return {PageViewport} Contains 'width' and 'height' properties along
-     * with transforms required for rendering.
+     * @return {PDFJS.PageViewport} Contains 'width' and 'height' properties
+     * along with transforms required for rendering.
      */
     getViewport: function PDFPageProxy_getViewport(scale, rotate) {
       if (arguments.length < 2) {
@@ -1005,7 +1005,7 @@ var WorkerTransport = (function WorkerTransportClosure() {
     getPage: function WorkerTransport_getPage(pageNumber, capability) {
       if (pageNumber <= 0 || pageNumber > this.numPages ||
           (pageNumber|0) !== pageNumber) {
-        return new Promise.reject(new Error('Invalid page request'));
+        return Promise.reject(new Error('Invalid page request'));
       }
 
       var pageIndex = pageNumber - 1;
@@ -1271,6 +1271,10 @@ var InternalRenderTask = (function InternalRenderTaskClosure() {
     this.graphicsReady = false;
     this.cancelled = false;
     this.capability = createPromiseCapability();
+    // caching this-bound methods
+    this._continueBound = this._continue.bind(this);
+    this._scheduleNextBound = this._scheduleNext.bind(this);
+    this._nextBound = this._next.bind(this);
   }
 
   InternalRenderTask.prototype = {
@@ -1309,7 +1313,7 @@ var InternalRenderTask = (function InternalRenderTaskClosure() {
     operatorListChanged: function InternalRenderTask_operatorListChanged() {
       if (!this.graphicsReady) {
         if (!this.graphicsReadyCallback) {
-          this.graphicsReadyCallback = this._continue.bind(this);
+          this.graphicsReadyCallback = this._continueBound;
         }
         return;
       }
@@ -1330,10 +1334,14 @@ var InternalRenderTask = (function InternalRenderTaskClosure() {
         return;
       }
       if (this.params.continueCallback) {
-        this.params.continueCallback(this._next.bind(this));
+        this.params.continueCallback(this._scheduleNextBound);
       } else {
-        this._next();
+        this._scheduleNext();
       }
+    },
+
+    _scheduleNext: function InternalRenderTask__scheduleNext() {
+      window.requestAnimationFrame(this._nextBound);
     },
 
     _next: function InternalRenderTask__next() {
@@ -1342,7 +1350,7 @@ var InternalRenderTask = (function InternalRenderTaskClosure() {
       }
       this.operatorListIdx = this.gfx.executeOperatorList(this.operatorList,
                                         this.operatorListIdx,
-                                        this._continue.bind(this),
+                                        this._continueBound,
                                         this.stepper);
       if (this.operatorListIdx === this.operatorList.argsArray.length) {
         this.running = false;
