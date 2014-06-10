@@ -430,10 +430,12 @@ var FlateStream = (function FlateStreamClosure() {
     var codeSize = this.codeSize;
     var codeBuf = this.codeBuf;
 
+    var b;
     while (codeSize < maxLen) {
-      var b;
       if ((b = str.getByte()) === -1) {
-        error('Bad encoding in flate stream');
+        // premature end of stream. code might however still be valid.
+        // codeSize < codeLen check below guards against incomplete codeVal.
+        break;
       }
       codeBuf |= (b << codeSize);
       codeSize += 8;
@@ -441,7 +443,7 @@ var FlateStream = (function FlateStreamClosure() {
     var code = codes[codeBuf & ((1 << maxLen) - 1)];
     var codeLen = code >> 16;
     var codeVal = code & 0xffff;
-    if (codeSize === 0 || codeSize < codeLen || codeLen === 0) {
+    if (codeLen < 1 || codeSize < codeLen) {
       error('Bad encoding in flate stream');
     }
     this.codeBuf = (codeBuf >> codeLen);
@@ -878,9 +880,27 @@ var JpegStream = (function JpegStreamClosure() {
     }
     try {
       var jpegImage = new JpegImage();
-      if (this.colorTransform != -1) {
-        jpegImage.colorTransform = this.colorTransform;
+
+      // checking if values needs to be transformed before conversion
+      if (this.dict && isArray(this.dict.get('Decode'))) {
+        var decodeArr = this.dict.get('Decode');
+        var bitsPerComponent = this.dict.get('BitsPerComponent') || 8;
+        var decodeArrLength = decodeArr.length;
+        var transform = new Int32Array(decodeArrLength);
+        var transformNeeded = false;
+        var maxValue = (1 << bitsPerComponent) - 1;
+        for (var i = 0; i < decodeArrLength; i += 2) {
+          transform[i] = ((decodeArr[i + 1] - decodeArr[i]) * 256) | 0;
+          transform[i + 1] = (decodeArr[i] * maxValue) | 0;
+          if (transform[i] !== 256 || transform[i + 1] !== 0) {
+            transformNeeded = true;
+          }
+        }
+        if (transformNeeded) {
+          jpegImage.decodeTransform = transform;
+        }
       }
+
       jpegImage.parse(this.bytes);
       var data = jpegImage.getData(this.drawWidth, this.drawHeight,
                                    /* forceRGBoutput = */true);

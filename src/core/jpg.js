@@ -159,6 +159,9 @@ var JpegImage = (function jpegImage() {
     }
 
     function receiveAndExtend(length) {
+      if (length === 1) {
+        return readBit() === 1 ? 1 : -1;
+      }
       var n = receive(length);
       if (n >= 1 << (length - 1)) {
         return n;
@@ -540,13 +543,10 @@ var JpegImage = (function jpegImage() {
   }
 
   function buildComponentData(frame, component) {
-    var lines = [];
     var blocksPerLine = component.blocksPerLine;
     var blocksPerColumn = component.blocksPerColumn;
-    var samplesPerLine = blocksPerLine << 3;
     var computationBuffer = new Int32Array(64);
 
-    var i, j, ll = 0;
     for (var blockRow = 0; blockRow < blocksPerColumn; blockRow++) {
       for (var blockCol = 0; blockCol < blocksPerLine; blockCol++) {
         var offset = getBlockBufferOffset(component, blockRow, blockCol);
@@ -811,7 +811,7 @@ var JpegImage = (function jpegImage() {
       var scaleX = this.width / width, scaleY = this.height / height;
 
       var component, componentScaleX, componentScaleY, blocksPerScanline;
-      var x, y, i, j;
+      var x, y, i, j, k;
       var index;
       var offset = 0;
       var output;
@@ -843,6 +843,17 @@ var JpegImage = (function jpegImage() {
           }
         }
       }
+
+      // decodeTransform will contains pairs of multiplier (-256..256) and
+      // additive
+      var transform = this.decodeTransform;
+      if (transform) {
+        for (i = 0; i < dataLength;) {
+          for (j = 0, k = 0; j < numComponents; j++, i++, k += 2) {
+            data[i] = ((data[i] * transform[k]) >> 8) + transform[k + 1];
+          }
+        }
+      }
       return data;
     },
 
@@ -852,8 +863,6 @@ var JpegImage = (function jpegImage() {
         return true;
       } else if (this.numComponents == 3) {
         return true;
-      } else if (typeof this.colorTransform !== 'undefined') {
-        return !!this.colorTransform;
       } else {
         return false;
       }
@@ -861,7 +870,7 @@ var JpegImage = (function jpegImage() {
 
     _convertYccToRgb: function convertYccToRgb(data) {
       var Y, Cb, Cr;
-      for (var i = 0; i < data.length; i += this.numComponents) {
+      for (var i = 0, length = data.length; i < length; i += 3) {
         Y  = data[i    ];
         Cb = data[i + 1];
         Cr = data[i + 2];
@@ -875,7 +884,7 @@ var JpegImage = (function jpegImage() {
     _convertYcckToRgb: function convertYcckToRgb(data) {
       var Y, Cb, Cr, k, CbCb, CbCr, CbY, Cbk, CrCr, Crk, CrY, YY, Yk, kk;
       var offset = 0;
-      for (var i = 0; i < data.length; i += this.numComponents) {
+      for (var i = 0, length = data.length; i < length; i += 4) {
         Y  = data[i];
         Cb = data[i + 1];
         Cr = data[i + 2];
@@ -928,7 +937,7 @@ var JpegImage = (function jpegImage() {
 
     _convertYcckToCmyk: function convertYcckToCmyk(data) {
       var Y, Cb, Cr;
-      for (var i = 0; i < data.length; i += this.numComponents) {
+      for (var i = 0, length = data.length; i < length; i += 4) {
         Y  = data[i];
         Cb = data[i + 1];
         Cr = data[i + 2];
@@ -943,14 +952,13 @@ var JpegImage = (function jpegImage() {
     _convertCmykToRgb: function convertCmykToRgb(data) {
       var c, m, y, k;
       var offset = 0;
-      var length = data.length;
       var min = -255 * 255 * 255;
       var scale = 1 / 255 / 255;
-      for (var i = 0; i < length;) {
-        c = data[i++];
-        m = data[i++];
-        y = data[i++];
-        k = data[i++];
+      for (var i = 0, length = data.length; i < length; i += 4) {
+        c = data[i];
+        m = data[i + 1];
+        y = data[i + 2];
+        k = data[i + 3];
 
         var r =
           c * (-4.387332384609988 * c + 54.48615194189176 * m +
