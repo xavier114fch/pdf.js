@@ -266,6 +266,9 @@ var Parser = (function ParserClosure() {
         while (stream.pos < stream.end) {
           var scanBytes = stream.peekBytes(SCAN_BLOCK_SIZE);
           var scanLength = scanBytes.length - ENDSTREAM_SIGNATURE_LENGTH;
+          if (scanLength <= 0) {
+            break;
+          }
           found = false;
           for (i = 0, j = 0; i < scanLength; i++) {
             var b = scanBytes[i];
@@ -755,19 +758,19 @@ var Lexer = (function LexerClosure() {
       // command
       var str = String.fromCharCode(ch);
       var knownCommands = this.knownCommands;
-      var knownCommandFound = knownCommands && (str in knownCommands);
+      var knownCommandFound = knownCommands && knownCommands[str] !== undefined;
       while ((ch = this.nextChar()) >= 0 && !specialChars[ch]) {
         // stop if known command is found and next character does not make
         // the str a command
         var possibleCommand = str + String.fromCharCode(ch);
-        if (knownCommandFound && !(possibleCommand in knownCommands)) {
+        if (knownCommandFound && knownCommands[possibleCommand] === undefined) {
           break;
         }
         if (str.length === 128) {
           error('Command token too long: ' + str.length);
         }
         str = possibleCommand;
-        knownCommandFound = knownCommands && (str in knownCommands);
+        knownCommandFound = knownCommands && knownCommands[str] !== undefined;
       }
       if (str === 'true') {
         return true;
