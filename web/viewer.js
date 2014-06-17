@@ -1570,6 +1570,12 @@ var PDFView = {
     for (i = 0, ii = this.pages.length; i < ii; ++i) {
       this.pages[i].beforePrint();
     }
+
+//#if (FIREFOX || MOZCENTRAL)
+//    FirefoxCom.request('reportTelemetry', JSON.stringify({
+//      type: 'print'
+//    }));
+//#endif
   },
 
   afterPrint: function pdfViewSetupAfterPrint() {
@@ -2453,9 +2459,12 @@ window.addEventListener('afterprint', function afterPrint(evt) {
 
 //#if B2G
 //window.navigator.mozSetMessageHandler('activity', function(activity) {
-//  var url = activity.source.data.url;
+//  var blob = activity.source.data.blob;
 //  PDFJS.maxImageSize = 1024 * 1024;
+//
+//  var url = URL.createObjectURL(blob);
 //  PDFView.open(url);
+//
 //  var cancelButton = document.getElementById('activityClose');
 //  cancelButton.addEventListener('click', function() {
 //    activity.postResult('close');
