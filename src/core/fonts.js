@@ -19,7 +19,7 @@
            isNum, ISOAdobeCharset, Stream, stringToArray, stringToBytes,
            string32, TextDecoder, warn, Lexer, Util, FONT_IDENTITY_MATRIX,
            FontRendererFactory, shadow, isString, IdentityCMap, Name,
-           CMapFactory, PDFJS */
+           CMapFactory, PDFJS, readUint32, FontType */
 
 'use strict';
 
@@ -431,7 +431,7 @@ var symbolsFonts = {
 // glyphs, but common for some set of the standard fonts.
 var GlyphMapForStandardFonts = {
   '2': 10, '3': 32, '4': 33, '5': 34, '6': 35, '7': 36, '8': 37, '9': 38,
-  '10': 39, '11': 40, '12': 41, '13': 42, '14': 43, '15': 44, '16': 173,
+  '10': 39, '11': 40, '12': 41, '13': 42, '14': 43, '15': 44, '16': 45,
   '17': 46, '18': 47, '19': 48, '20': 49, '21': 50, '22': 51, '23': 52,
   '24': 53, '25': 54, '26': 55, '27': 56, '28': 57, '29': 58, '30': 894,
   '31': 60, '32': 61, '33': 62, '34': 63, '35': 64, '36': 65, '37': 66,
@@ -455,7 +455,9 @@ var GlyphMapForStandardFonts = {
   '149': 8805, '150': 165, '151': 181, '152': 8706, '153': 8721, '154': 8719,
   '156': 8747, '157': 170, '158': 186, '159': 8486, '160': 230, '161': 248,
   '162': 191, '163': 161, '164': 172, '165': 8730, '166': 402, '167': 8776,
-  '168': 8710, '169': 171, '170': 187, '171': 8230, '210': 218, '305': 963,
+  '168': 8710, '169': 171, '170': 187, '171': 8230, '210': 218, '223': 711,
+  '227': 353, '229': 382, '234': 253, '253': 268, '254': 269, '258': 258,
+  '268': 283, '269': 313, '278': 328, '284': 345, '292': 367, '305': 963,
   '306': 964, '307': 966, '308': 8215, '309': 8252, '310': 8319, '311': 8359,
   '312': 8592, '313': 8593, '337': 9552, '493': 1039, '494': 1040, '705': 1524,
   '706': 8362, '710': 64288, '711': 64298, '759': 1617, '761': 1776,
@@ -2115,24 +2117,46 @@ function adjustWidths(properties) {
   properties.defaultWidth *= scale;
 }
 
+function getFontType(type, subtype) {
+  switch (type) {
+    case 'Type1':
+      return subtype === 'Type1C' ? FontType.TYPE1C : FontType.TYPE1;
+    case 'CIDFontType0':
+      return subtype === 'CIDFontType0C' ? FontType.CIDFONTTYPE0C :
+        FontType.CIDFONTTYPE0;
+    case 'OpenType':
+      return FontType.OPENTYPE;
+    case 'TrueType':
+      return FontType.TRUETYPE;
+    case 'CIDFontType2':
+      return FontType.CIDFONTTYPE2;
+    case 'MMType1':
+      return FontType.MMTYPE1;
+    case 'Type0':
+      return FontType.TYPE0;
+    default:
+      return FontType.UNKNOWN;
+  }
+}
+
 var Glyph = (function GlyphClosure() {
-  function Glyph(fontChar, unicode, accent, width, vmetric, operatorList) {
+  function Glyph(fontChar, unicode, accent, width, vmetric, operatorListId) {
     this.fontChar = fontChar;
     this.unicode = unicode;
     this.accent = accent;
     this.width = width;
     this.vmetric = vmetric;
-    this.operatorList = operatorList;
+    this.operatorListId = operatorListId;
   }
 
   Glyph.prototype.matchesForCache =
-      function(fontChar, unicode, accent, width, vmetric, operatorList) {
+      function(fontChar, unicode, accent, width, vmetric, operatorListId) {
     return this.fontChar === fontChar &&
            this.unicode === unicode &&
            this.accent === accent &&
            this.width === width &&
            this.vmetric === vmetric &&
-           this.operatorList === operatorList;
+           this.operatorListId === operatorListId;
   };
 
   return Glyph;
@@ -2152,8 +2176,7 @@ var Font = (function FontClosure() {
 
     this.name = name;
     this.loadedName = properties.loadedName;
-    this.coded = properties.coded;
-    this.loadCharProcs = properties.coded;
+    this.isType3Font = properties.isType3Font;
     this.sizes = [];
 
     this.glyphCache = {};
@@ -2166,6 +2189,7 @@ var Font = (function FontClosure() {
     this.isMonospace = !!(properties.flags & FontFlags.FixedPitch);
 
     var type = properties.type;
+    var subtype = properties.subtype;
     this.type = type;
 
     this.fallbackName = (this.isMonospace ? 'monospace' :
@@ -2192,6 +2216,7 @@ var Font = (function FontClosure() {
         this.toFontChar[charCode] = (this.differences[charCode] ||
                                      properties.defaultEncoding[charCode]);
       }
+      this.fontType = FontType.TYPE3;
       return;
     }
 
@@ -2202,7 +2227,13 @@ var Font = (function FontClosure() {
       this.defaultVMetrics = properties.defaultVMetrics;
     }
 
-    if (!file) {
+    if (!file || file.isEmpty) {
+      if (file) {
+        // Some bad PDF generators will include empty font files,
+        // attempting to recover by assuming that no file exists.
+        warn('Font file is empty in "' + name + '" (' + this.loadedName + ')');
+      }
+
       this.missingFile = true;
       // The file data is not specified. Trying to fix the font name
       // to be used with the canvas.font.
@@ -2253,13 +2284,18 @@ var Font = (function FontClosure() {
       }
       this.loadedName = fontName.split('-')[0];
       this.loading = false;
+      this.fontType = getFontType(type, subtype);
       return;
     }
 
     // Some fonts might use wrong font types for Type1C or CIDFontType0C
-    var subtype = properties.subtype;
     if (subtype == 'Type1C' && (type != 'Type1' && type != 'MMType1')) {
-      type = 'Type1';
+      // Some TrueType fonts by mistake claim Type1C
+      if (isTrueTypeFile(file)) {
+        subtype = 'TrueType';
+      } else {
+        type = 'Type1';
+      }
     }
     if (subtype == 'CIDFontType0C' && type != 'CIDFontType0') {
       type = 'CIDFontType0';
@@ -2276,7 +2312,7 @@ var Font = (function FontClosure() {
       case 'CIDFontType0':
         this.mimetype = 'font/opentype';
 
-        var cff = (subtype == 'Type1C' || subtype == 'CIDFontType0C') ?
+        var cff = (subtype === 'Type1C' || subtype === 'CIDFontType0C') ?
           new CFFFont(file, properties) : new Type1Font(name, file, properties);
 
         adjustWidths(properties);
@@ -2293,6 +2329,9 @@ var Font = (function FontClosure() {
         // Repair the TrueType file. It is can be damaged in the point of
         // view of the sanitizer
         data = this.checkAndRepair(name, file, properties);
+        if (this.isOpenType) {
+          type = 'OpenType';
+        }
         break;
 
       default:
@@ -2301,6 +2340,7 @@ var Font = (function FontClosure() {
     }
 
     this.data = data;
+    this.fontType = getFontType(type, subtype);
 
     // Transfer some properties again that could change during font conversion
     this.fontMatrix = properties.fontMatrix;
@@ -2407,6 +2447,11 @@ var Font = (function FontClosure() {
     file.virtualOffset += data.length;
   }
 
+  function isTrueTypeFile(file) {
+    var header = file.peekBytes(4);
+    return readUint32(header, 0) === 0x00010000;
+  }
+
   /**
    * Rebuilds the char code to glyph ID map by trying to replace the char codes
    * with their unicode value. It also moves char codes that are in known
@@ -2449,6 +2494,8 @@ var Font = (function FontClosure() {
            fontCharCode === 0x7F || // Control char
            fontCharCode === 0xAD || // Soft hyphen
            (fontCharCode >= 0x80 && fontCharCode <= 0x9F) || // Control chars
+           // Prevent drawing characters in the specials unicode block.
+           (fontCharCode >= 0xFFF0 && fontCharCode <= 0xFFFF) ||
            (isSymbolic && isIdentityUnicode)) &&
           nextAvailableFontCharCode <= PRIVATE_USE_OFFSET_END) { // Room left.
         // Loop to try and find a free spot in the private use area.
@@ -2952,7 +2999,12 @@ var Font = (function FontClosure() {
 
         if (!potentialTable) {
           warn('Could not find a preferred cmap table.');
-          return [];
+          return {
+            platformId: -1,
+            encodingId: -1,
+            mappings: [],
+            hasShortCmap: false
+          };
         }
 
         font.pos = start + potentialTable.offset;
@@ -3728,10 +3780,12 @@ var Font = (function FontClosure() {
         delete tables.fpgm;
         delete tables.prep;
         delete tables['cvt '];
+        this.isOpenType = true;
       } else {
         if (!tables.glyf || !tables.loca) {
           error('Required "glyf" or "loca" tables are not found');
         }
+        this.isOpenType = false;
       }
 
       if (!tables.maxp) {
@@ -4356,7 +4410,7 @@ var Font = (function FontClosure() {
     },
 
     charToGlyph: function Font_charToGlyph(charcode) {
-      var fontCharCode, width, operatorList;
+      var fontCharCode, width, operatorListId;
 
       var widthCode = charcode;
       if (this.cMap && charcode in this.cMap.map) {
@@ -4378,9 +4432,9 @@ var Font = (function FontClosure() {
         fontCharCode = mapSpecialUnicodeValues(fontCharCode);
       }
 
-      if (this.type === 'Type3') {
+      if (this.isType3Font) {
         // Font char code in this case is actually a glyph name.
-        operatorList = this.charProcOperatorList[fontCharCode];
+        operatorListId = fontCharCode;
       }
 
       var accent = null;
@@ -4398,9 +4452,9 @@ var Font = (function FontClosure() {
       var glyph = this.glyphCache[charcode];
       if (!glyph ||
           !glyph.matchesForCache(fontChar, unicode, accent, width, vmetric,
-                                 operatorList)) {
+                                 operatorListId)) {
         glyph = new Glyph(fontChar, unicode, accent, width, vmetric,
-                          operatorList);
+                          operatorListId);
         this.glyphCache[charcode] = glyph;
       }
       return glyph;
@@ -4465,6 +4519,8 @@ var Font = (function FontClosure() {
 var ErrorFont = (function ErrorFontClosure() {
   function ErrorFont(error) {
     this.error = error;
+    this.loadedName = 'g_font_error';
+    this.loading = false;
   }
 
   ErrorFont.prototype = {

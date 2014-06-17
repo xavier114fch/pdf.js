@@ -53,12 +53,28 @@ XPCOMUtils.defineLazyServiceGetter(Svc, 'mime',
                                    '@mozilla.org/mime;1',
                                    'nsIMIMEService');
 
+function getContainingBrowser(domWindow) {
+  return domWindow.QueryInterface(Ci.nsIInterfaceRequestor)
+                  .getInterface(Ci.nsIWebNavigation)
+                  .QueryInterface(Ci.nsIDocShell)
+                  .chromeEventHandler;
+}
+
 function getChromeWindow(domWindow) {
-  var containingBrowser = domWindow.QueryInterface(Ci.nsIInterfaceRequestor)
-                                   .getInterface(Ci.nsIWebNavigation)
-                                   .QueryInterface(Ci.nsIDocShell)
-                                   .chromeEventHandler;
-  return containingBrowser.ownerDocument.defaultView;
+  return getContainingBrowser(domWindow).ownerDocument.defaultView;
+}
+
+function getFindBar(domWindow) {
+  var browser = getContainingBrowser(domWindow);
+  try {
+    var tabbrowser = browser.getTabBrowser();
+    var tab = tabbrowser._getTabForBrowser(browser);
+    return tabbrowser.getFindBar(tab);
+  } catch (e) {
+    // FF22 has no _getTabForBrowser, and FF24 has no getFindBar
+    var chromeWindow = browser.ownerDocument.defaultView;
+    return chromeWindow.gFindBar;
+  }
 }
 
 function setBoolPref(pref, value) {
@@ -144,6 +160,25 @@ function getLocalizedString(strings, id, property) {
   return id;
 }
 
+function makeContentReadable(obj, window) {
+//#if MOZCENTRAL
+  return Cu.cloneInto(obj, window);
+//#else
+  if (Cu.cloneInto) {
+    return Cu.cloneInto(obj, window);
+  }
+  if (typeof obj !== 'object' || obj === null) {
+    return obj;
+  }
+  var expose = {};
+  for (let k in obj) {
+    expose[k] = "r";
+  }
+  obj.__exposedProps__ = expose;
+  return obj;
+//#endif
+}
+
 // PDF data storage
 function PdfDataListener(length) {
   this.length = length; // less than 0, if length is unknown
@@ -212,6 +247,7 @@ function ChromeActions(domWindow, contentDispositionFilename) {
     documentInfo: false,
     firstPageInfo: false,
     streamTypesUsed: [],
+    fontTypesUsed: [],
     startAt: Date.now()
   };
 }
@@ -274,9 +310,10 @@ ChromeActions.prototype = {
       var listener = {
         extListener: null,
         onStartRequest: function(aRequest, aContext) {
-          this.extListener = extHelperAppSvc.doContent((data.isAttachment ? '' :
-                                                        'application/pdf'),
-                                aRequest, frontWindow, false);
+          this.extListener = extHelperAppSvc.doContent(
+            (data.isAttachment ? 'application/octet-stream' :
+                                 'application/pdf'),
+            aRequest, frontWindow, false);
           this.extListener.onStartRequest(aRequest, aContext);
         },
         onStopRequest: function(aRequest, aContext, aStatusCode) {
@@ -316,11 +353,13 @@ ChromeActions.prototype = {
     return getBoolPref(PREF_PREFIX + '.pdfBugEnabled', false);
   },
   supportsIntegratedFind: function() {
-    // Integrated find is only supported when we're not in a frame and when the
-    // new find events code exists.
-    return this.domWindow.frameElement === null &&
-           getChromeWindow(this.domWindow).gFindBar &&
-           'updateControlState' in getChromeWindow(this.domWindow).gFindBar;
+    // Integrated find is only supported when we're not in a frame
+    if (this.domWindow.frameElement !== null) {
+      return false;
+    }
+    // ... and when the new find events code exists.
+    var findBar = getFindBar(this.domWindow);
+    return findBar && ('updateControlState' in findBar);
   },
   supportsDocumentFonts: function() {
     var prefBrowser = getIntPref('browser.display.use_document_fonts', 1);
@@ -350,18 +389,39 @@ ChromeActions.prototype = {
           this.telemetryState.firstPageInfo = true;
         }
         break;
-      case 'streamInfo':
-        if (!Array.isArray(probeInfo.streamTypes)) {
+      case 'documentStats':
+        // documentStats can be called several times for one documents.
+        // if stream/font types are reported, trying not to submit the same
+        // enumeration value multiple times.
+        var documentStats = probeInfo.stats;
+        if (!documentStats || typeof documentStats !== 'object') {
           break;
         }
-        for (var i = 0; i < probeInfo.streamTypes.length; i++) {
-          var streamTypeId = probeInfo.streamTypes[i] | 0;
-          if (streamTypeId >= 0 && streamTypeId < 10 &&
-              !this.telemetryState.streamTypesUsed[streamTypeId]) {
-            PdfJsTelemetry.onStreamType(streamTypeId);
-            this.telemetryState.streamTypesUsed[streamTypeId] = true;
+        var streamTypes = documentStats.streamTypes;
+        if (Array.isArray(streamTypes)) {
+          var STREAM_TYPE_ID_LIMIT = 20;
+          for (var i = 0; i < STREAM_TYPE_ID_LIMIT; i++) {
+            if (streamTypes[i] &&
+                !this.telemetryState.streamTypesUsed[i]) {
+              PdfJsTelemetry.onStreamType(i);
+              this.telemetryState.streamTypesUsed[i] = true;
+            }
           }
         }
+        var fontTypes = documentStats.fontTypes;
+        if (Array.isArray(fontTypes)) {
+          var FONT_TYPE_ID_LIMIT = 20;
+          for (var i = 0; i < FONT_TYPE_ID_LIMIT; i++) {
+            if (fontTypes[i] &&
+                !this.telemetryState.fontTypesUsed[i]) {
+              PdfJsTelemetry.onFontType(i);
+              this.telemetryState.fontTypesUsed[i] = true;
+            }
+          }
+        }
+        break;
+      case 'print':
+        PdfJsTelemetry.onPrint();
         break;
     }
   },
@@ -437,8 +497,7 @@ ChromeActions.prototype = {
         (findPreviousType !== 'undefined' && findPreviousType !== 'boolean')) {
       return;
     }
-    getChromeWindow(this.domWindow).gFindBar
-                                   .updateControlState(result, findPrevious);
+    getFindBar(this.domWindow).updateControlState(result, findPrevious);
   },
   setPreferences: function(prefs, sendResponse) {
     var defaultBranch = Services.prefs.getDefaultBranch(PREF_PREFIX + '.');
@@ -668,7 +727,7 @@ var StandardChromeActions = (function StandardChromeActionsClosure() {
   return StandardChromeActions;
 })();
 
-// Event listener to trigger chrome privedged code.
+// Event listener to trigger chrome privileged code.
 function RequestListener(actions) {
   this.actions = actions;
 }
@@ -686,21 +745,18 @@ RequestListener.prototype.receive = function(event) {
   }
   if (sync) {
     var response = actions[action].call(this.actions, data);
-    var detail = event.detail;
-    detail.__exposedProps__ = {response: 'r'};
-    detail.response = response;
+    event.detail.response = response;
   } else {
     var response;
-    if (!event.detail.callback) {
+    if (!event.detail.responseExpected) {
       doc.documentElement.removeChild(message);
       response = null;
     } else {
       response = function sendResponse(response) {
         try {
           var listener = doc.createEvent('CustomEvent');
-          listener.initCustomEvent('pdf.js.response', true, false,
-                                   {response: response,
-                                    __exposedProps__: {response: 'r'}});
+          let detail = makeContentReadable({response: response}, doc.defaultView);
+          listener.initCustomEvent('pdf.js.response', true, false, detail);
           return message.dispatchEvent(listener);
         } catch (e) {
           // doc is no longer accessible because the requestor is already
@@ -743,13 +799,13 @@ FindEventManager.prototype.handleEvent = function(e) {
   var contentWindow = this.contentWindow;
   // Only forward the events if they are for our dom window.
   if (chromeWindow.gBrowser.selectedBrowser.contentWindow === contentWindow) {
-    var detail = e.detail;
-    detail.__exposedProps__ = {
-      query: 'r',
-      caseSensitive: 'r',
-      highlightAll: 'r',
-      findPrevious: 'r'
+    var detail = {
+      query: e.detail.query,
+      caseSensitive: e.detail.caseSensitive,
+      highlightAll: e.detail.highlightAll,
+      findPrevious: e.detail.findPrevious
     };
+    detail = makeContentReadable(detail, contentWindow);
     var forward = contentWindow.document.createEvent('CustomEvent');
     forward.initCustomEvent(e.type, true, true, detail);
     contentWindow.dispatchEvent(forward);
@@ -916,12 +972,19 @@ PdfStreamConverter.prototype = {
         }, false, true);
         if (actions.supportsIntegratedFind()) {
           var chromeWindow = getChromeWindow(domWindow);
-          var findEventManager = new FindEventManager(chromeWindow.gFindBar,
+          var findBar = getFindBar(domWindow);
+          var findEventManager = new FindEventManager(findBar,
                                                       domWindow,
                                                       chromeWindow);
           findEventManager.bind();
         }
         listener.onStopRequest(aRequest, context, statusCode);
+
+        if (domWindow.frameElement) {
+          var isObjectEmbed = domWindow.frameElement.tagName !== 'IFRAME' ||
+            domWindow.frameElement.className === 'previewPluginContentFrame';
+          PdfJsTelemetry.onEmbed(isObjectEmbed);
+        }
       }
     };
 

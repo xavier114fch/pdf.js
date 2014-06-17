@@ -35,6 +35,9 @@ var Stream = (function StreamClosure() {
     get length() {
       return this.end - this.start;
     },
+    get isEmpty() {
+      return this.length === 0;
+    },
     getByte: function Stream_getByte() {
       if (this.pos >= this.end) {
         return -1;
@@ -128,6 +131,12 @@ var DecodeStream = (function DecodeStreamClosure() {
   }
 
   DecodeStream.prototype = {
+    get isEmpty() {
+      while (!this.eof && this.bufferLength === 0) {
+        this.readBlock();
+      }
+      return this.bufferLength === 0;
+    },
     ensureBuffer: function DecodeStream_ensureBuffer(requested) {
       var buffer = this.buffer;
       var current;
@@ -144,8 +153,8 @@ var DecodeStream = (function DecodeStreamClosure() {
         size *= 2;
       }
       var buffer2 = new Uint8Array(size);
-      for (var i = 0; i < current; ++i) {
-        buffer2[i] = buffer[i];
+      if (buffer) {
+        buffer2.set(buffer);
       }
       return (this.buffer = buffer2);
     },
@@ -213,7 +222,7 @@ var DecodeStream = (function DecodeStreamClosure() {
       }
       return new Stream(this.buffer, start, length, dict);
     },
-    skip: function Stream_skip(n) {
+    skip: function DecodeStream_skip(n) {
       if (!n) {
         n = 1;
       }
@@ -421,10 +430,12 @@ var FlateStream = (function FlateStreamClosure() {
     var codeSize = this.codeSize;
     var codeBuf = this.codeBuf;
 
+    var b;
     while (codeSize < maxLen) {
-      var b;
       if ((b = str.getByte()) === -1) {
-        error('Bad encoding in flate stream');
+        // premature end of stream. code might however still be valid.
+        // codeSize < codeLen check below guards against incomplete codeVal.
+        break;
       }
       codeBuf |= (b << codeSize);
       codeSize += 8;
@@ -432,7 +443,7 @@ var FlateStream = (function FlateStreamClosure() {
     var code = codes[codeBuf & ((1 << maxLen) - 1)];
     var codeLen = code >> 16;
     var codeVal = code & 0xffff;
-    if (codeSize === 0 || codeSize < codeLen || codeLen === 0) {
+    if (codeLen < 1 || codeSize < codeLen) {
       error('Bad encoding in flate stream');
     }
     this.codeBuf = (codeBuf >> codeLen);
@@ -869,13 +880,30 @@ var JpegStream = (function JpegStreamClosure() {
     }
     try {
       var jpegImage = new JpegImage();
-      if (this.colorTransform != -1) {
-        jpegImage.colorTransform = this.colorTransform;
+
+      // checking if values needs to be transformed before conversion
+      if (this.dict && isArray(this.dict.get('Decode'))) {
+        var decodeArr = this.dict.get('Decode');
+        var bitsPerComponent = this.dict.get('BitsPerComponent') || 8;
+        var decodeArrLength = decodeArr.length;
+        var transform = new Int32Array(decodeArrLength);
+        var transformNeeded = false;
+        var maxValue = (1 << bitsPerComponent) - 1;
+        for (var i = 0; i < decodeArrLength; i += 2) {
+          transform[i] = ((decodeArr[i + 1] - decodeArr[i]) * 256) | 0;
+          transform[i + 1] = (decodeArr[i] * maxValue) | 0;
+          if (transform[i] !== 256 || transform[i + 1] !== 0) {
+            transformNeeded = true;
+          }
+        }
+        if (transformNeeded) {
+          jpegImage.decodeTransform = transform;
+        }
       }
+
       jpegImage.parse(this.bytes);
-      var width = jpegImage.width;
-      var height = jpegImage.height;
-      var data = jpegImage.getData(width, height);
+      var data = jpegImage.getData(this.drawWidth, this.drawHeight,
+                                   this.forceRGB);
       this.buffer = data;
       this.bufferLength = data.length;
       this.eof = true;
@@ -883,6 +911,12 @@ var JpegStream = (function JpegStreamClosure() {
       error('JPEG error: ' + e);
     }
   };
+
+  JpegStream.prototype.getBytes = function JpegStream_getBytes(length) {
+    this.ensureBuffer();
+    return this.buffer;
+  };
+
   JpegStream.prototype.getIR = function JpegStream_getIR() {
     return PDFJS.createObjectURL(this.bytes, 'image/jpeg');
   };

@@ -145,16 +145,17 @@ var ColorSpace = (function ColorSpaceClosure() {
 
       if (rgbBuf) {
         if (needsResizing) {
-          rgbBuf = PDFImage.resize(rgbBuf, bpc, 3, originalWidth,
-                                   originalHeight, width, height);
-        }
-        rgbPos = 0;
-        destPos = 0;
-        for (i = 0, ii = width * actualHeight; i < ii; i++) {
-          dest[destPos++] = rgbBuf[rgbPos++];
-          dest[destPos++] = rgbBuf[rgbPos++];
-          dest[destPos++] = rgbBuf[rgbPos++];
-          destPos += alpha01;
+          PDFImage.resize(rgbBuf, bpc, 3, originalWidth, originalHeight, width,
+                          height, dest, alpha01);
+        } else {
+          rgbPos = 0;
+          destPos = 0;
+          for (i = 0, ii = width * actualHeight; i < ii; i++) {
+            dest[destPos++] = rgbBuf[rgbPos++];
+            dest[destPos++] = rgbBuf[rgbPos++];
+            dest[destPos++] = rgbBuf[rgbPos++];
+            destPos += alpha01;
+          }
         }
       }
     },
@@ -395,6 +396,7 @@ var AlternateCS = (function AlternateCSClosure() {
     getRgbBuffer: function AlternateCS_getRgbBuffer(src, srcOffset, count,
                                                     dest, destOffset, bits,
                                                     alpha01) {
+      var tinted;
       var tintFn = this.tintFn;
       var base = this.base;
       var scale = 1 / ((1 << bits) - 1);
@@ -408,16 +410,22 @@ var AlternateCS = (function AlternateCSClosure() {
 
       var scaled = new Float32Array(numComps);
       var i, j;
-      for (i = 0; i < count; i++) {
-        for (j = 0; j < numComps; j++) {
-          scaled[j] = src[srcOffset++] * scale;
-        }
-        var tinted = tintFn(scaled);
-        if (usesZeroToOneRange) {
+      if (usesZeroToOneRange) {
+        for (i = 0; i < count; i++) {
+          for (j = 0; j < numComps; j++) {
+            scaled[j] = src[srcOffset++] * scale;
+          }
+          tinted = tintFn(scaled);
           for (j = 0; j < baseNumComps; j++) {
             baseBuf[pos++] = tinted[j] * 255;
           }
-        } else {
+        }
+      } else {
+        for (i = 0; i < count; i++) {
+          for (j = 0; j < numComps; j++) {
+            scaled[j] = src[srcOffset++] * scale;
+          }
+          tinted = tintFn(scaled);
           base.getRgbItem(tinted, 0, baseBuf, pos);
           pos += baseNumComps;
         }
@@ -624,31 +632,31 @@ var DeviceCmykCS = (function DeviceCmykCSClosure() {
     var k = src[srcOffset + 3] * srcScale;
 
     var r =
-      c * (-4.387332384609988 * c + 54.48615194189176 * m +
-           18.82290502165302 * y + 212.25662451639585 * k +
-           -285.2331026137004) +
-      m * (1.7149763477362134 * m - 5.6096736904047315 * y +
-           -17.873870861415444 * k - 5.497006427196366) +
-      y * (-2.5217340131683033 * y - 21.248923337353073 * k +
-           17.5119270841813) +
-      k * (-21.86122147463605 * k - 189.48180835922747) + 255;
+      (c * (-4.387332384609988 * c + 54.48615194189176 * m +
+            18.82290502165302 * y + 212.25662451639585 * k +
+            -285.2331026137004) +
+       m * (1.7149763477362134 * m - 5.6096736904047315 * y +
+            -17.873870861415444 * k - 5.497006427196366) +
+       y * (-2.5217340131683033 * y - 21.248923337353073 * k +
+            17.5119270841813) +
+       k * (-21.86122147463605 * k - 189.48180835922747) + 255) | 0;
     var g =
-      c * (8.841041422036149 * c + 60.118027045597366 * m +
-           6.871425592049007 * y + 31.159100130055922 * k +
-           -79.2970844816548) +
-      m * (-15.310361306967817 * m + 17.575251261109482 * y +
-           131.35250912493976 * k - 190.9453302588951) +
-      y * (4.444339102852739 * y + 9.8632861493405 * k - 24.86741582555878) +
-      k * (-20.737325471181034 * k - 187.80453709719578) + 255;
+      (c * (8.841041422036149 * c + 60.118027045597366 * m +
+            6.871425592049007 * y + 31.159100130055922 * k +
+            -79.2970844816548) +
+       m * (-15.310361306967817 * m + 17.575251261109482 * y +
+            131.35250912493976 * k - 190.9453302588951) +
+       y * (4.444339102852739 * y + 9.8632861493405 * k - 24.86741582555878) +
+       k * (-20.737325471181034 * k - 187.80453709719578) + 255) | 0;
     var b =
-      c * (0.8842522430003296 * c + 8.078677503112928 * m +
-           30.89978309703729 * y - 0.23883238689178934 * k +
-           -14.183576799673286) +
-      m * (10.49593273432072 * m + 63.02378494754052 * y +
-           50.606957656360734 * k - 112.23884253719248) +
-      y * (0.03296041114873217 * y + 115.60384449646641 * k +
-           -193.58209356861505) +
-      k * (-22.33816807309886 * k - 180.12613974708367) + 255;
+      (c * (0.8842522430003296 * c + 8.078677503112928 * m +
+            30.89978309703729 * y - 0.23883238689178934 * k +
+            -14.183576799673286) +
+       m * (10.49593273432072 * m + 63.02378494754052 * y +
+            50.606957656360734 * k - 112.23884253719248) +
+       y * (0.03296041114873217 * y + 115.60384449646641 * k +
+            -193.58209356861505) +
+       k * (-22.33816807309886 * k - 180.12613974708367) + 255) | 0;
 
     dest[destOffset] = r > 255 ? 255 : r < 0 ? 0 : r;
     dest[destOffset + 1] = g > 255 ? 255 : g < 0 ? 0 : g;
@@ -746,25 +754,15 @@ var CalGrayCS = (function CalGrayCSClosure() {
     var A = src[srcOffset] * scale;
     var AG = Math.pow(A, cs.G);
 
-    // Computes intermediate variables M, L, N as per spec.
+    // Computes L as per spec. ( = cs.YW * AG )
     // Except if other than default BlackPoint values are used.
-    var M = cs.XW * AG;
     var L = cs.YW * AG;
-    var N = cs.ZW * AG;
-
-    // Decode XYZ, as per spec.
-    var X = M;
-    var Y = L;
-    var Z = N;
-
     // http://www.poynton.com/notes/colour_and_gamma/ColorFAQ.html, Ch 4.
-    // This yields values in range [0, 100].
-    var Lstar = Math.max(116 * Math.pow(Y, 1 / 3) - 16, 0);
-
     // Convert values to rgb range [0, 255].
-    dest[destOffset] = Lstar * 255 / 100;
-    dest[destOffset + 1] = Lstar * 255 / 100;
-    dest[destOffset + 2] = Lstar * 255 / 100;
+    var val = Math.max(295.8 * Math.pow(L, 0.333333333333333333) - 40.8, 0) | 0;
+    dest[destOffset] = val;
+    dest[destOffset + 1] = val;
+    dest[destOffset + 2] = val;
   }
 
   CalGrayCS.prototype = {

@@ -65,7 +65,20 @@ describe('api', function() {
     it('gets destinations', function() {
       var promise = doc.getDestinations();
       waitsForPromise(promise, function(data) {
-        // TODO this seems to be broken for the test pdf
+        expect(data).toEqual({ chapter1: [{ gen: 0, num: 17 }, { name: 'XYZ' },
+                                          0, 841.89, null] });
+      });
+    });
+    it('gets attachments', function() {
+      var promise = doc.getAttachments();
+      waitsForPromise(promise, function (data) {
+        expect(data).toEqual(null);
+      });
+    });
+    it('gets javascript', function() {
+      var promise = doc.getJavaScript();
+      waitsForPromise(promise, function (data) {
+        expect(data).toEqual([]);
       });
     });
     it('gets outline', function() {
@@ -84,6 +97,18 @@ describe('api', function() {
       waitsForPromise(promise, function(metadata) {
         expect(metadata.info['Title']).toEqual('Basic API Test');
         expect(metadata.metadata.get('dc:title')).toEqual('Basic API Test');
+      });
+    });
+    it('gets data', function() {
+      var promise = doc.getData();
+      waitsForPromise(promise, function (data) {
+        expect(true).toEqual(true);
+      });
+    });
+    it('gets filesize in bytes', function() {
+      var promise = doc.getDownloadInfo();
+      waitsForPromise(promise, function (data) {
+        expect(data.length).toEqual(105779);
       });
     });
   });

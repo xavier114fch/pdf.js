@@ -43,6 +43,7 @@
 !type4psfunc.pdf
 !issue1350.pdf
 !S2.pdf
+!glyph_accent.pdf
 !personwithdog.pdf
 !helloworld-bad.pdf
 !zerowidthline.pdf
@@ -50,9 +51,11 @@
 !bug864847.pdf
 !issue1002.pdf
 !issue925.pdf
+!issue4668.pdf
 !gradientfill.pdf
 !bug903856.pdf
 !bug850854.pdf
+!bug866395.pdf
 !basicapi.pdf
 !mixedfonts.pdf
 !shading_extend.pdf
@@ -63,10 +66,12 @@
 !noembed-sjis.pdf
 !vertical.pdf
 !bug878026.pdf
+!issue4650.pdf
 !issue3025.pdf
 !issue2099-1.pdf
 !issue3371.pdf
 !issue2956.pdf
+!issue2537r.pdf
 !bug946506.pdf
 !issue3885.pdf
 !bug859204.pdf

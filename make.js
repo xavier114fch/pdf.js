@@ -370,8 +370,6 @@ target.bundle = function(args) {
 
   var SHARED_SRC_FILES = [
     'shared/util.js',
-    'shared/colorspace.js',
-    'shared/function.js',
     'shared/annotation.js',
   ];
 
@@ -623,12 +621,6 @@ target.firefox = function() {
   cp(FIREFOX_CONTENT_DIR + 'PdfJsTelemetry-addon.jsm',
      FIREFOX_BUILD_CONTENT_DIR + 'PdfJsTelemetry.jsm');
 
-  cp(FIREFOX_CONTENT_DIR + 'PdfStreamConverter.jsm',
-     FIREFOX_BUILD_CONTENT_DIR);
-
-  cp(FIREFOX_CONTENT_DIR + 'PdfRedirector.jsm',
-     FIREFOX_BUILD_CONTENT_DIR);
-
   // Copy extension files
   cd(FIREFOX_EXTENSION_DIR);
   cp('-R', FIREFOX_EXTENSION_FILES_TO_COPY, ROOT_DIR + FIREFOX_BUILD_DIR);
@@ -638,6 +630,7 @@ target.firefox = function() {
     defines: defines,
     copy: [
       [COMMON_WEB_FILES, FIREFOX_BUILD_CONTENT_DIR + '/web'],
+      ['web/compatibility.js', FIREFOX_BUILD_CONTENT_DIR + '/web'],
       ['external/bcmaps/*', FIREFOX_BUILD_CONTENT_DIR + '/web/cmaps'],
       [FIREFOX_EXTENSION_DIR + 'tools/l10n.js',
        FIREFOX_BUILD_CONTENT_DIR + '/web']
@@ -645,6 +638,9 @@ target.firefox = function() {
     preprocess: [
       [COMMON_WEB_FILES_PREPROCESS, FIREFOX_BUILD_CONTENT_DIR + '/web'],
       [BUILD_TARGETS, FIREFOX_BUILD_CONTENT_DIR + BUILD_DIR],
+      [FIREFOX_CONTENT_DIR + 'PdfStreamConverter.jsm',
+       FIREFOX_BUILD_CONTENT_DIR],
+      [FIREFOX_CONTENT_DIR + 'PdfRedirector.jsm', FIREFOX_BUILD_CONTENT_DIR],
       [SRC_DIR + 'core/network.js', FIREFOX_BUILD_CONTENT_DIR],
       [FIREFOX_EXTENSION_DIR + 'bootstrap.js', FIREFOX_BUILD_DIR]
     ],
@@ -741,11 +737,7 @@ target.mozcentral = function() {
   mkdir('-p', MOZCENTRAL_CONTENT_DIR + '/web');
   mkdir('-p', MOZCENTRAL_CONTENT_DIR + '/web/cmaps');
 
-  // Do not copy PdfJs.jsm, since it should be run through the preprocessor.
-
   cp(FIREFOX_CONTENT_DIR + 'PdfJsTelemetry.jsm', MOZCENTRAL_CONTENT_DIR);
-  cp(FIREFOX_CONTENT_DIR + 'PdfStreamConverter.jsm', MOZCENTRAL_CONTENT_DIR);
-  cp(FIREFOX_CONTENT_DIR + 'PdfRedirector.jsm', MOZCENTRAL_CONTENT_DIR);
 
   // Copy extension files
   cd('extensions/firefox');
@@ -766,6 +758,8 @@ target.mozcentral = function() {
       [COMMON_WEB_FILES_PREPROCESS, MOZCENTRAL_CONTENT_DIR + '/web'],
       [BUILD_TARGETS, MOZCENTRAL_CONTENT_DIR + BUILD_DIR],
       [SRC_DIR + 'core/network.js', MOZCENTRAL_CONTENT_DIR],
+      [FIREFOX_CONTENT_DIR + 'PdfStreamConverter.jsm', MOZCENTRAL_CONTENT_DIR],
+      [FIREFOX_CONTENT_DIR + 'PdfRedirector.jsm', MOZCENTRAL_CONTENT_DIR],
       [FIREFOX_CONTENT_DIR + 'PdfJs.jsm', MOZCENTRAL_CONTENT_DIR]
     ],
     preprocessCSS: [

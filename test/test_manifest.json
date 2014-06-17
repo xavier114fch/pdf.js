@@ -134,12 +134,9 @@
        "type": "eq"
     },
     {  "id": "issue2537",
-      "file": "pdfs/issue2537.pdf",
-      "md5": "f56805a70ed3aa52aae5c16dd335f827",
-      "link": true,
+      "file": "pdfs/issue2537r.pdf",
+      "md5": "0f47a8bda08eebd986c254e65dcc2a76",
       "rounds": 1,
-      "firstPage": 1,
-      "lastPage": 1,
       "type": "eq"
     },
     {  "id": "html5-canvas-cheat-sheet-load",
@@ -430,6 +427,15 @@
        "rounds": 1,
        "type": "eq"
     },
+    {  "id": "issue4650",
+       "file": "pdfs/issue4650.pdf",
+       "md5": "ad736804f57f9f96f5ac108e514e1686",
+       "rounds": 1,
+       "link": false,
+       "firstPage": 1,
+       "lastPage": 1,
+       "type": "eq"
+    },
     {  "id": "txt2pdf",
        "file": "pdfs/txt2pdf.pdf",
        "md5": "02cefa0f5e8d96313bb05163b2f88c8c",
@@ -513,6 +519,14 @@
        "link": true,
        "rounds": 1,
        "type": "eq"
+    },
+    {  "id": "glyph_accent",
+       "file": "pdfs/glyph_accent.pdf",
+       "md5": "1526e4edaa3ec439ebf156d0a0b385aa",
+       "link": false,
+       "rounds": 1,
+       "type": "eq",
+       "about": "Glyph accent drawn as curves."
     },
     {  "id": "simpletype3font",
        "file": "pdfs/simpletype3font.pdf",
@@ -640,13 +654,6 @@
       "rounds": 1,
       "type": "load"
     },
-    {  "id": "aboutstacks",
-      "file": "pdfs/aboutstacks.pdf",
-      "md5": "6e7c8416a293ba2d83bc8dd20c6ccf51",
-      "rounds": 1,
-      "link": true,
-      "type": "eq"
-    },
     {  "id": "smaskdim",
       "file": "pdfs/smaskdim.pdf",
       "md5": "de80aeca7cbf79940189fd34d59671ee",
@@ -674,6 +681,14 @@
        "lastPage": 1,
        "type": "eq",
        "about": "Seac with differences array that messes up mapping."
+    },
+    {  "id": "bug866395",
+       "file": "pdfs/bug866395.pdf",
+       "md5": "f03bc77e84637241980b09a0a220f575",
+       "link": false,
+       "rounds": 1,
+       "type": "eq",
+       "about": "Font with an empty font file."
     },
     {  "id": "ocs",
       "file": "pdfs/ocs.pdf",
@@ -1492,6 +1507,16 @@
       "rounds": 1,
       "type": "eq"
     },
+    {  "id": "issue3591",
+      "file": "pdfs/issue3591.pdf",
+      "md5": "f76b3e9d1a44621b73063cf10556c6ff",
+      "link": true,
+      "firstPage": 1,
+      "lastPage": 1,
+      "rounds": 1,
+      "type": "eq",
+      "about": "JPX with 0xFF55 marker"
+    },
     {  "id": "bug766138",
       "file": "pdfs/bug766138.pdf",
       "md5": "b171f5cf8d9834348112fba60ee54f8c",
@@ -1583,6 +1608,12 @@
        "lastPage": 1,
        "type": "load"
     },
+    {  "id": "issue4668",
+      "file": "pdfs/issue4668.pdf",
+      "md5": "a749d5ca995ad745411406d29156b04e",
+      "rounds": 1,
+      "type": "eq"
+    },
     {  "id": "issue3666",
        "file": "pdfs/issue3666.pdf",
        "md5": "c2156a34b9634b174556910732ab9df0",
@@ -1591,6 +1622,16 @@
        "firstPage": 1,
        "lastPage": 2,
        "type": "eq"
+    },
+    {  "id": "issue4883",
+      "file": "pdfs/issue4883.pdf",
+      "md5": "2fac0d9a189ca5fcef8626153d050be8",
+      "rounds": 1,
+      "link": true,
+      "firstPage": 1,
+      "lastPage": 1,
+      "type": "eq",
+      "about": "CMYK JPEG with Decode"
     },
     {  "id": "bug903856",
        "file": "pdfs/bug903856.pdf",
@@ -1623,6 +1664,13 @@
        "link": true,
        "firstPage": 9,
        "lastPage": 9,
+       "type": "eq"
+    },
+    {  "id": "issue4926",
+       "file": "pdfs/issue4926.pdf",
+       "md5": "ed881c8ea2f9bc4be94ecb7f2b2c149b",
+       "rounds": 1,
+       "link": true,
        "type": "eq"
     }
 ]

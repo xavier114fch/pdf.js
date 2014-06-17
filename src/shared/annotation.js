@@ -17,10 +17,11 @@
 /* globals Util, isDict, isName, stringToPDFString, warn, Dict, Stream,
            stringToBytes, PDFJS, isWorker, assert, NotImplementedException,
            Promise, isArray, ObjectLoader, isValidUrl, OperatorList, OPS,
-           LegacyPromise */
+           createPromiseCapability */
 
 'use strict';
 
+var DEFAULT_ICON_SIZE = 22; // px
 var HIGHLIGHT_OFFSET = 4; // px
 var SUPPORTED_TYPES = ['Link', 'Text', 'Widget'];
 
@@ -104,24 +105,30 @@ var Annotation = (function AnnotationClosure() {
 
       // TODO: implement proper support for annotations with line dash patterns.
       var dashArray = borderArray[3];
-      if (data.borderWidth > 0 && dashArray && isArray(dashArray)) {
-        var dashArrayLength = dashArray.length;
-        if (dashArrayLength > 0) {
-          // According to the PDF specification: the elements in a dashArray
-          // shall be numbers that are nonnegative and not all equal to zero.
-          var isInvalid = false;
-          var numPositive = 0;
-          for (var i = 0; i < dashArrayLength; i++) {
-            var validNumber = (+dashArray[i] >= 0);
-            if (!validNumber) {
-              isInvalid = true;
-              break;
-            } else if (dashArray[i] > 0) {
-              numPositive++;
+      if (data.borderWidth > 0 && dashArray) {
+        if (!isArray(dashArray)) {
+          // Ignore the border if dashArray is not actually an array,
+          // this is consistent with the behaviour in Adobe Reader. 
+          data.borderWidth = 0;
+        } else {
+          var dashArrayLength = dashArray.length;
+          if (dashArrayLength > 0) {
+            // According to the PDF specification: the elements in a dashArray
+            // shall be numbers that are nonnegative and not all equal to zero.
+            var isInvalid = false;
+            var numPositive = 0;
+            for (var i = 0; i < dashArrayLength; i++) {
+              var validNumber = (+dashArray[i] >= 0);
+              if (!validNumber) {
+                isInvalid = true;
+                break;
+              } else if (dashArray[i] > 0) {
+                numPositive++;
+              }
             }
-          }
-          if (isInvalid || numPositive === 0) {
-            data.borderWidth = 0;
+            if (isInvalid || numPositive === 0) {
+              data.borderWidth = 0;
+            }
           }
         }
       }
@@ -182,7 +189,7 @@ var Annotation = (function AnnotationClosure() {
                 data &&
                 (!data.annotationFlags ||
                  !(data.annotationFlags & 0x22)) &&  // Hidden or NoView
-                data.rect);                          // rectangle is nessessary
+                data.rect);                          // rectangle is necessary
     },
 
     isPrintable: function Annotation_isPrintable() {
@@ -191,34 +198,31 @@ var Annotation = (function AnnotationClosure() {
                 data &&
                 data.annotationFlags &&              // Default: not printable
                 data.annotationFlags & 0x4 &&        // Print
-                data.rect);                          // rectangle is nessessary
+                !(data.annotationFlags & 0x2) &&     // Hidden
+                data.rect);                          // rectangle is necessary
     },
 
-    loadResources: function(keys) {
-      var promise = new LegacyPromise();
-      this.appearance.dict.getAsync('Resources').then(function(resources) {
-        if (!resources) {
-          promise.resolve();
-          return;
-        }
-        var objectLoader = new ObjectLoader(resources.map,
-                                            keys,
-                                            resources.xref);
-        objectLoader.load().then(function() {
-          promise.resolve(resources);
-        });
+    loadResources: function Annotation_loadResources(keys) {
+      return new Promise(function (resolve, reject) {
+        this.appearance.dict.getAsync('Resources').then(function (resources) {
+          if (!resources) {
+            resolve();
+            return;
+          }
+          var objectLoader = new ObjectLoader(resources.map,
+                                              keys,
+                                              resources.xref);
+          objectLoader.load().then(function() {
+            resolve(resources);
+          }, reject);
+        }, reject);
       }.bind(this));
-
-      return promise;
     },
 
     getOperatorList: function Annotation_getOperatorList(evaluator) {
 
-      var promise = new LegacyPromise();
-
       if (!this.appearance) {
-        promise.resolve(new OperatorList());
-        return promise;
+        return Promise.resolve(new OperatorList());
       }
 
       var data = this.data;
@@ -237,18 +241,18 @@ var Annotation = (function AnnotationClosure() {
       var bbox = appearanceDict.get('BBox') || [0, 0, 1, 1];
       var matrix = appearanceDict.get('Matrix') || [1, 0, 0, 1, 0 ,0];
       var transform = getTransformMatrix(data.rect, bbox, matrix);
+      var self = this;
 
-      resourcesPromise.then(function(resources) {
-        var opList = new OperatorList();
-        opList.addOp(OPS.beginAnnotation, [data.rect, transform, matrix]);
-        evaluator.getOperatorList(this.appearance, resources, opList);
-        opList.addOp(OPS.endAnnotation, []);
-        promise.resolve(opList);
-
-        this.appearance.reset();
-      }.bind(this));
-
-      return promise;
+      return resourcesPromise.then(function(resources) {
+          var opList = new OperatorList();
+          opList.addOp(OPS.beginAnnotation, [data.rect, transform, matrix]);
+          return evaluator.getOperatorList(self.appearance, resources, opList).
+            then(function () {
+              opList.addOp(OPS.endAnnotation, []);
+              self.appearance.reset();
+              return opList;
+            });
+        });
     }
   };
 
@@ -320,7 +324,9 @@ var Annotation = (function AnnotationClosure() {
     if (annotation.isViewable() || annotation.isPrintable()) {
       return annotation;
     } else {
-      warn('unimplemented annotation type: ' + subtype);
+      if (SUPPORTED_TYPES.indexOf(subtype) === -1) {
+        warn('unimplemented annotation type: ' + subtype);
+      }
     }
   };
 
@@ -328,10 +334,10 @@ var Annotation = (function AnnotationClosure() {
       annotations, opList, pdfManager, partialEvaluator, intent) {
 
     function reject(e) {
-      annotationsReadyPromise.reject(e);
+      annotationsReadyCapability.reject(e);
     }
 
-    var annotationsReadyPromise = new LegacyPromise();
+    var annotationsReadyCapability = createPromiseCapability();
 
     var annotationPromises = [];
     for (var i = 0, n = annotations.length; i < n; ++i) {
@@ -348,10 +354,10 @@ var Annotation = (function AnnotationClosure() {
         opList.addOpList(annotOpList);
       }
       opList.addOp(OPS.endAnnotations, []);
-      annotationsReadyPromise.resolve();
+      annotationsReadyCapability.resolve();
     }, reject);
 
-    return annotationsReadyPromise;
+    return annotationsReadyCapability.promise;
   };
 
   return Annotation;
@@ -497,53 +503,20 @@ var TextWidgetAnnotation = (function TextWidgetAnnotationClosure() {
         return Annotation.prototype.getOperatorList.call(this, evaluator);
       }
 
-      var promise = new LegacyPromise();
       var opList = new OperatorList();
       var data = this.data;
 
       // Even if there is an appearance stream, ignore it. This is the
       // behaviour used by Adobe Reader.
-
-      var defaultAppearance = data.defaultAppearance;
-      if (!defaultAppearance) {
-        promise.resolve(opList);
-        return promise;
+      if (!data.defaultAppearance) {
+        return Promise.resolve(opList);
       }
 
-      // Include any font resources found in the default appearance
-
-      var stream = new Stream(stringToBytes(defaultAppearance));
-      evaluator.getOperatorList(stream, this.fieldResources, opList);
-      var appearanceFnArray = opList.fnArray;
-      var appearanceArgsArray = opList.argsArray;
-      var fnArray = [];
-
-      // TODO(mack): Add support for stroke color
-      data.rgb = [0, 0, 0];
-      // TODO THIS DOESN'T MAKE ANY SENSE SINCE THE fnArray IS EMPTY!
-      for (var i = 0, n = fnArray.length; i < n; ++i) {
-        var fnId = appearanceFnArray[i];
-        var args = appearanceArgsArray[i];
-
-        if (fnId === OPS.setFont) {
-          data.fontRefName = args[0];
-          var size = args[1];
-          if (size < 0) {
-            data.fontDirection = -1;
-            data.fontSize = -size;
-          } else {
-            data.fontDirection = 1;
-            data.fontSize = size;
-          }
-        } else if (fnId === OPS.setFillRGBColor) {
-          data.rgb = args;
-        } else if (fnId === OPS.setFillGray) {
-          var rgbValue = args[0] * 255;
-          data.rgb = [rgbValue, rgbValue, rgbValue];
-        }
-      }
-      promise.resolve(opList);
-      return promise;
+      var stream = new Stream(stringToBytes(data.defaultAppearance));
+      return evaluator.getOperatorList(stream, this.fieldResources, opList).
+        then(function () {
+          return opList;
+        });
     }
   });
 
@@ -624,6 +597,8 @@ var TextAnnotation = (function TextAnnotationClosure() {
     if (data.hasAppearance) {
       data.name = 'NoIcon';
     } else {
+      data.rect[1] = data.rect[3] - DEFAULT_ICON_SIZE;
+      data.rect[2] = data.rect[0] + DEFAULT_ICON_SIZE;
       data.name = dict.has('Name') ? dict.get('Name').name : 'Note';
     }
 

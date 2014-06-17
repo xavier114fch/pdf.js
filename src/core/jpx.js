@@ -14,7 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/* globals ArithmeticDecoder, error, globalScope, log2, readUint16, readUint32,
+/* globals ArithmeticDecoder, globalScope, log2, readUint16, readUint32,
            warn */
 
 'use strict';
@@ -31,20 +31,6 @@ var JpxImage = (function JpxImageClosure() {
     this.failOnCorruptedImage = false;
   }
   JpxImage.prototype = {
-    load: function JpxImage_load(url) {
-      var xhr = new XMLHttpRequest();
-      xhr.open('GET', url, true);
-      xhr.responseType = 'arraybuffer';
-      xhr.onload = (function() {
-        // TODO catch parse error
-        var data = new Uint8Array(xhr.response || xhr.mozResponseArrayBuffer);
-        this.parse(data);
-        if (this.onload) {
-          this.onload();
-        }
-      }).bind(this);
-      xhr.send(null);
-    },
     parse: function JpxImage_parse(data) {
 
       var head = readUint16(data, 0);
@@ -72,7 +58,7 @@ var JpxImage = (function JpxImageClosure() {
           lbox = length - position + headerSize;
         }
         if (lbox < headerSize) {
-          error('JPX error: Invalid box field size');
+          throw new Error('JPX Error: Invalid box field size');
         }
         var dataLength = lbox - headerSize;
         var jumpDataLength = true;
@@ -96,41 +82,34 @@ var JpxImage = (function JpxImageClosure() {
       }
     },
     parseImageProperties: function JpxImage_parseImageProperties(stream) {
-      try {
-        var newByte = stream.getByte();
-        while (newByte >= 0) {
-          var oldByte = newByte;
-          newByte = stream.getByte();
-          var code = (oldByte << 8) | newByte;
-          // Image and tile size (SIZ)
-          if (code == 0xFF51) {
-            stream.skip(4);
-            var Xsiz = stream.getInt32() >>> 0; // Byte 4
-            var Ysiz = stream.getInt32() >>> 0; // Byte 8
-            var XOsiz = stream.getInt32() >>> 0; // Byte 12
-            var YOsiz = stream.getInt32() >>> 0; // Byte 16
-            stream.skip(16);
-            var Csiz = stream.getUint16(); // Byte 36
-            this.width = Xsiz - XOsiz;
-            this.height = Ysiz - YOsiz;
-            this.componentsCount = Csiz;
-            // Results are always returned as Uint8Arrays
-            this.bitsPerComponent = 8;
-            return;
-          }
-        }
-        throw 'No size marker found in JPX stream';
-      } catch (e) {
-        if (this.failOnCorruptedImage) {
-          error('JPX error: ' + e);
-        } else {
-          warn('JPX error: ' + e + '. Trying to recover');
+      var newByte = stream.getByte();
+      while (newByte >= 0) {
+        var oldByte = newByte;
+        newByte = stream.getByte();
+        var code = (oldByte << 8) | newByte;
+        // Image and tile size (SIZ)
+        if (code == 0xFF51) {
+          stream.skip(4);
+          var Xsiz = stream.getInt32() >>> 0; // Byte 4
+          var Ysiz = stream.getInt32() >>> 0; // Byte 8
+          var XOsiz = stream.getInt32() >>> 0; // Byte 12
+          var YOsiz = stream.getInt32() >>> 0; // Byte 16
+          stream.skip(16);
+          var Csiz = stream.getUint16(); // Byte 36
+          this.width = Xsiz - XOsiz;
+          this.height = Ysiz - YOsiz;
+          this.componentsCount = Csiz;
+          // Results are always returned as Uint8Arrays
+          this.bitsPerComponent = 8;
+          return;
         }
       }
+      throw new Error('JPX Error: No size marker found in JPX stream');
     },
     parseCodestream: function JpxImage_parseCodestream(data, start, end) {
       var context = {};
       try {
+        var doNotRecover = false;
         var position = start;
         while (position + 1 < end) {
           var code = readUint16(data, position);
@@ -174,6 +153,11 @@ var JpxImage = (function JpxImageClosure() {
               context.QCC = [];
               context.COC = [];
               break;
+            case 0xFF55: // Tile-part lengths, main header (TLM)
+              var Ltlm = readUint16(data, position); // Marker segment length
+              // Skip tile length markers
+              position += Ltlm;
+              break;
             case 0xFF5C: // Quantization default (QCD)
               length = readUint16(data, position);
               var qcd = {};
@@ -193,7 +177,7 @@ var JpxImage = (function JpxImageClosure() {
                   scalarExpounded = true;
                   break;
                 default:
-                  throw 'Invalid SQcd value ' + sqcd;
+                  throw new Error('JPX Error: Invalid SQcd value ' + sqcd);
               }
               qcd.noQuantization = (spqcdSize == 8);
               qcd.scalarExpounded = scalarExpounded;
@@ -245,7 +229,7 @@ var JpxImage = (function JpxImageClosure() {
                   scalarExpounded = true;
                   break;
                 default:
-                  throw 'Invalid SQcd value ' + sqcd;
+                  throw new Error('JPX Error: Invalid SQcd value ' + sqcd);
               }
               qcc.noQuantization = (spqcdSize == 8);
               qcc.scalarExpounded = scalarExpounded;
@@ -305,16 +289,33 @@ var JpxImage = (function JpxImageClosure() {
                 }
                 cod.precinctsSizes = precinctsSizes;
               }
-
-              if (cod.sopMarkerUsed || cod.ephMarkerUsed ||
-                  cod.selectiveArithmeticCodingBypass ||
-                  cod.resetContextProbabilities ||
-                  cod.terminationOnEachCodingPass ||
-                  cod.verticalyStripe || cod.predictableTermination) {
-                throw 'Unsupported COD options: ' +
-                  globalScope.JSON.stringify(cod);
+              var unsupported = [];
+              if (cod.sopMarkerUsed) {
+                unsupported.push('sopMarkerUsed');
               }
-
+              if (cod.ephMarkerUsed) {
+                unsupported.push('ephMarkerUsed');
+              }
+              if (cod.selectiveArithmeticCodingBypass) {
+                unsupported.push('selectiveArithmeticCodingBypass');
+              }
+              if (cod.resetContextProbabilities) {
+                unsupported.push('resetContextProbabilities');
+              }
+              if (cod.terminationOnEachCodingPass) {
+                unsupported.push('terminationOnEachCodingPass');
+              }
+              if (cod.verticalyStripe) {
+                unsupported.push('verticalyStripe');
+              }
+              if (cod.predictableTermination) {
+                unsupported.push('predictableTermination');
+              }
+              if (unsupported.length > 0) {
+                doNotRecover = true;
+                throw new Error('JPX Error: Unsupported COD options (' +
+                                unsupported.join(', ') + ')');
+              }
               if (context.mainHeader) {
                 context.COD = cod;
               } else {
@@ -357,17 +358,19 @@ var JpxImage = (function JpxImageClosure() {
               // skipping content
               break;
             case 0xFF53: // Coding style component (COC)
-              throw 'Codestream code 0xFF53 (COC) is not implemented';
+              throw new Error('JPX Error: Codestream code 0xFF53 (COC) is ' +
+                              'not implemented');
             default:
-              throw 'Unknown codestream code: ' + code.toString(16);
+              throw new Error('JPX Error: Unknown codestream code: ' +
+                              code.toString(16));
           }
           position += length;
         }
       } catch (e) {
-        if (this.failOnCorruptedImage) {
-          error('JPX error: ' + e);
+        if (doNotRecover || this.failOnCorruptedImage) {
+          throw e;
         } else {
-          warn('JPX error: ' + e + '. Trying to recover');
+          warn('Trying to recover from ' + e.message);
         }
       }
       this.tiles = transformComponents(context);
@@ -595,7 +598,7 @@ var JpxImage = (function JpxImageClosure() {
         }
         r = 0;
       }
-      throw 'Out of packets';
+      throw new Error('JPX Error: Out of packets');
     };
   }
   function ResolutionLayerComponentPositionIterator(context) {
@@ -635,7 +638,7 @@ var JpxImage = (function JpxImageClosure() {
         }
         l = 0;
       }
-      throw 'Out of packets';
+      throw new Error('JPX Error: Out of packets');
     };
   }
   function buildPackets(context) {
@@ -730,7 +733,8 @@ var JpxImage = (function JpxImageClosure() {
           new ResolutionLayerComponentPositionIterator(context);
         break;
       default:
-        throw 'Unsupported progression order ' + progressionOrder;
+        throw new Error('JPX Error: Unsupported progression order ' +
+                        progressionOrder);
     }
   }
   function parseTilePackets(context, data, offset, dataLength) {
@@ -954,7 +958,7 @@ var JpxImage = (function JpxImageClosure() {
       var magnitudeCorrection = reversible ? 0 : 0.5;
       var k, n, nb;
       position = 0;
-      // Do the interleaving of Section F.3.3 here, so we do not need 
+      // Do the interleaving of Section F.3.3 here, so we do not need
       // to copy later. LL level is not interleaved, just copied.
       var interleave = (subband.type !== 'LL');
       for (j = 0; j < blockHeight; j++) {
@@ -1076,47 +1080,58 @@ var JpxImage = (function JpxImageClosure() {
       };
 
       // Section G.2.2 Inverse multi component transform
-      var shift, offset, max, min;
-      var pos = 0, j, jj, y0, y1, y2, r, g, b, val;
+      var shift, offset, max, min, maxK;
+      var pos = 0, j, jj, y0, y1, y2, r, g, b, k, val;
       if (tile.codingStyleDefaultParameters.multipleComponentTransform) {
-        var y2items = transformedTiles[2].items;
-        var y1items = transformedTiles[1].items;
+        var fourComponents = componentsCount === 4;
         var y0items = transformedTiles[0].items;
+        var y1items = transformedTiles[1].items;
+        var y2items = transformedTiles[2].items;
+        var y3items = fourComponents ? transformedTiles[3].items : null;
 
         // HACK: The multiple component transform formulas below assume that
         // all components have the same precision. With this in mind, we
         // compute shift and offset only once.
         shift = components[0].precision - 8;
         offset = (128 << shift) + 0.5;
-        max = (127.5 * (1 << shift));
-        min = -max;
+        max = 255 * (1 << shift);
+        maxK = max * 0.5;
+        min = -maxK;
 
         var component0 = tile.components[0];
+        var alpha01 = componentsCount - 3;
+        jj = y0items.length;
         if (!component0.codingStyleParameters.reversibleTransformation) {
           // inverse irreversible multiple component transform
-          for (j = 0, jj = y0items.length; j < jj; ++j) {
-            y0 = y0items[j];
+          for (j = 0; j < jj; j++, pos += alpha01) {
+            y0 = y0items[j] + offset;
             y1 = y1items[j];
             y2 = y2items[j];
             r = y0 + 1.402 * y2;
             g = y0 - 0.34413 * y1 - 0.71414 * y2;
             b = y0 + 1.772 * y1;
-            out[pos++] = r <= min ? 0 : r >= max ? 255 : (r + offset) >> shift;
-            out[pos++] = g <= min ? 0 : g >= max ? 255 : (g + offset) >> shift;
-            out[pos++] = b <= min ? 0 : b >= max ? 255 : (b + offset) >> shift;
+            out[pos++] = r <= 0 ? 0 : r >= max ? 255 : r >> shift;
+            out[pos++] = g <= 0 ? 0 : g >= max ? 255 : g >> shift;
+            out[pos++] = b <= 0 ? 0 : b >= max ? 255 : b >> shift;
           }
         } else {
           // inverse reversible multiple component transform
-          for (j = 0, jj = y0items.length; j < jj; ++j) {
-            y0 = y0items[j];
+          for (j = 0; j < jj; j++, pos += alpha01) {
+            y0 = y0items[j] + offset;
             y1 = y1items[j];
             y2 = y2items[j];
             g = y0 - ((y2 + y1) >> 2);
             r = g + y2;
             b = g + y1;
-            out[pos++] = r <= min ? 0 : r >= max ? 255 : (r + offset) >> shift;
-            out[pos++] = g <= min ? 0 : g >= max ? 255 : (g + offset) >> shift;
-            out[pos++] = b <= min ? 0 : b >= max ? 255 : (b + offset) >> shift;
+            out[pos++] = r <= 0 ? 0 : r >= max ? 255 : r >> shift;
+            out[pos++] = g <= 0 ? 0 : g >= max ? 255 : g >> shift;
+            out[pos++] = b <= 0 ? 0 : b >= max ? 255 : b >> shift;
+          }
+        }
+        if (fourComponents) {
+          for (j = 0, pos = 3; j < jj; j++, pos += 4) {
+            k = y3items[j];
+            out[pos] = k <= min ? 0 : k >= maxK ? 255 : (k + offset) >> shift;
           }
         }
       } else { // no multi-component transform
@@ -1554,12 +1569,16 @@ var JpxImage = (function JpxImageClosure() {
         var oneRowDown = width;
         var twoRowsDown = width * 2;
         var threeRowsDown = width * 3;
-        for (var i0 = 0; i0 < height; i0 += 4) {
+        var iNext;
+        for (var i0 = 0; i0 < height; i0 = iNext) {
+          iNext = Math.min(i0 + 4, height);
+          var indexBase = i0 * width;
+          var checkAllEmpty = i0 + 3 < height;
           for (var j = 0; j < width; j++) {
-            var index0 = i0 * width + j;
+            var index0 = indexBase + j;
             // using the property: labels[neighborsSignificance[index]] == 0
             // when neighborsSignificance[index] == 0
-            var allEmpty = (i0 + 3 < height &&
+            var allEmpty = (checkAllEmpty &&
               processingFlags[index0] === 0 &&
               processingFlags[index0 + oneRowDown] === 0 &&
               processingFlags[index0 + twoRowsDown] === 0 &&
@@ -1569,7 +1588,7 @@ var JpxImage = (function JpxImageClosure() {
               neighborsSignificance[index0 + twoRowsDown] === 0 &&
               neighborsSignificance[index0 + threeRowsDown] === 0);
             var i1 = 0, index = index0;
-            var i, sign;
+            var i = i0, sign;
             if (allEmpty) {
               var hasSignificantCoefficent =
                 decoder.readBit(contexts, RUNLENGTH_CONTEXT);
@@ -1582,8 +1601,10 @@ var JpxImage = (function JpxImageClosure() {
               }
               i1 = (decoder.readBit(contexts, UNIFORM_CONTEXT) << 1) |
                     decoder.readBit(contexts, UNIFORM_CONTEXT);
-              i = i0 + i1;
-              index += i1 * width;
+              if (i1 !== 0) {
+                i = i0 + i1;
+                index += i1 * width;
+              }
 
               sign = this.decodeSignBit(i, j, index);
               coefficentsSign[index] = sign;
@@ -1598,12 +1619,7 @@ var JpxImage = (function JpxImageClosure() {
 
               i1++;
             }
-            for (; i1 < 4; i1++, index += width) {
-              i = i0 + i1;
-              if (i >= height) {
-                break;
-              }
-
+            for (i = i0 + i1; i < iNext; i++, index += width) {
               if (coefficentsMagnitude[index] ||
                 (processingFlags[index] & processedMask) !== 0) {
                 continue;
@@ -1611,7 +1627,7 @@ var JpxImage = (function JpxImageClosure() {
 
               var contextLabel = labels[neighborsSignificance[index]];
               var decision = decoder.readBit(contexts, contextLabel);
-              if (decision == 1) {
+              if (decision === 1) {
                 sign = this.decodeSignBit(i, j, index);
                 coefficentsSign[index] = sign;
                 coefficentsMagnitude[index] = 1;
@@ -1631,7 +1647,7 @@ var JpxImage = (function JpxImageClosure() {
                      (decoder.readBit(contexts, UNIFORM_CONTEXT) << 1) |
                       decoder.readBit(contexts, UNIFORM_CONTEXT);
         if (symbol != 0xA) {
-          throw 'Invalid segmentation symbol';
+          throw new Error('JPX Error: Invalid segmentation symbol');
         }
       }
     };
@@ -1666,7 +1682,6 @@ var JpxImage = (function JpxImageClosure() {
     };
     Transform.prototype.iterate = function Transform_iterate(ll, hl_lh_hh,
                                                              u0, v0) {
-
       var llWidth = ll.width, llHeight = ll.height, llItems = ll.items;
       var width = hl_lh_hh.width;
       var height = hl_lh_hh.height;
@@ -1699,7 +1714,7 @@ var JpxImage = (function JpxImageClosure() {
           rowBuffer.set(items.subarray(k, k + width), bufferPadding);
 
           this.extend(rowBuffer, bufferPadding, width);
-          this.filter(rowBuffer, bufferPadding, width, u0, rowBuffer);
+          this.filter(rowBuffer, bufferPadding, width);
 
           items.set(
             rowBuffer.subarray(bufferPadding, bufferPadding + width),
@@ -1745,7 +1760,7 @@ var JpxImage = (function JpxImageClosure() {
           currentBuffer--;
           var buffer = colBuffers[currentBuffer];
           this.extend(buffer, bufferPadding, height);
-          this.filter(buffer, bufferPadding, height, v0, buffer);
+          this.filter(buffer, bufferPadding, height);
 
           // If this is last buffer in this group of buffers, flush all buffers.
           if (currentBuffer === 0) {
@@ -1776,9 +1791,10 @@ var JpxImage = (function JpxImageClosure() {
 
     IrreversibleTransform.prototype = Object.create(Transform.prototype);
     IrreversibleTransform.prototype.filter =
-      function irreversibleTransformFilter(y, offset, length, i0, x) {
+      function irreversibleTransformFilter(x, offset, length) {
       var len = length >> 1;
       offset = offset | 0;
+      var j, n, current, next;
 
       var alpha = -1.586134342059924;
       var beta = -0.052980118572961;
@@ -1786,34 +1802,75 @@ var JpxImage = (function JpxImageClosure() {
       var delta = 0.443506852043971;
       var K = 1.230174104914001;
       var K_ = 1 / K;
-      var j, n;
 
       // step 1 is combined with step 3
 
       // step 2
-      for (j = offset - 3, n = len + 4; n--; j += 2) {
-        x[j] = K_ * y[j];
+      j = offset - 3;
+      for (n = len + 4; n--; j += 2) {
+        x[j] *= K_;
       }
 
       // step 1 & 3
-      for (j = offset - 2, n = len + 3; n--; j += 2) {
-        x[j] = K * y[j] -
-          delta * (x[j - 1] + x[j + 1]);
+      j = offset - 2;
+      current = delta * x[j -1];
+      for (n = len + 3; n--; j += 2) {
+        next = delta * x[j + 1];
+        x[j] = K * x[j] - current - next;
+        if (n--) {
+          j += 2;
+          current = delta * x[j + 1];
+          x[j] = K * x[j] - current - next;
+        } else {
+          break;
+        }
       }
 
       // step 4
-      for (j = offset - 1, n = len + 2; n--; j += 2) {
-        x[j] -= gamma * (x[j - 1] + x[j + 1]);
+      j = offset - 1;
+      current = gamma * x[j - 1];
+      for (n = len + 2; n--; j += 2) {
+        next = gamma * x[j + 1];
+        x[j] -= current + next;
+        if (n--) {
+          j += 2;
+          current = gamma * x[j + 1];
+          x[j] -= current + next;
+        } else {
+          break;
+        }
       }
 
       // step 5
-      for (j = offset, n = len + 1; n--; j += 2) {
-        x[j] -= beta * (x[j - 1] + x[j + 1]);
+      j = offset;
+      current = beta * x[j - 1];
+      for (n = len + 1; n--; j += 2) {
+        next = beta * x[j + 1];
+        x[j] -= current + next;
+        if (n--) {
+          j += 2;
+          current = beta * x[j + 1];
+          x[j] -= current + next;
+        } else {
+          break;
+        }
       }
 
       // step 6
-      for (j = offset + 1, n = len; n--; j += 2) {
-        x[j] -= alpha * (x[j - 1] + x[j + 1]);
+      if (len !== 0) {
+        j = offset + 1;
+        current = alpha * x[j - 1];
+        for (n = len; n--; j += 2) {
+          next = alpha * x[j + 1];
+          x[j] -= current + next;
+          if (n--) {
+            j += 2;
+            current = alpha * x[j + 1];
+            x[j] -= current + next;
+          } else {
+            break;
+          }
+        }
       }
     };
 
@@ -1828,17 +1885,17 @@ var JpxImage = (function JpxImageClosure() {
 
     ReversibleTransform.prototype = Object.create(Transform.prototype);
     ReversibleTransform.prototype.filter =
-      function reversibleTransformFilter(y, offset, length, i0, x) {
+      function reversibleTransformFilter(x, offset, length) {
       var len = length >> 1;
       offset = offset | 0;
       var j, n;
 
       for (j = offset, n = len + 1; n--; j += 2) {
-        x[j] = y[j] - ((y[j - 1] + y[j + 1] + 2) >> 2);
+        x[j] -= (x[j - 1] + x[j + 1] + 2) >> 2;
       }
 
       for (j = offset + 1, n = len; n--; j += 2) {
-        x[j] = y[j] + ((x[j - 1] + x[j + 1]) >> 1);
+        x[j] += (x[j - 1] + x[j + 1]) >> 1;
       }
     };
 

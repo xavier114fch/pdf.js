@@ -21,7 +21,17 @@
 var DEFAULT_PREFERENCES = {
   showPreviousViewOnLoad: true,
   defaultZoomValue: '',
-  ifAvailableShowOutlineOnLoad: false,
+  sidebarViewOnLoad: 0,
   enableHandToolOnLoad: false,
-  enableWebGL: false
+  enableWebGL: false,
+  disableRange: false,
+  disableAutoFetch: false,
+  disableFontFace: false,
+//#if B2G
+//disableTextLayer: true,
+//useOnlyCssZoom: true
+//#else
+  disableTextLayer: false,
+  useOnlyCssZoom: false
+//#endif
 };
