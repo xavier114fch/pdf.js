@@ -653,7 +653,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
               var name = args[0].name;
               if (imageCache.key === name) {
                 operatorList.addOp(imageCache.fn, imageCache.args);
-                args = [];
+                args = null;
                 continue;
               }
 
@@ -677,7 +677,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
                 } else if (type.name === 'Image') {
                   self.buildPaintImageXObject(resources, xobj, false,
                     operatorList, name, imageCache);
-                  args = [];
+                  args = null;
                   continue;
                 } else if (type.name === 'PS') {
                   // PostScript XObjects are unused when viewing documents.
@@ -703,12 +703,12 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
               var cacheKey = args[0].cacheKey;
               if (cacheKey && imageCache.key === cacheKey) {
                 operatorList.addOp(imageCache.fn, imageCache.args);
-                args = [];
+                args = null;
                 continue;
               }
               self.buildPaintImageXObject(resources, args[0], true,
                 operatorList, cacheKey, imageCache);
-              args = [];
+              args = null;
               continue;
             case OPS.showText:
               args[0] = self.handleText(args[0], stateManager.state);
@@ -2099,64 +2099,74 @@ var EvaluatorPreprocessor = (function EvaluatorPreprocessorClosure() {
     },
 
     read: function EvaluatorPreprocessor_read(operation) {
-      var args = [];
+      // We use an array to represent args, except we use |null| to represent
+      // no args because it's more compact than an empty array.
+      var args = null;
       while (true) {
         var obj = this.parser.getObj();
-        if (isEOF(obj)) {
-          return false; // no more commands
-        }
-        if (!isCmd(obj)) {
+        if (isCmd(obj)) {
+          var cmd = obj.cmd;
+          // Check that the command is valid
+          var opSpec = OP_MAP[cmd];
+          if (!opSpec) {
+            warn('Unknown command "' + cmd + '"');
+            continue;
+          }
+
+          var fn = opSpec.id;
+          var numArgs = opSpec.numArgs;
+
+          if (!opSpec.variableArgs) {
+            // Postscript commands can be nested, e.g. /F2 /GS2 gs 5.711 Tf
+            var argsLength = args !== null ? args.length : 0;
+            if (argsLength !== numArgs) {
+              var nonProcessedArgs = this.nonProcessedArgs;
+              while (argsLength > numArgs) {
+                nonProcessedArgs.push(args.shift());
+                argsLength--;
+              }
+              while (argsLength < numArgs && nonProcessedArgs.length !== 0) {
+                if (!args) {
+                  args = [];
+                }
+                args.unshift(nonProcessedArgs.pop());
+                argsLength++;
+              }
+            }
+
+            if (argsLength < numArgs) {
+              // If we receive too few args, it's not possible to possible
+              // to execute the command, so skip the command
+              info('Command ' + fn + ': because expected ' +
+                   numArgs + ' args, but received ' + argsLength +
+                   ' args; skipping');
+              args = null;
+              continue;
+            }
+          } else if (argsLength > numArgs) {
+            info('Command ' + fn + ': expected [0,' + numArgs +
+                 '] args, but received ' + argsLength + ' args');
+          }
+
+          // TODO figure out how to type-check vararg functions
+          this.preprocessCommand(fn, args);
+
+          operation.fn = fn;
+          operation.args = args;
+          return true;
+        } else {
+          if (isEOF(obj)) {
+            return false; // no more commands
+          }
           // argument
           if (obj !== null) {
+            if (!args) {
+              args = [];
+            }
             args.push((obj instanceof Dict ? obj.getAll() : obj));
             assert(args.length <= 33, 'Too many arguments');
           }
-          continue;
         }
-
-        var cmd = obj.cmd;
-        // Check that the command is valid
-        var opSpec = OP_MAP[cmd];
-        if (!opSpec) {
-          warn('Unknown command "' + cmd + '"');
-          continue;
-        }
-
-        var fn = opSpec.id;
-        var numArgs = opSpec.numArgs;
-
-        if (!opSpec.variableArgs) {
-          // Some post script commands can be nested, e.g. /F2 /GS2 gs 5.711 Tf
-          if (args.length !== numArgs) {
-            var nonProcessedArgs = this.nonProcessedArgs;
-            while (args.length > numArgs) {
-              nonProcessedArgs.push(args.shift());
-            }
-            while (args.length < numArgs && nonProcessedArgs.length !== 0) {
-              args.unshift(nonProcessedArgs.pop());
-            }
-          }
-
-          if (args.length < numArgs) {
-            // If we receive too few args, it's not possible to possible
-            // to execute the command, so skip the command
-            info('Command ' + fn + ': because expected ' +
-                 numArgs + ' args, but received ' + args.length +
-                 ' args; skipping');
-            args = [];
-            continue;
-          }
-        } else if (args.length > numArgs) {
-          info('Command ' + fn + ': expected [0,' + numArgs +
-               '] args, but received ' + args.length + ' args');
-        }
-
-        // TODO figure out how to type-check vararg functions
-        this.preprocessCommand(fn, args);
-
-        operation.fn = fn;
-        operation.args = args;
-        return true;
       }
     },
 
