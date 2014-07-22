@@ -31,6 +31,7 @@ var ChunkedStream = (function ChunkedStreamClosure() {
     this.numChunks = Math.ceil(length / chunkSize);
     this.manager = manager;
     this.initialDataLength = 0;
+    this.lastSuccessfulEnsureByteChunk = -1;  // a single-entry cache
   }
 
   // required methods for a stream. if a particular stream does not
@@ -90,6 +91,18 @@ var ChunkedStream = (function ChunkedStreamClosure() {
       }
     },
 
+    ensureByte: function ChunkedStream_ensureRange(pos) {
+      var chunk = Math.floor(pos / this.chunkSize);
+      if (chunk === this.lastSuccessfulEnsureByteChunk) {
+        return;
+      }
+
+      if (!(chunk in this.loadedChunks)) {
+        throw new MissingDataException(pos, pos + 1);
+      }
+      this.lastSuccessfulEnsureByteChunk = chunk;
+    },
+
     ensureRange: function ChunkedStream_ensureRange(begin, end) {
       if (begin >= end) {
         return;
@@ -142,8 +155,15 @@ var ChunkedStream = (function ChunkedStreamClosure() {
       if (pos >= this.end) {
         return -1;
       }
-      this.ensureRange(pos, pos + 1);
-      return this.bytes[this.pos++];
+      var byte = this.bytes[pos];
+      if (byte === 0) {
+        // |byte| might be zero, because the corresponding chunk has not been
+        // loaded yet. In this case, this.ensureByte(pos) will throw an
+        // exception and nothing is returned.
+        this.ensureByte(pos);
+      }
+      this.pos++;
+      return byte;
     },
 
     getUint16: function ChunkedStream_getUint16() {
