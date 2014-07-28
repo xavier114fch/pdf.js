@@ -445,6 +445,15 @@
        "lastPage": 1,
        "type": "eq"
     },
+    {  "id": "issue5010",
+       "file": "pdfs/issue5010.pdf",
+       "md5": "419f4b13403a0871c463ec69d96e342c",
+       "rounds": 1,
+       "link": false,
+       "firstPage": 1,
+       "lastPage": 1,
+       "type": "eq"
+    },
     {  "id": "issue4934",
        "file": "pdfs/issue4934.pdf",
        "md5": "6099da44f677702ae65a648b51a2226d",
@@ -535,6 +544,13 @@
        "file": "pdfs/pal-o47.pdf",
        "md5": "81ae15e539e89f0f0b41169d923b611b",
        "link": true,
+       "rounds": 1,
+       "type": "eq"
+    },
+    {  "id": "issue4801",
+       "file": "pdfs/issue4801.pdf",
+       "md5": "7f32764717447a8b5c8eac08c9ab8380",
+       "link": false,
        "rounds": 1,
        "type": "eq"
     },
@@ -1007,6 +1023,13 @@
       "lastPage": 2,
       "link": true,
       "type": "eq"
+    },
+    {  "id": "issue5039",
+       "file": "pdfs/issue5039.pdf",
+       "md5": "5c131f458ee6b65cc096ccaf0474ee3a",
+       "link": false,
+       "rounds": 1,
+       "type": "eq"
     },
     {  "id": "issue1257",
       "file": "pdfs/issue1257.pdf",

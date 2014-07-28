@@ -1224,7 +1224,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
       // 9.10.2
       var toUnicode = (dict.get('ToUnicode') || baseDict.get('ToUnicode'));
       if (toUnicode) {
-        properties.toUnicode = this.readToUnicode(toUnicode, xref, properties);
+        properties.toUnicode = this.readToUnicode(toUnicode);
       }
       if (properties.composite) {
         // CIDSystemInfo helps to match CID to glyphs
@@ -1308,9 +1308,11 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
     readToUnicode: function PartialEvaluator_readToUnicode(toUnicode) {
       var cmapObj = toUnicode;
       if (isName(cmapObj)) {
-        return CMapFactory.create(cmapObj).map;
+        return CMapFactory.create(cmapObj,
+          { url: PDFJS.cMapUrl, packed: PDFJS.cMapPacked }, null).map;
       } else if (isStream(cmapObj)) {
-        var cmap = CMapFactory.create(cmapObj).map;
+        var cmap = CMapFactory.create(cmapObj,
+          { url: PDFJS.cMapUrl, packed: PDFJS.cMapPacked }, null).map;
         // Convert UTF-16BE
         // NOTE: cmap can be a sparse array, so use forEach instead of for(;;)
         // to iterate over all keys.
@@ -1758,14 +1760,17 @@ var TranslatedFont = (function TranslatedFontClosure() {
           var glyphStream = charProcs[key];
           var operatorList = new OperatorList();
           return evaluator.getOperatorList(glyphStream, fontResources,
-            operatorList).
-            then(function () {
-              charProcOperatorList[key] = operatorList.getIR();
+                                           operatorList).then(function () {
+            charProcOperatorList[key] = operatorList.getIR();
 
-              // Add the dependencies to the parent operator list so they are
-              // resolved before sub operator list is executed synchronously.
-              parentOperatorList.addDependencies(operatorList.dependencies);
-            });
+            // Add the dependencies to the parent operator list so they are
+            // resolved before sub operator list is executed synchronously.
+            parentOperatorList.addDependencies(operatorList.dependencies);
+          }, function (reason) {
+            warn('Type3 font resource \"' + key + '\" is not available');
+            var operatorList = new OperatorList();
+            charProcOperatorList[key] = operatorList.getIR();
+          });
         }.bind(this, charProcKeys[i]));
       }
       this.type3Loaded = loadCharProcsPromise.then(function () {
