@@ -176,6 +176,13 @@
        "rounds": 1,
        "type": "eq"
     },
+    {  "id": "bug1027533",
+       "file": "pdfs/bug1027533.pdf",
+       "md5": "07235b2bb0e03f8d727072d48fae3b0a",
+       "rounds": 1,
+       "link": false,
+       "type": "eq"
+    },
     {  "id": "bug1028735",
        "file": "pdfs/bug1028735.pdf",
        "md5": "5d1a2a87d176ff3b24e66af3cb2365be",
@@ -547,6 +554,14 @@
        "rounds": 1,
        "type": "eq"
     },
+    {  "id": "issue4800",
+       "file": "pdfs/issue4800.pdf",
+       "md5": "80d285dfdb8e8e0dd66a2353f0c78b05",
+       "link": false,
+       "rounds": 1,
+       "type": "eq",
+       "about": "TrueType font with (0, 1) cmap."
+    },
     {  "id": "issue4801",
        "file": "pdfs/issue4801.pdf",
        "md5": "7f32764717447a8b5c8eac08c9ab8380",
@@ -847,6 +862,27 @@
       "rounds": 1,
       "link": true,
       "type": "eq"
+    },
+    {  "id": "issue2931",
+       "file": "pdfs/issue2931.pdf",
+       "md5": "ea40940eaf3541b312bda9329167da11",
+       "link": false,
+       "rounds": 1,
+       "type": "eq"
+    },
+    {  "id": "issue3323",
+       "file": "pdfs/issue3323.pdf",
+       "md5": "1a14ff574013caeafa9d598269988764",
+       "link": false,
+       "rounds": 1,
+       "type": "eq"
+    },
+    {  "id": "issue4304",
+       "file": "pdfs/issue4304.pdf",
+       "md5": "1b1205bf0d7c1ad22a154b60da8e694d",
+       "link": false,
+       "rounds": 1,
+       "type": "eq"
     },
     {  "id": "zerowidthline",
       "file": "pdfs/zerowidthline.pdf",

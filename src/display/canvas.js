@@ -16,7 +16,7 @@
  */
 /* globals error, PDFJS, assert, info, shadow, TextRenderingMode,
            FONT_IDENTITY_MATRIX, Uint32ArrayView, IDENTITY_MATRIX, ImageData,
-           ImageKind, isArray, isNum, TilingPattern, OPS, Promise, Util, warn,
+           ImageKind, isArray, isNum, TilingPattern, OPS, Util, warn,
            getShadingPatternFromIR, WebGLUtils */
 
 'use strict';
@@ -1227,7 +1227,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
       // the current transformation matrix before the fillText/strokeText.
       // See https://bugzilla.mozilla.org/show_bug.cgi?id=726227
       var browserFontSize = size >= MIN_FONT_SIZE ? size : MIN_FONT_SIZE;
-      this.current.fontSizeScale = browserFontSize != MIN_FONT_SIZE ? 1.0 :
+      this.current.fontSizeScale = browserFontSize !== MIN_FONT_SIZE ? 1.0 :
                                    size / MIN_FONT_SIZE;
 
       var rule = italic + ' ' + bold + ' ' + browserFontSize + 'px ' + typeface;
@@ -1373,7 +1373,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
         lineWidth /= scale;
       }
 
-      if (fontSizeScale != 1.0) {
+      if (fontSizeScale !== 1.0) {
         ctx.scale(fontSizeScale, fontSizeScale);
         lineWidth /= fontSizeScale;
       }

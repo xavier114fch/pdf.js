@@ -152,7 +152,7 @@ var Parser = (function ParserClosure() {
 
       // searching for the /EI\s/
       var state = 0, ch, i, ii;
-      while (state != 4 && (ch = stream.getByte()) !== -1) {
+      while (state !== 4 && (ch = stream.getByte()) !== -1) {
         switch (ch | 0) {
           case 0x20:
           case 0x0D:
@@ -346,7 +346,7 @@ var Parser = (function ParserClosure() {
       }
       try {
         var xrefStreamStats = this.xref.stats.streamTypes;
-        if (name == 'FlateDecode' || name == 'Fl') {
+        if (name === 'FlateDecode' || name === 'Fl') {
           xrefStreamStats[StreamType.FLATE] = true;
           if (params) {
             return new PredictorStream(new FlateStream(stream, maybeLength),
@@ -354,7 +354,7 @@ var Parser = (function ParserClosure() {
           }
           return new FlateStream(stream, maybeLength);
         }
-        if (name == 'LZWDecode' || name == 'LZW') {
+        if (name === 'LZWDecode' || name === 'LZW') {
           xrefStreamStats[StreamType.LZW] = true;
           var earlyChange = 1;
           if (params) {
@@ -367,31 +367,31 @@ var Parser = (function ParserClosure() {
           }
           return new LZWStream(stream, maybeLength, earlyChange);
         }
-        if (name == 'DCTDecode' || name == 'DCT') {
+        if (name === 'DCTDecode' || name === 'DCT') {
           xrefStreamStats[StreamType.DCT] = true;
           return new JpegStream(stream, maybeLength, stream.dict, this.xref);
         }
-        if (name == 'JPXDecode' || name == 'JPX') {
+        if (name === 'JPXDecode' || name === 'JPX') {
           xrefStreamStats[StreamType.JPX] = true;
           return new JpxStream(stream, maybeLength, stream.dict);
         }
-        if (name == 'ASCII85Decode' || name == 'A85') {
+        if (name === 'ASCII85Decode' || name === 'A85') {
           xrefStreamStats[StreamType.A85] = true;
           return new Ascii85Stream(stream, maybeLength);
         }
-        if (name == 'ASCIIHexDecode' || name == 'AHx') {
+        if (name === 'ASCIIHexDecode' || name === 'AHx') {
           xrefStreamStats[StreamType.AHX] = true;
           return new AsciiHexStream(stream, maybeLength);
         }
-        if (name == 'CCITTFaxDecode' || name == 'CCF') {
+        if (name === 'CCITTFaxDecode' || name === 'CCF') {
           xrefStreamStats[StreamType.CCF] = true;
           return new CCITTFaxStream(stream, maybeLength, params);
         }
-        if (name == 'RunLengthDecode' || name == 'RL') {
+        if (name === 'RunLengthDecode' || name === 'RL') {
           xrefStreamStats[StreamType.RL] = true;
           return new RunLengthStream(stream, maybeLength);
         }
-        if (name == 'JBIG2Decode') {
+        if (name === 'JBIG2Decode') {
           xrefStreamStats[StreamType.JBIG] = true;
           return new Jbig2Stream(stream, maybeLength, stream.dict);
         }
@@ -650,7 +650,7 @@ var Lexer = (function LexerClosure() {
         if (ch === 0x23) { // '#'
           ch = this.nextChar();
           var x = toHexDigit(ch);
-          if (x != -1) {
+          if (x !== -1) {
             var x2 = toHexDigit(this.nextChar());
             if (x2 === -1) {
               error('Illegal digit in hex char in name: ' + x2);
@@ -823,75 +823,51 @@ var Lexer = (function LexerClosure() {
   return Lexer;
 })();
 
-var Linearization = (function LinearizationClosure() {
-  function Linearization(stream) {
-    this.parser = new Parser(new Lexer(stream), false, null);
-    var obj1 = this.parser.getObj();
-    var obj2 = this.parser.getObj();
-    var obj3 = this.parser.getObj();
-    this.linDict = this.parser.getObj();
-    if (isInt(obj1) && isInt(obj2) && isCmd(obj3, 'obj') &&
-        isDict(this.linDict)) {
-      var obj = this.linDict.get('Linearized');
-      if (!(isNum(obj) && obj > 0)) {
-        this.linDict = null;
-      }
-    }
-  }
-
-  Linearization.prototype = {
-    getInt: function Linearization_getInt(name) {
-      var linDict = this.linDict;
-      var obj;
-      if (isDict(linDict) && isInt(obj = linDict.get(name)) && obj > 0) {
+var Linearization = {
+  create: function LinearizationCreate(stream) {
+    function getInt(name, allowZeroValue) {
+      var obj = linDict.get(name);
+      if (isInt(obj) && (allowZeroValue ? obj >= 0 : obj > 0)) {
         return obj;
       }
-      error('"' + name + '" field in linearization table is invalid');
-    },
-    getHint: function Linearization_getHint(index) {
-      var linDict = this.linDict;
-      var obj1, obj2;
-      if (isDict(linDict) && isArray(obj1 = linDict.get('H')) &&
-          obj1.length >= 2 && isInt(obj2 = obj1[index]) && obj2 > 0) {
-        return obj2;
-      }
-      error('Hints table in linearization table is invalid: ' + index);
-    },
-    get length() {
-      if (!isDict(this.linDict)) {
-        return 0;
-      }
-      return this.getInt('L');
-    },
-    get hintsOffset() {
-      return this.getHint(0);
-    },
-    get hintsLength() {
-      return this.getHint(1);
-    },
-    get hintsOffset2() {
-      return this.getHint(2);
-    },
-    get hintsLenth2() {
-      return this.getHint(3);
-    },
-    get objectNumberFirst() {
-      return this.getInt('O');
-    },
-    get endFirst() {
-      return this.getInt('E');
-    },
-    get numPages() {
-      return this.getInt('N');
-    },
-    get mainXRefEntriesOffset() {
-      return this.getInt('T');
-    },
-    get pageFirst() {
-      return this.getInt('P');
+      throw new Error('The "' + name + '" parameter in the linearization ' +
+                      'dictionary is invalid.');
     }
-  };
-
-  return Linearization;
-})();
-
+    function getHints() {
+      var hints = linDict.get('H'), hintsLength, item;
+      if (isArray(hints) &&
+          ((hintsLength = hints.length) === 2 || hintsLength === 4)) {
+        for (var index = 0; index < hintsLength; index++) {
+          if (!(isInt(item = hints[index]) && item > 0)) {
+            throw new Error('Hint (' + index +
+                            ') in the linearization dictionary is invalid.');
+          }
+        }
+        return hints;
+      }
+      throw new Error('Hint array in the linearization dictionary is invalid.');
+    }
+    var parser = new Parser(new Lexer(stream), false, null);
+    var obj1 = parser.getObj();
+    var obj2 = parser.getObj();
+    var obj3 = parser.getObj();
+    var linDict = parser.getObj();
+    var obj, length;
+    if (!(isInt(obj1) && isInt(obj2) && isCmd(obj3, 'obj') && isDict(linDict) &&
+          isNum(obj = linDict.get('Linearized')) && obj > 0)) {
+      return null; // No valid linearization dictionary found.
+    } else if ((length = getInt('L')) !== stream.length) {
+      throw new Error('The "L" parameter in the linearization dictionary ' +
+                      'does not equal the stream length.');
+    }
+    return {
+      length: length,
+      hints: getHints(),
+      objectNumberFirst: getInt('O'),
+      endFirst: getInt('E'),
+      numPages: getInt('N'),
+      mainXRefEntriesOffset: getInt('T'),
+      pageFirst: (linDict.has('P') ? getInt('P', true) : 0)
+    };
+  }
+};
