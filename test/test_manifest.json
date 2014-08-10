@@ -884,6 +884,20 @@
        "rounds": 1,
        "type": "eq"
     },
+    {  "id": "issue4875",
+       "file": "pdfs/issue4875.pdf",
+       "md5": "9a558e18029a42c0ef4e9a8755e24733",
+       "link": false,
+       "rounds": 1,
+       "type": "eq"
+    },
+    {  "id": "issue4881",
+       "file": "pdfs/issue4881.pdf",
+       "md5": "e1f06be05eda4ddf734e9764f3f067f1",
+       "link": false,
+       "rounds": 1,
+       "type": "eq"
+    },
     {  "id": "zerowidthline",
       "file": "pdfs/zerowidthline.pdf",
       "md5": "295d26e61a85635433f8e4b768953f60",
@@ -1063,6 +1077,13 @@
     {  "id": "issue5039",
        "file": "pdfs/issue5039.pdf",
        "md5": "5c131f458ee6b65cc096ccaf0474ee3a",
+       "link": false,
+       "rounds": 1,
+       "type": "eq"
+    },
+    {  "id": "issue5070",
+       "file": "pdfs/issue5070.pdf",
+       "md5": "ec2ca0b4954c8390a5b3b0ffd79a8e92",
        "link": false,
        "rounds": 1,
        "type": "eq"

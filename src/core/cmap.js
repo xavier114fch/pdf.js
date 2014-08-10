@@ -199,6 +199,10 @@ var CMap = (function CMapClosure() {
     // where nBytePairs are ranges e.g. [low1, high1, low2, high2, ...]
     this.codespaceRanges = [[], [], [], []];
     this.numCodespaceRanges = 0;
+    // Map entries have one of two forms.
+    // - cid chars are 16-bit unsigned integers, stored as integers.
+    // - bf chars are variable-length byte sequences, stored as strings, with
+    //   one byte per character.
     this._map = [];
     this.vertical = false;
     this.useCMap = null;
@@ -210,18 +214,23 @@ var CMap = (function CMapClosure() {
       this.numCodespaceRanges++;
     },
 
-    mapRange: function(low, high, dstLow) {
-      var lastByte = dstLow.length - 1;
+    mapCidRange: function(low, high, dstLow) {
       while (low <= high) {
-        this._map[low] = dstLow;
-        // Only the last byte has to be incremented.
-        dstLow = dstLow.substr(0, lastByte) +
-                 String.fromCharCode(dstLow.charCodeAt(lastByte) + 1);
-        ++low;
+        this._map[low++] = dstLow++;
       }
     },
 
-    mapRangeToArray: function(low, high, array) {
+    mapBfRange: function(low, high, dstLow) {
+      var lastByte = dstLow.length - 1;
+      while (low <= high) {
+        this._map[low++] = dstLow;
+        // Only the last byte has to be incremented.
+        dstLow = dstLow.substr(0, lastByte) +
+                 String.fromCharCode(dstLow.charCodeAt(lastByte) + 1);
+      }
+    },
+
+    mapBfRangeToArray: function(low, high, array) {
       var i = 0, ii = array.length;
       while (low <= high && i < ii) {
         this._map[low] = array[i++];
@@ -229,6 +238,7 @@ var CMap = (function CMapClosure() {
       }
     },
 
+    // This is used for both bf and cid chars.
     mapOne: function(src, dst) {
       this._map[src] = dst;
     },
@@ -292,19 +302,68 @@ var CMap = (function CMapClosure() {
 
       return [0, 1];
     }
-
   };
   return CMap;
 })();
 
+// A special case of CMap, where the _map array implicitly has a length of
+// 65535 and each element is equal to its index.
 var IdentityCMap = (function IdentityCMapClosure() {
   function IdentityCMap(vertical, n) {
     CMap.call(this);
     this.vertical = vertical;
     this.addCodespaceRange(n, 0, 0xffff);
-    this.mapRange(0, 0xffff, '\u0000');
   }
   Util.inherit(IdentityCMap, CMap, {});
+
+  IdentityCMap.prototype = {
+    addCodespaceRange: CMap.prototype.addCodespaceRange,
+
+    mapCidRange: function(low, high, dstLow) {
+      error('should not call mapCidRange');
+    },
+
+    mapBfRange: function(low, high, dstLow) {
+      error('should not call mapBfRange');
+    },
+
+    mapBfRangeToArray: function(low, high, array) {
+      error('should not call mapBfRangeToArray');
+    },
+
+    mapOne: function(src, dst) {
+      error('should not call mapCidOne');
+    },
+
+    lookup: function(code) {
+      return (isInt(code) && code <= 0xffff) ? code : undefined;
+    },
+
+    contains: function(code) {
+      return isInt(code) && code <= 0xffff;
+    },
+
+    forEach: function(callback) {
+      for (var i = 0; i <= 0xffff; i++) {
+        callback(i, i);
+      }
+    },
+
+    charCodeOf: function(value) {
+      return (isInt(value) && value <= 0xffff) ? value : -1;
+    },
+
+    getMap: function() {
+      // Sometimes identity maps must be instantiated, but it's rare.
+      var map = new Array(0x10000);
+      for (var i = 0; i <= 0xffff; i++) {
+        map[i] = i;
+      }
+      return map;
+    },
+
+    readCharCode: CMap.prototype.readCharCode
+  };
 
   return IdentityCMap;
 })();
@@ -347,6 +406,14 @@ var BinaryCMapReader = (function BinaryCMapReaderClosure() {
   }
 
   function hexToStr(a, size) {
+    // This code is hot. Special-case some common values to avoid creating an
+    // object with subarray().
+    if (size === 1) {
+      return String.fromCharCode(a[0], a[1]);
+    }
+    if (size === 3) {
+      return String.fromCharCode(a[0], a[1], a[2], a[3]);
+    }
     return String.fromCharCode.apply(null, a.subarray(0, size + 1));
   }
 
@@ -522,7 +589,7 @@ var BinaryCMapReader = (function BinaryCMapReaderClosure() {
         case 2: // cidchar
           stream.readHex(char, dataSize);
           code = stream.readNumber();
-          cMap.mapOne(hexToInt(char, dataSize), String.fromCharCode(code));
+          cMap.mapOne(hexToInt(char, dataSize), code);
           for (i = 1; i < subitemsCount; i++) {
             incHex(char, dataSize);
             if (!sequence) {
@@ -530,7 +597,7 @@ var BinaryCMapReader = (function BinaryCMapReaderClosure() {
               addHex(char, tmp, dataSize);
             }
             code = stream.readSigned() + (code + 1);
-            cMap.mapOne(hexToInt(char, dataSize), String.fromCharCode(code));
+            cMap.mapOne(hexToInt(char, dataSize), code);
           }
           break;
         case 3: // cidrange
@@ -538,8 +605,8 @@ var BinaryCMapReader = (function BinaryCMapReaderClosure() {
           stream.readHexNumber(end, dataSize);
           addHex(end, start, dataSize);
           code = stream.readNumber();
-          cMap.mapRange(hexToInt(start, dataSize), hexToInt(end, dataSize),
-                        String.fromCharCode(code));
+          cMap.mapCidRange(hexToInt(start, dataSize), hexToInt(end, dataSize),
+                           code);
           for (i = 1; i < subitemsCount; i++) {
             incHex(end, dataSize);
             if (!sequence) {
@@ -551,8 +618,8 @@ var BinaryCMapReader = (function BinaryCMapReaderClosure() {
             stream.readHexNumber(end, dataSize);
             addHex(end, start, dataSize);
             code = stream.readNumber();
-            cMap.mapRange(hexToInt(start, dataSize), hexToInt(end, dataSize),
-                          String.fromCharCode(code));
+            cMap.mapCidRange(hexToInt(start, dataSize), hexToInt(end, dataSize),
+                             code);
           }
           break;
         case 4: // bfchar
@@ -578,9 +645,9 @@ var BinaryCMapReader = (function BinaryCMapReaderClosure() {
           stream.readHexNumber(end, ucs2DataSize);
           addHex(end, start, ucs2DataSize);
           stream.readHex(charCode, dataSize);
-          cMap.mapRange(hexToInt(start, ucs2DataSize),
-                        hexToInt(end, ucs2DataSize),
-                        hexToStr(charCode, dataSize));
+          cMap.mapBfRange(hexToInt(start, ucs2DataSize),
+                          hexToInt(end, ucs2DataSize),
+                          hexToStr(charCode, dataSize));
           for (i = 1; i < subitemsCount; i++) {
             incHex(end, ucs2DataSize);
             if (!sequence) {
@@ -592,9 +659,9 @@ var BinaryCMapReader = (function BinaryCMapReaderClosure() {
             stream.readHexNumber(end, ucs2DataSize);
             addHex(end, start, ucs2DataSize);
             stream.readHex(charCode, dataSize);
-            cMap.mapRange(hexToInt(start, ucs2DataSize),
-                          hexToInt(end, ucs2DataSize),
-                          hexToStr(charCode, dataSize));
+            cMap.mapBfRange(hexToInt(start, ucs2DataSize),
+                            hexToInt(end, ucs2DataSize),
+                            hexToStr(charCode, dataSize));
           }
           break;
         default:
@@ -675,7 +742,7 @@ var CMapFactory = (function CMapFactoryClosure() {
       obj = lexer.getObj();
       if (isInt(obj) || isString(obj)) {
         var dstLow = isInt(obj) ? String.fromCharCode(obj) : obj;
-        cMap.mapRange(low, high, dstLow);
+        cMap.mapBfRange(low, high, dstLow);
       } else if (isCmd(obj, '[')) {
         obj = lexer.getObj();
         var array = [];
@@ -683,7 +750,7 @@ var CMapFactory = (function CMapFactoryClosure() {
           array.push(obj);
           obj = lexer.getObj();
         }
-        cMap.mapRangeToArray(low, high, array);
+        cMap.mapBfRangeToArray(low, high, array);
       } else {
         break;
       }
@@ -704,7 +771,7 @@ var CMapFactory = (function CMapFactoryClosure() {
       var src = strToInt(obj);
       obj = lexer.getObj();
       expectInt(obj);
-      var dst = String.fromCharCode(obj);
+      var dst = obj;
       cMap.mapOne(src, dst);
     }
   }
@@ -725,8 +792,8 @@ var CMapFactory = (function CMapFactoryClosure() {
       var high = strToInt(obj);
       obj = lexer.getObj();
       expectInt(obj);
-      var dstLow = String.fromCharCode(obj);
-      cMap.mapRange(low, high, dstLow);
+      var dstLow = obj;
+      cMap.mapCidRange(low, high, dstLow);
     }
   }
 

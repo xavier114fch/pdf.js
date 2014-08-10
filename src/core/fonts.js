@@ -2432,17 +2432,43 @@ var Font = (function FontClosure() {
     // length
     var length = data.length;
 
-    // Per spec tables must be 4-bytes align so add padding as needed
-    while (data.length & 3) {
-      data.push(0x00);
+    // Per spec tables must be 4-bytes align so add padding as needed.
+    var paddedLength = length;
+    while (paddedLength & 3) {
+      paddedLength++;
     }
+    var i;
+    var padding = paddedLength - length;
+    if (padding !== 0) {
+      // Padding is required. |data| can be an Array, Uint8Array, or
+      // Uint16Array. In the latter two cases we need to create slightly larger
+      // typed arrays and copy the old contents in. Fortunately that's not a
+      // common case.
+      var data2;
+      if (data instanceof Array) {
+        for (i = 0; i < padding; i++) {
+          data.push(0);
+        }
+      } else if (data instanceof Uint8Array) {
+        data2 = new Uint8Array(paddedLength);
+        data2.set(data);
+        data = data2;
+      } else if (data instanceof Uint16Array) {
+        data2 = new Uint16Array(paddedLength);
+        data2.set(data);
+        data = data2;
+      } else {
+        error('bad array kind in createTableEntry');
+      }
+    }
+
     while (file.virtualOffset & 3) {
       file.virtualOffset++;
     }
 
     // checksum
     var checksum = 0, n = data.length;
-    for (var i = 0; i < n; i += 4) {
+    for (i = 0; i < n; i += 4) {
       checksum = (checksum + int32(data[i], data[i + 1], data[i + 2],
                                    data[i + 3])) | 0;
     }
@@ -2451,6 +2477,8 @@ var Font = (function FontClosure() {
                       string32(offset) + string32(length));
     file.file += tableEntry;
     file.virtualOffset += data.length;
+
+    return data;
   }
 
   function isTrueTypeFile(file) {
@@ -3899,8 +3927,7 @@ var Font = (function FontClosure() {
         var cidToGidMap = properties.cidToGidMap || [];
         var cidToGidMapLength = cidToGidMap.length;
         properties.cMap.forEach(function(charCode, cid) {
-          assert(cid.length === 1, 'Max size of CID is 65,535');
-          cid = cid.charCodeAt(0);
+          assert(cid <= 0xffff, 'Max size of CID is 65,535');
           var glyphId = -1;
           if (cidToGidMapLength === 0) {
             glyphId = charCode;
@@ -4063,13 +4090,7 @@ var Font = (function FontClosure() {
       // rewrite the tables but tweak offsets
       for (i = 0; i < numTables; i++) {
         table = tables[tablesNames[i]];
-        var data = [];
-
-        tableData = table.data;
-        for (var j = 0, jj = tableData.length; j < jj; j++) {
-          data.push(tableData[j]);
-        }
-        createTableEntry(ttf, table.tag, data);
+        table.data = createTableEntry(ttf, table.tag, table.data);
       }
 
       // Add the table datas
@@ -4264,7 +4285,7 @@ var Font = (function FontClosure() {
 
       var field;
       for (field in fields) {
-        createTableEntry(otf, field, fields[field]);
+        fields[field] = createTableEntry(otf, field, fields[field]);
       }
       for (field in fields) {
         var table = fields[field];
@@ -4300,6 +4321,7 @@ var Font = (function FontClosure() {
       if (!properties.composite /* is simple font */) {
         toUnicode = [];
         var encoding = properties.defaultEncoding.slice();
+        var baseEncodingName = properties.baseEncodingName;
         // Merge in the differences array.
         var differences = properties.differences;
         for (charcode in differences) {
@@ -4310,26 +4332,43 @@ var Font = (function FontClosure() {
           var glyphName = encoding[charcode];
           // b) Look up the character name in the Adobe Glyph List (see the
           //    Bibliography) to obtain the corresponding Unicode value.
-          if (glyphName === '' || !(glyphName in GlyphsUnicode)) {
+          if (glyphName === '') {
+            continue;
+          } else if (GlyphsUnicode[glyphName] === undefined) {
             // (undocumented) c) Few heuristics to recognize unknown glyphs
             // NOTE: Adobe Reader does not do this step, but OSX Preview does
-            var code;
-            // Gxx glyph
-            if (glyphName.length === 3 &&
-                glyphName[0] === 'G' &&
-                (code = parseInt(glyphName.substr(1), 16))) {
-              toUnicode[charcode] = String.fromCharCode(code);
+            var code = 0;
+            switch (glyphName[0]) {
+              case 'G': // Gxx glyph
+                if (glyphName.length === 3) {
+                  code = parseInt(glyphName.substr(1), 16);
+                }
+                break;
+              case 'g': // g00xx glyph
+                if (glyphName.length === 5) {
+                  code = parseInt(glyphName.substr(1), 16);
+                }
+                break;
+              case 'C': // Cddd glyph
+              case 'c': // cddd glyph
+                if (glyphName.length >= 3) {
+                  code = +glyphName.substr(1);
+                }
+                break;
             }
-            // g00xx glyph
-            if (glyphName.length === 5 &&
-                glyphName[0] === 'g' &&
-                (code = parseInt(glyphName.substr(1), 16))) {
-              toUnicode[charcode] = String.fromCharCode(code);
-            }
-            // Cddd glyph
-            if (glyphName.length >= 3 &&
-                glyphName[0] === 'C' &&
-                (code = +glyphName.substr(1))) {
+            if (code) {
+              // If |baseEncodingName| is one the predefined encodings,
+              // and |code| equals |charcode|, using the glyph defined in the
+              // baseEncoding seems to yield a better |toUnicode| mapping
+              // (fixes issue 5070).
+              if (baseEncodingName && code === +charcode) {
+                var baseEncoding = Encodings[baseEncodingName];
+                if (baseEncoding && (glyphName = baseEncoding[charcode])) {
+                  toUnicode[charcode] =
+                    String.fromCharCode(GlyphsUnicode[glyphName]);
+                  continue;
+                }
+              }
               toUnicode[charcode] = String.fromCharCode(code);
             }
             continue;
@@ -4370,10 +4409,10 @@ var Font = (function FontClosure() {
         var cMap = properties.cMap;
         toUnicode = [];
         cMap.forEach(function(charcode, cid) {
-          assert(cid.length === 1, 'Max size of CID is 65,535');
+          assert(cid <= 0xffff, 'Max size of CID is 65,535');
           // e) Map the CID obtained in step (a) according to the CMap obtained
           // in step (d), producing a Unicode value.
-          var ucs2 = ucs2CMap.lookup(cid.charCodeAt(0));
+          var ucs2 = ucs2CMap.lookup(cid);
           if (ucs2) {
             toUnicode[charcode] =
               String.fromCharCode((ucs2.charCodeAt(0) << 8) +
@@ -4415,7 +4454,7 @@ var Font = (function FontClosure() {
         var charcode = 0;
         if (this.composite) {
           if (this.cMap.contains(glyphUnicode)) {
-            charcode = this.cMap.lookup(glyphUnicode).charCodeAt(0);
+            charcode = this.cMap.lookup(glyphUnicode);
           }
         }
         // ... via toUnicode map
@@ -4444,7 +4483,7 @@ var Font = (function FontClosure() {
 
       var widthCode = charcode;
       if (this.cMap && this.cMap.contains(charcode)) {
-        widthCode = this.cMap.lookup(charcode).charCodeAt(0);
+        widthCode = this.cMap.lookup(charcode);
       }
       width = this.widths[widthCode];
       width = isNum(width) ? width : this.defaultWidth;
@@ -5626,8 +5665,8 @@ var CFFFont = (function CFFFontClosure() {
           // If the font is actually a CID font then we should use the charset
           // to map CIDs to GIDs.
           for (glyphId = 0; glyphId < charsets.length; glyphId++) {
-            var cidString = String.fromCharCode(charsets[glyphId]);
-            var charCode = properties.cMap.charCodeOf(cidString);
+            var cid = charsets[glyphId];
+            var charCode = properties.cMap.charCodeOf(cid);
             charCodeToGlyphId[charCode] = glyphId;
           }
         } else {

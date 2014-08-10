@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/* globals CustomStyle, PDFFindController, scrollIntoView, PDFJS */
+/* globals CustomStyle, scrollIntoView, PDFJS */
 
 'use strict';
 
@@ -21,6 +21,12 @@ var FIND_SCROLL_OFFSET_TOP = -50;
 var FIND_SCROLL_OFFSET_LEFT = -400;
 var MAX_TEXT_DIVS_TO_RENDER = 100000;
 var RENDER_DELAY = 200; // ms
+
+var NonWhitespaceRegexp = /\S/;
+
+function isAllWhitespace(str) {
+  return !NonWhitespaceRegexp.test(str);
+}
 
 /**
  * TextLayerBuilder provides text-selection functionality for the PDF.
@@ -39,7 +45,7 @@ var TextLayerBuilder = (function TextLayerBuilderClosure() {
     this.viewport = options.viewport;
     this.isViewerInPresentationMode = options.isViewerInPresentationMode;
     this.textDivs = [];
-    this.findController = window.PDFFindController || null;
+    this.findController = options.findController || null;
   }
 
   TextLayerBuilder.prototype = {
@@ -56,20 +62,34 @@ var TextLayerBuilder = (function TextLayerBuilderClosure() {
         return;
       }
 
+      var lastFontSize;
+      var lastFontFamily;
       for (var i = 0; i < textDivsLength; i++) {
         var textDiv = textDivs[i];
         if (textDiv.dataset.isWhitespace !== undefined) {
           continue;
         }
 
-        ctx.font = textDiv.style.fontSize + ' ' + textDiv.style.fontFamily;
+        var fontSize = textDiv.style.fontSize;
+        var fontFamily = textDiv.style.fontFamily;
+
+        // Only build font string and set to context if different from last.
+        if (fontSize !== lastFontSize || fontFamily !== lastFontFamily) {
+          ctx.font = fontSize + ' ' + fontFamily;
+          lastFontSize = fontSize;
+          lastFontFamily = fontFamily;
+        }
+
         var width = ctx.measureText(textDiv.textContent).width;
         if (width > 0) {
           textLayerFrag.appendChild(textDiv);
+          // Dataset values come of type string.
           var textScale = textDiv.dataset.canvasWidth / width;
           var rotation = textDiv.dataset.angle;
           var transform = 'scale(' + textScale + ', 1)';
-          transform = 'rotate(' + rotation + 'deg) ' + transform;
+          if (rotation) {
+            transform = 'rotate(' + rotation + 'deg) ' + transform;
+          }
           CustomStyle.setProp('transform' , textDiv, transform);
           CustomStyle.setProp('transformOrigin' , textDiv, '0% 0%');
         }
@@ -104,7 +124,7 @@ var TextLayerBuilder = (function TextLayerBuilderClosure() {
       var style = styles[geom.fontName];
       var textDiv = document.createElement('div');
       this.textDivs.push(textDiv);
-      if (!/\S/.test(geom.str)) {
+      if (isAllWhitespace(geom.str)) {
         textDiv.dataset.isWhitespace = true;
         return;
       }
@@ -114,18 +134,34 @@ var TextLayerBuilder = (function TextLayerBuilderClosure() {
         angle += Math.PI / 2;
       }
       var fontHeight = Math.sqrt((tx[2] * tx[2]) + (tx[3] * tx[3]));
-      var fontAscent = (style.ascent ? style.ascent * fontHeight :
-        (style.descent ? (1 + style.descent) * fontHeight : fontHeight));
+      var fontAscent = fontHeight;
+      if (style.ascent) {
+        fontAscent = style.ascent * fontAscent;
+      } else if (style.descent) {
+        fontAscent = (1 + style.descent) * fontAscent;
+      }
 
+      var left;
+      var top;
+      if (angle === 0) {
+        left = tx[4];
+        top = tx[5] - fontAscent;
+      } else {
+        left = tx[4] + (fontAscent * Math.sin(angle));
+        top = tx[5] - (fontAscent * Math.cos(angle));
+      }
       textDiv.style.position = 'absolute';
-      textDiv.style.left = (tx[4] + (fontAscent * Math.sin(angle))) + 'px';
-      textDiv.style.top = (tx[5] - (fontAscent * Math.cos(angle))) + 'px';
+      textDiv.style.left = left + 'px';
+      textDiv.style.top = top + 'px';
       textDiv.style.fontSize = fontHeight + 'px';
       textDiv.style.fontFamily = style.fontFamily;
 
       textDiv.textContent = geom.str;
       textDiv.dataset.fontName = geom.fontName;
-      textDiv.dataset.angle = angle * (180 / Math.PI);
+      // Storing into dataset will convert number into string.
+      if (angle !== 0) {
+        textDiv.dataset.angle = angle * (180 / Math.PI);
+      }
       if (style.vertical) {
         textDiv.dataset.canvasWidth = geom.height * this.viewport.scale;
       } else {
@@ -249,7 +285,7 @@ var TextLayerBuilder = (function TextLayerBuilderClosure() {
         var end = match.end;
         var isSelected = (isSelectedPage && i === selectedMatchIdx);
         var highlightSuffix = (isSelected ? ' selected' : '');
-         
+
         if (isSelected && !this.isViewerInPresentationMode) {
           scrollIntoView(textDivs[begin.divIdx],
                          { top: FIND_SCROLL_OFFSET_TOP,
@@ -324,4 +360,3 @@ var TextLayerBuilder = (function TextLayerBuilderClosure() {
   };
   return TextLayerBuilder;
 })();
-
