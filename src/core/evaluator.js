@@ -20,8 +20,8 @@
            isNum, isStream, isString, JpegStream, Lexer, Metrics,
            MurmurHash3_64, Name, Parser, Pattern, PDFImage, PDFJS, serifFonts,
            stdFontMap, symbolsFonts, getTilingPatternIR, warn, Util, Promise,
-           RefSetCache, isRef, TextRenderingMode, CMapFactory, OPS,
-           UNSUPPORTED_FEATURES, UnsupportedManager, NormalizedUnicodes,
+           RefSetCache, isRef, TextRenderingMode, ToUnicodeMap, CMapFactory,
+           OPS, UNSUPPORTED_FEATURES, UnsupportedManager, NormalizedUnicodes,
            IDENTITY_MATRIX, reverseIfRtl, createPromiseCapability,
            getFontType */
 
@@ -363,10 +363,13 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
     setGState: function PartialEvaluator_setGState(resources, gState,
                                                    operatorList, xref,
                                                    stateManager) {
-
-      // TODO(mack): This should be rewritten so that this function returns
-      // what should be added to the queue during each iteration
-      function setGStateForKey(gStateObj, key, value) {
+      // This array holds the converted/processed state data.
+      var gStateObj = [];
+      var gStateMap = gState.map;
+      var self = this;
+      var promise = Promise.resolve();
+      for (var key in gStateMap) {
+        var value = gStateMap[key];
         switch (key) {
           case 'Type':
             break;
@@ -412,7 +415,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
 
             break;
           // Only generate info log messages for the following since
-          // they are unlikey to have a big impact on the rendering.
+          // they are unlikely to have a big impact on the rendering.
           case 'OP':
           case 'op':
           case 'OPM':
@@ -435,18 +438,10 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
             break;
         }
       }
-
-      // This array holds the converted/processed state data.
-      var gStateObj = [];
-      var gStateMap = gState.map;
-      var self = this;
-      var promise = Promise.resolve();
-      for (var key in gStateMap) {
-        var value = gStateMap[key];
-        setGStateForKey(gStateObj, key, value);
-      }
       return promise.then(function () {
-        operatorList.addOp(OPS.setGState, [gStateObj]);
+        if (gStateObj.length >= 0) {
+          operatorList.addOp(OPS.setGState, [gStateObj]);
+        }
       });
     },
 
@@ -642,8 +637,15 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
       return new Promise(function next(resolve, reject) {
         timeSlotManager.reset();
         var stop, operation = {}, i, ii, cs;
-        while (!(stop = timeSlotManager.check()) &&
-               preprocessor.read(operation)) {
+        while (!(stop = timeSlotManager.check())) {
+          // The arguments parsed by read() are used beyond this loop, so we
+          // cannot reuse the same array on each iteration. Therefore we pass
+          // in |null| as the initial value (see the comment on
+          // EvaluatorPreprocessor_read() for why).
+          operation.args = null;
+          if (!(preprocessor.read(operation))) {
+            break;
+          }
           var args = operation.args;
           var fn = operation.fn;
 
@@ -1037,12 +1039,20 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
 
       return new Promise(function next(resolve, reject) {
         timeSlotManager.reset();
-        var stop, operation = {};
-        while (!(stop = timeSlotManager.check()) &&
-               (preprocessor.read(operation))) {
+        var stop, operation = {}, args = [];
+        while (!(stop = timeSlotManager.check())) {
+          // The arguments parsed by read() are not used beyond this loop, so
+          // we can reuse the same array on every iteration, thus avoiding
+          // unnecessary allocations.
+          args.length = 0;
+          operation.args = args;
+          if (!(preprocessor.read(operation))) {
+            break;
+          }
           textState = stateManager.state;
           var fn = operation.fn;
-          var args = operation.args;
+          args = operation.args;
+
           switch (fn | 0) {
             case OPS.setFont:
               textState.fontSize = args[1];
@@ -1309,12 +1319,13 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
     },
 
     readToUnicode: function PartialEvaluator_readToUnicode(toUnicode) {
-      var cmapObj = toUnicode;
+      var cmap, cmapObj = toUnicode;
       if (isName(cmapObj)) {
-        return CMapFactory.create(cmapObj,
+        cmap = CMapFactory.create(cmapObj,
           { url: PDFJS.cMapUrl, packed: PDFJS.cMapPacked }, null).getMap();
+        return new ToUnicodeMap(cmap);
       } else if (isStream(cmapObj)) {
-        var cmap = CMapFactory.create(cmapObj,
+        cmap = CMapFactory.create(cmapObj,
           { url: PDFJS.cMapUrl, packed: PDFJS.cMapPacked }, null).getMap();
         // Convert UTF-16BE
         // NOTE: cmap can be a sparse array, so use forEach instead of for(;;)
@@ -1333,7 +1344,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
           }
           cmap[i] = String.fromCharCode.apply(String, str);
         });
-        return cmap;
+        return new ToUnicodeMap(cmap);
       }
       return null;
     },
@@ -2111,10 +2122,29 @@ var EvaluatorPreprocessor = (function EvaluatorPreprocessorClosure() {
       return this.stateManager.stateStack.length;
     },
 
+    // |operation| is an object with two fields:
+    //
+    // - |fn| is an out param.
+    //
+    // - |args| is an inout param. On entry, it should have one of two values.
+    //
+    //   - An empty array. This indicates that the caller is providing the
+    //     array in which the args will be stored in. The caller should use
+    //     this value if it can reuse a single array for each call to read().
+    //
+    //   - |null|. This indicates that the caller needs this function to create
+    //     the array in which any args are stored in. If there are zero args,
+    //     this function will leave |operation.args| as |null| (thus avoiding
+    //     allocations that would occur if we used an empty array to represent
+    //     zero arguments). Otherwise, it will replace |null| with a new array
+    //     containing the arguments. The caller should use this value if it
+    //     cannot reuse an array for each call to read().
+    //
+    // These two modes are present because this function is very hot and so
+    // avoiding allocations where possible is worthwhile.
+    //
     read: function EvaluatorPreprocessor_read(operation) {
-      // We use an array to represent args, except we use |null| to represent
-      // no args because it's more compact than an empty array.
-      var args = null;
+      var args = operation.args;
       while (true) {
         var obj = this.parser.getObj();
         if (isCmd(obj)) {

@@ -1441,6 +1441,14 @@
       "link": true,
       "type": "eq"
     },
+    {  "id": "bug1011159",
+      "file": "pdfs/bug1011159.pdf",
+      "md5": "4532e22deb92d4cd2992d0cfe255582a",
+      "rounds": 1,
+      "lastPage": 1,
+      "type": "eq",
+      "about": "Type3 font with negative HScale and font size"
+    },
     {  "id": "bug816075",
       "file": "pdfs/bug816075.pdf",
       "md5": "7ec87c115c1f9ec41234cc7002555e82",
@@ -1689,6 +1697,13 @@
        "file": "pdfs/calgray.pdf",
        "md5": "ee784999bfa1ed373f55cdabbb580df1",
        "rounds": 1,
+       "type": "eq"
+    },
+    {  "id": "calrgb",
+       "file": "pdfs/calrgb.pdf",
+       "md5": "625068e9a7dd80e4f70b24ce97b3ec5c",
+       "rounds": 1,
+       "lastPage": 8,
        "type": "eq"
     },
     {  "id": "bug900822",

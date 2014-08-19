@@ -274,20 +274,28 @@ var PDFView = {
   watchScroll: function pdfViewWatchScroll(viewAreaElement, state, callback) {
     state.down = true;
     state.lastY = viewAreaElement.scrollTop;
-    viewAreaElement.addEventListener('scroll', function webViewerScroll(evt) {
-      if (!PDFView.pdfDocument) {
+    state.rAF = null;
+    viewAreaElement.addEventListener('scroll', function debounceScroll(evt) {
+      if (state.rAF) {
         return;
       }
-      var currentY = viewAreaElement.scrollTop;
-      var lastY = state.lastY;
-      if (currentY > lastY) {
-        state.down = true;
-      } else if (currentY < lastY) {
-        state.down = false;
-      }
-      // else do nothing and use previous value
-      state.lastY = currentY;
-      callback();
+      // schedule an invocation of webViewerScrolled for next animation frame.
+      state.rAF = window.requestAnimationFrame(function webViewerScrolled() {
+        state.rAF = null;
+        if (!PDFView.pdfDocument) {
+          return;
+        }
+        var currentY = viewAreaElement.scrollTop;
+        var lastY = state.lastY;
+        if (currentY > lastY) {
+          state.down = true;
+        } else if (currentY < lastY) {
+          state.down = false;
+        }
+        // else do nothing and use previous value
+        state.lastY = currentY;
+        callback();
+      });
     }, true);
   },
 
@@ -612,10 +620,6 @@ var PDFView = {
       thumbsView.removeChild(thumbsView.lastChild);
     }
 
-    if ('_loadingInterval' in thumbsView) {
-      clearInterval(thumbsView._loadingInterval);
-    }
-
     var container = document.getElementById('viewer');
     while (container.hasChildNodes()) {
       container.removeChild(container.lastChild);
@@ -700,6 +704,10 @@ var PDFView = {
         self.loading = false;
       }
     );
+
+    if (args && args.length) {
+      DocumentProperties.setFileSize(args.length);
+    }
   },
 
   download: function pdfViewDownload() {
@@ -2211,8 +2219,13 @@ window.addEventListener('pagechange', function pagechange(evt) {
       }
     }
   }
+  var numPages = PDFView.pages.length;
+
   document.getElementById('previous').disabled = (page <= 1);
-  document.getElementById('next').disabled = (page >= PDFView.pages.length);
+  document.getElementById('next').disabled = (page >= numPages);
+
+  document.getElementById('firstPage').disabled = (page <= 1);
+  document.getElementById('lastPage').disabled = (page >= numPages);
 }, true);
 
 function handleMouseWheel(evt) {
@@ -2507,8 +2520,8 @@ window.addEventListener('afterprint', function afterPrint(evt) {
 //  var url = URL.createObjectURL(blob);
 //  PDFView.open(url);
 //
-//  var cancelButton = document.getElementById('activityClose');
-//  cancelButton.addEventListener('click', function() {
+//  var header = document.getElementById('header');
+//  header.addEventListener('action', function() {
 //    activity.postResult('close');
 //  });
 //});

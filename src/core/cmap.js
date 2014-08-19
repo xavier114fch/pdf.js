@@ -281,7 +281,7 @@ var CMap = (function CMapClosure() {
       return this._map;
     },
 
-    readCharCode: function(str, offset) {
+    readCharCode: function(str, offset, out) {
       var c = 0;
       var codespaceRanges = this.codespaceRanges;
       var codespaceRangesLen = this.codespaceRanges.length;
@@ -295,12 +295,14 @@ var CMap = (function CMapClosure() {
           var low = codespaceRange[k++];
           var high = codespaceRange[k++];
           if (c >= low && c <= high) {
-            return [c, n + 1];
+            out.charcode = c;
+            out.length = n + 1;
+            return;
           }
         }
       }
-
-      return [0, 1];
+      out.charcode = 0;
+      out.length = 1;
     }
   };
   return CMap;
@@ -385,7 +387,7 @@ var BinaryCMapReader = (function BinaryCMapReaderClosure() {
       request.overrideMimeType('text/plain; charset=x-user-defined');
     }
     request.send(null);
-    if (request.status === 0 && /^https?:/i.test(url)) {
+    if (nonBinaryRequest ? !request.responseText : !request.response) {
       error('Unable to get binary cMap at: ' + url);
     }
     if (nonBinaryRequest) {
@@ -925,7 +927,7 @@ var CMapFactory = (function CMapFactoryClosure() {
     var url = builtInCMapParams.url + name;
     request.open('GET', url, false);
     request.send(null);
-    if (request.status === 0 && /^https?:/i.test(url)) {
+    if (!request.responseText) {
       error('Unable to get cMap at: ' + url);
     }
     var cMap = new CMap(true);
