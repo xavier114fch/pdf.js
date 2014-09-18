@@ -18,6 +18,7 @@
 !sizes.pdf
 !close-path-bug.pdf
 !issue4630.pdf
+!issue5280.pdf
 !alphatrans.pdf
 !devicen.pdf
 !cmykjpeg.pdf
@@ -60,6 +61,7 @@
 !issue4668.pdf
 !issue5039.pdf
 !issue5070.pdf
+!issue5244.pdf
 !gradientfill.pdf
 !bug903856.pdf
 !bug850854.pdf
@@ -75,6 +77,7 @@
 !noembed-eucjp.pdf
 !noembed-sjis.pdf
 !vertical.pdf
+!ZapfDingbats.pdf
 !bug878026.pdf
 !issue5010.pdf
 !issue4934.pdf
