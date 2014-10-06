@@ -2486,6 +2486,13 @@ var Font = (function FontClosure() {
           }
           this.toFontChar[charCode] = fontChar;
         }
+        for (charCode in properties.differences) {
+          fontChar = GlyphsUnicode[properties.differences[charCode]];
+          if (!fontChar) {
+            continue;
+          }
+          this.toFontChar[charCode] = fontChar;
+        }
       } else if (/Dingbats/i.test(fontName)) {
         var dingbats = Encodings.ZapfDingbatsEncoding;
         for (charCode in dingbats) {
@@ -2546,6 +2553,9 @@ var Font = (function FontClosure() {
 
     var data;
     switch (type) {
+      case 'MMType1':
+        info('MMType1 font (' + name + '), falling back to Type1.');
+        /* falls through */
       case 'Type1':
       case 'CIDFontType0':
         this.mimetype = 'font/opentype';

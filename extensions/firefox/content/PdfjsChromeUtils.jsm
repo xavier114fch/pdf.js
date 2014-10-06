@@ -1,3 +1,5 @@
+/* -*- Mode: Java; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set shiftwidth=2 tabstop=2 autoindent cindent expandtab: */
 /* Copyright 2012 Mozilla Foundation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,14 +25,11 @@ const Ci = Components.interfaces;
 const Cr = Components.results;
 const Cu = Components.utils;
 
-const PREF_PREFIX = 'pdfjs';
+const PREF_PREFIX = 'PDFJSSCRIPT_PREF_PREFIX';
 const PDF_CONTENT_TYPE = 'application/pdf';
 
 Cu.import('resource://gre/modules/XPCOMUtils.jsm');
 Cu.import('resource://gre/modules/Services.jsm');
-
-XPCOMUtils.defineLazyModuleGetter(this, "BrowserUtils",
-                                  "resource://gre/modules/BrowserUtils.jsm");
 
 let Svc = {};
 XPCOMUtils.defineLazyServiceGetter(Svc, 'mime',
@@ -123,19 +122,19 @@ let PdfjsChromeUtils = {
   receiveMessage: function (aMsg) {
     switch (aMsg.name) {
       case "PDFJS:Parent:clearUserPref":
-        this._clearUserPref(aMsg.json.name);
+        this._clearUserPref(aMsg.data.name);
         break;
       case "PDFJS:Parent:setIntPref":
-        this._setIntPref(aMsg.json.name, aMsg.json.value);
+        this._setIntPref(aMsg.data.name, aMsg.data.value);
         break;
       case "PDFJS:Parent:setBoolPref":
-        this._setBoolPref(aMsg.json.name, aMsg.json.value);
+        this._setBoolPref(aMsg.data.name, aMsg.data.value);
         break;
       case "PDFJS:Parent:setCharPref":
-        this._setCharPref(aMsg.json.name, aMsg.json.value);
+        this._setCharPref(aMsg.data.name, aMsg.data.value);
         break;
       case "PDFJS:Parent:setStringPref":
-        this._setStringPref(aMsg.json.name, aMsg.json.value);
+        this._setStringPref(aMsg.data.name, aMsg.data.value);
         break;
       case "PDFJS:Parent:isDefaultHandlerApp":
         return this.isDefaultHandlerApp();
@@ -175,8 +174,10 @@ let PdfjsChromeUtils = {
     return true;
   },
 
-  _isPrefAllowed: function (aPrefName) {
-    if (this._allowedPrefNames.indexOf(aPrefName) == -1) {
+  _ensurePreferenceAllowed: function (aPrefName) {
+    let unPrefixedName = aPrefName.split(PREF_PREFIX + '.');
+    if (unPrefixedName[0] !== '' ||
+        this._allowedPrefNames.indexOf(unPrefixedName[1]) === -1) {
       let msg = "'" + aPrefName + "' ";
       msg += "can't be accessed from content. See PdfjsChromeUtils." 
       throw new Error(msg);
@@ -184,27 +185,27 @@ let PdfjsChromeUtils = {
   },
 
   _clearUserPref: function (aPrefName) {
-    this._isPrefAllowed(aPrefName);
+    this._ensurePreferenceAllowed(aPrefName);
     Services.prefs.clearUserPref(aPrefName);
   },
 
   _setIntPref: function (aPrefName, aPrefValue) {
-    this._isPrefAllowed(aPrefName);
+    this._ensurePreferenceAllowed(aPrefName);
     Services.prefs.setIntPref(aPrefName, aPrefValue);
   },
 
   _setBoolPref: function (aPrefName, aPrefValue) {
-    this._isPrefAllowed(aPrefName);
+    this._ensurePreferenceAllowed(aPrefName);
     Services.prefs.setBoolPref(aPrefName, aPrefValue);
   },
 
   _setCharPref: function (aPrefName, aPrefValue) {
-    this._isPrefAllowed(aPrefName);
+    this._ensurePreferenceAllowed(aPrefName);
     Services.prefs.setCharPref(aPrefName, aPrefValue);
   },
 
   _setStringPref: function (aPrefName, aPrefValue) {
-    this._isPrefAllowed(aPrefName);
+    this._ensurePreferenceAllowed(aPrefName);
     let str = Cc['@mozilla.org/supports-string;1']
                 .createInstance(Ci.nsISupportsString);
     str.data = aPrefValue;
@@ -227,7 +228,7 @@ let PdfjsChromeUtils = {
    * a pdf displayed correctly.
    */
   _displayWarning: function (aMsg) {
-    let json = aMsg.json;
+    let json = aMsg.data;
     let browser = aMsg.target;
     let cpowCallback = aMsg.objects.callback;
     let tabbrowser = browser.getTabBrowser();
