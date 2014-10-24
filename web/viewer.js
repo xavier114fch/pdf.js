@@ -675,15 +675,19 @@ var PDFViewerApplication = {
       }
     };
 
-    this.destinationsPromise.then(function() {
-      if (typeof dest === 'string') {
-        destString = dest;
-        dest = self.destinations[dest];
-      }
-      if (!(dest instanceof Array)) {
+    var destinationPromise;
+    if (typeof dest === 'string') {
+      destString = dest;
+      destinationPromise = this.pdfDocument.getDestination(dest);
+    } else {
+      destinationPromise = Promise.resolve(dest);
+    }
+    destinationPromise.then(function(destination) {
+      dest = destination;
+      if (!(destination instanceof Array)) {
         return; // invalid destination
       }
-      goToDestination(dest[0]);
+      goToDestination(destination[0]);
     });
   },
 
@@ -984,15 +988,8 @@ var PDFViewerApplication = {
       }
     });
 
-    var destinationsPromise =
-      this.destinationsPromise = pdfDocument.getDestinations();
-    destinationsPromise.then(function(destinations) {
-      self.destinations = destinations;
-    });
-
-    // outline depends on destinations and pagesRefMap
-    var promises = [pagesPromise, destinationsPromise,
-                    this.animationStartedPromise];
+    // outline depends on pagesRefMap
+    var promises = [pagesPromise, this.animationStartedPromise];
     Promise.all(promises).then(function() {
       pdfDocument.getOutline().then(function(outline) {
         var outlineView = document.getElementById('outlineView');
@@ -1967,11 +1964,12 @@ function handleMouseWheel(evt) {
               evt.wheelDelta / MOUSE_WHEEL_DELTA_FACTOR;
   var direction = (ticks < 0) ? 'zoomOut' : 'zoomIn';
 
-  if (evt.ctrlKey) { // Only zoom the pages, not the entire viewer
+  if (PresentationMode.active) {
+    evt.preventDefault();
+    PDFViewerApplication.mouseScroll(ticks * MOUSE_WHEEL_DELTA_FACTOR);
+  } else if (evt.ctrlKey) { // Only zoom the pages, not the entire viewer
     evt.preventDefault();
     PDFViewerApplication[direction](Math.abs(ticks));
-  } else if (PresentationMode.active) {
-    PDFViewerApplication.mouseScroll(ticks * MOUSE_WHEEL_DELTA_FACTOR);
   }
 }
 
@@ -2006,6 +2004,11 @@ window.addEventListener('keydown', function keydown(evt) {
   // control is selected or not.
   if (cmd === 1 || cmd === 8 || cmd === 5 || cmd === 12) {
     // either CTRL or META key with optional SHIFT.
+    var pdfViewer = PDFViewerApplication.pdfViewer;
+    var inPresentationMode =
+      pdfViewer.presentationModeState === PresentationModeState.CHANGING ||
+      pdfViewer.presentationModeState === PresentationModeState.FULLSCREEN;
+
     switch (evt.keyCode) {
       case 70: // f
         if (!PDFViewerApplication.supportsIntegratedFind) {
@@ -2024,23 +2027,29 @@ window.addEventListener('keydown', function keydown(evt) {
       case 107: // FF '+' and '='
       case 187: // Chrome '+'
       case 171: // FF with German keyboard
-        PDFViewerApplication.zoomIn();
+        if (!inPresentationMode) {
+          PDFViewerApplication.zoomIn();
+        }
         handled = true;
         break;
       case 173: // FF/Mac '-'
       case 109: // FF '-'
       case 189: // Chrome '-'
-        PDFViewerApplication.zoomOut();
+        if (!inPresentationMode) {
+          PDFViewerApplication.zoomOut();
+        }
         handled = true;
         break;
       case 48: // '0'
       case 96: // '0' on Numpad of Swedish keyboard
-        // keeping it unhandled (to restore page zoom to 100%)
-        setTimeout(function () {
-          // ... and resetting the scale after browser adjusts its scale
-          PDFViewerApplication.setScale(DEFAULT_SCALE, true);
-        });
-        handled = false;
+        if (!inPresentationMode) {
+          // keeping it unhandled (to restore page zoom to 100%)
+          setTimeout(function () {
+            // ... and resetting the scale after browser adjusts its scale
+            PDFViewerApplication.setScale(DEFAULT_SCALE, true);
+          });
+          handled = false;
+        }
         break;
     }
   }
