@@ -639,9 +639,9 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
   function composeSMaskLuminosity(maskData, layerData) {
     var length = maskData.length;
     for (var i = 3; i < length; i += 4) {
-      var y = ((maskData[i - 3] * 77) +     // * 0.3 / 255 * 0x10000
-               (maskData[i - 2] * 152) +    // * 0.59 ....
-               (maskData[i - 1] * 28)) | 0; // * 0.11 ....
+      var y = (maskData[i - 3] * 77) +  // * 0.3 / 255 * 0x10000
+              (maskData[i - 2] * 152) + // * 0.59 ....
+              (maskData[i - 1] * 28);   // * 0.11 ....
       layerData[i] = (layerData[i] * y) >> 16;
     }
   }
@@ -661,7 +661,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
     }
 
     // processing image in chunks to save memory
-    var PIXELS_TO_PROCESS = 65536;
+    var PIXELS_TO_PROCESS = 1048576;
     var chunkSize = Math.min(height, Math.ceil(PIXELS_TO_PROCESS / width));
     for (var row = 0; row < height; row += chunkSize) {
       var chunkHeight = Math.min(chunkSize, height - row);
@@ -1553,12 +1553,12 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
       this.current.fillColor = this.getColorN_Pattern(arguments);
     },
     setStrokeRGBColor: function CanvasGraphics_setStrokeRGBColor(r, g, b) {
-      var color = Util.makeCssRgb(arguments);
+      var color = Util.makeCssRgb(r, g, b);
       this.ctx.strokeStyle = color;
       this.current.strokeColor = color;
     },
     setFillRGBColor: function CanvasGraphics_setFillRGBColor(r, g, b) {
-      var color = Util.makeCssRgb(arguments);
+      var color = Util.makeCssRgb(r, g, b);
       this.ctx.fillStyle = color;
       this.current.fillColor = color;
     },
