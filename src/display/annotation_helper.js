@@ -18,7 +18,6 @@
 
 'use strict';
 
-var HIGHLIGHT_OFFSET = 4; // px
 var ANNOT_MIN_SIZE = 10; // px
 
 var AnnotationUtils = (function AnnotationUtilsClosure() {
@@ -45,41 +44,36 @@ var AnnotationUtils = (function AnnotationUtilsClosure() {
     style.fontFamily = fontFamily + fallbackName;
   }
 
-  // TODO(mack): Remove this, it's not really that helpful.
-  function getEmptyContainer(tagName, rect, borderWidth) {
-    var bWidth = borderWidth || 0;
-    var element = document.createElement(tagName);
-    element.style.borderWidth = bWidth + 'px';
-    var width = rect[2] - rect[0] - 2 * bWidth;
-    var height = rect[3] - rect[1] - 2 * bWidth;
-    element.style.width = width + 'px';
-    element.style.height = height + 'px';
-    return element;
-  }
+  function initContainer(item, drawBorder) {
+    var container = document.createElement('section');
+    var cstyle = container.style;
+    var width = item.rect[2] - item.rect[0];
+    var height = item.rect[3] - item.rect[1];
 
-  function initContainer(item) {
-    var container = getEmptyContainer('section', item.rect, item.borderWidth);
-    container.style.backgroundColor = item.color;
-
-    var color = item.color;
-    item.colorCssRgb = Util.makeCssRgb(Math.round(color[0] * 255),
-                                       Math.round(color[1] * 255),
-                                       Math.round(color[2] * 255));
-
-    var highlight = document.createElement('div');
-    highlight.className = 'annotationHighlight';
-    highlight.style.left = highlight.style.top = -HIGHLIGHT_OFFSET + 'px';
-    highlight.style.right = highlight.style.bottom = -HIGHLIGHT_OFFSET + 'px';
-    highlight.setAttribute('hidden', true);
-
-    item.highlightElement = highlight;
-    container.appendChild(item.highlightElement);
-
+    var bWidth = item.borderWidth || 0;
+    if (bWidth) {
+      width = width - 2 * bWidth;
+      height = height - 2 * bWidth;
+      cstyle.borderWidth = bWidth + 'px';
+      var color = item.color;
+      if (drawBorder && color) {
+        cstyle.borderStyle = 'solid';
+        cstyle.borderColor = Util.makeCssRgb(Math.round(color[0] * 255),
+                                             Math.round(color[1] * 255),
+                                             Math.round(color[2] * 255));
+      }
+    }
+    cstyle.width = width + 'px';
+    cstyle.height = height + 'px';
     return container;
   }
 
   function getHtmlElementForTextWidgetAnnotation(item, commonObjs) {
-    var element = getEmptyContainer('div', item.rect, 0);
+    var element = document.createElement('div');
+    var width = item.rect[2] - item.rect[0];
+    var height = item.rect[3] - item.rect[1];
+    element.style.width = width + 'px';
+    element.style.height = height + 'px';
     element.style.display = 'table';
 
     var content = document.createElement('div');
@@ -109,7 +103,7 @@ var AnnotationUtils = (function AnnotationUtilsClosure() {
       rect[2] = rect[0] + (rect[3] - rect[1]); // make it square
     }
 
-    var container = initContainer(item);
+    var container = initContainer(item, false);
     container.className = 'annotText';
 
     var image  = document.createElement('img');
@@ -218,11 +212,8 @@ var AnnotationUtils = (function AnnotationUtilsClosure() {
   }
 
   function getHtmlElementForLinkAnnotation(item) {
-    var container = initContainer(item);
+    var container = initContainer(item, true);
     container.className = 'annotLink';
-
-    container.style.borderColor = item.colorCssRgb;
-    container.style.borderStyle = 'solid';
 
     var link = document.createElement('a');
     link.href = link.title = item.url || '';

@@ -615,6 +615,14 @@
        "type": "eq",
        "about": "Glyph accent drawn as curves."
     },
+    {  "id": "issue5138",
+       "file": "pdfs/issue5138.pdf",
+       "md5": "9931686d7dee0df62640fbf58bed3323",
+       "link": false,
+       "rounds": 1,
+       "type": "eq",
+       "about": "Glyph that gets mapped to unicode non-breaking-space."
+    },
     {  "id": "simpletype3font",
        "file": "pdfs/simpletype3font.pdf",
        "md5": "b374c7543920840c61999e9e86939f99",
@@ -932,6 +940,13 @@
     {  "id": "issue4304",
        "file": "pdfs/issue4304.pdf",
        "md5": "1b1205bf0d7c1ad22a154b60da8e694d",
+       "link": false,
+       "rounds": 1,
+       "type": "eq"
+    },
+    {  "id": "issue4722",
+       "file": "pdfs/issue4722.pdf",
+       "md5": "a42ca858af7d179358f92f47e57c0fed",
        "link": false,
        "rounds": 1,
        "type": "eq"
@@ -1524,6 +1539,15 @@
       "type": "eq",
       "about": "Type3 font with negative HScale and font size"
     },
+    {  "id": "bug1077808",
+       "file": "pdfs/bug1077808.pdf",
+       "md5": "4a4bfc27e3fafe2f74e7a4a4cd04b8dc",
+       "rounds": 1,
+       "lastPage": 1,
+       "link": true,
+       "type": "eq",
+       "about": "Inline image with ASCII85Decode filter."
+    },
     {  "id": "bug1108753",
        "file": "pdfs/bug1108753.pdf",
        "md5": "a7aaf92d55b4602afb0ca3d75198b56b",
@@ -1901,5 +1925,26 @@
        "rounds": 1,
        "link": true,
        "type": "eq"
+    },
+    {  "id": "issue5549.pdf",
+       "file": "pdfs/issue5549.pdf",
+       "md5": "6c36df6ebc583c9e18aad0ad00d257b8",
+       "rounds": 1,
+       "type": "eq",
+       "about": "Free image obtained from www.unsplash.com"
+    },
+    {  "id": "issue5475.pdf",
+       "file": "pdfs/issue5475.pdf",
+       "md5": "bda962373570ac4dfe0fbd1ad4f0d9ef",
+       "rounds": 1,
+       "type": "eq",
+       "about": "Free image obtained from www.unsplash.com"
+    },
+    {  "id": "issue5481.pdf",
+       "file": "pdfs/issue5481.pdf",
+       "md5": "cf00bd25b15b7e23542b48a626585c36",
+       "rounds": 1,
+       "type": "eq",
+       "about": "Free image obtained from www.unsplash.com"
     }
 ]

@@ -320,9 +320,12 @@ var stdFontMap = {
   'CourierNewPS-BoldMT': 'Courier-Bold',
   'CourierNewPS-ItalicMT': 'Courier-Oblique',
   'CourierNewPSMT': 'Courier',
+  'Helvetica': 'Helvetica',
   'Helvetica-Bold': 'Helvetica-Bold',
   'Helvetica-BoldItalic': 'Helvetica-BoldOblique',
+  'Helvetica-BoldOblique': 'Helvetica-BoldOblique',
   'Helvetica-Italic': 'Helvetica-Oblique',
+  'Helvetica-Oblique':'Helvetica-Oblique',
   'Symbol-Bold': 'Symbol',
   'Symbol-BoldItalic': 'Symbol',
   'Symbol-Italic': 'Symbol',
@@ -348,6 +351,10 @@ var stdFontMap = {
  * fonts without glyph data.
  */
 var nonStdFontMap = {
+  'CenturyGothic': 'Helvetica',
+  'CenturyGothic-Bold': 'Helvetica-Bold',
+  'CenturyGothic-BoldItalic': 'Helvetica-BoldOblique',
+  'CenturyGothic-Italic': 'Helvetica-Oblique',
   'ComicSansMS': 'Comic Sans MS',
   'ComicSansMS-Bold': 'Comic Sans MS-Bold',
   'ComicSansMS-BoldItalic': 'Comic Sans MS-BoldItalic',
@@ -371,7 +378,8 @@ var nonStdFontMap = {
   'MS-PMincho': 'MS PMincho',
   'MS-PMincho-Bold': 'MS PMincho-Bold',
   'MS-PMincho-BoldItalic': 'MS PMincho-BoldItalic',
-  'MS-PMincho-Italic': 'MS PMincho-Italic'
+  'MS-PMincho-Italic': 'MS PMincho-Italic',
+  'Wingdings': 'ZapfDingbats'
 };
 
 var serifFonts = {
@@ -2454,7 +2462,8 @@ var Font = (function FontClosure() {
       // The file data is not specified. Trying to fix the font name
       // to be used with the canvas.font.
       var fontName = name.replace(/[,_]/g, '-');
-      var isStandardFont = fontName in stdFontMap;
+      var isStandardFont = !!stdFontMap[fontName] ||
+        (nonStdFontMap[fontName] && !!stdFontMap[nonStdFontMap[fontName]]);
       fontName = stdFontMap[fontName] || nonStdFontMap[fontName] || fontName;
 
       this.bold = (fontName.search(/bold/gi) !== -1);
@@ -2500,6 +2509,10 @@ var Font = (function FontClosure() {
           this.toFontChar[charCode] = fontChar;
         }
       } else if (/Dingbats/i.test(fontName)) {
+        if (/Wingdings/i.test(name)) {
+          warn('Wingdings font without embedded font file, ' +
+               'falling back to the ZapfDingbats encoding.');
+        }
         var dingbats = Encodings.ZapfDingbatsEncoding;
         for (charCode in dingbats) {
           fontChar = DingbatsGlyphsUnicode[dingbats[charCode]];
@@ -2685,6 +2698,7 @@ var Font = (function FontClosure() {
            fontCharCode <= 0x1f || // Control chars
            fontCharCode === 0x7F || // Control char
            fontCharCode === 0xAD || // Soft hyphen
+           fontCharCode === 0xA0 || // Non breaking space
            (fontCharCode >= 0x80 && fontCharCode <= 0x9F) || // Control chars
            // Prevent drawing characters in the specials unicode block.
            (fontCharCode >= 0xFFF0 && fontCharCode <= 0xFFFF) ||
@@ -4703,6 +4717,8 @@ function type1FontGlyphMapping(properties, builtInEncoding, glyphNames) {
       glyphId = glyphNames.indexOf(baseEncoding[charCode]);
       if (glyphId >= 0) {
         charCodeToGlyphId[charCode] = glyphId;
+      } else {
+        charCodeToGlyphId[charCode] = 0; // notdef
       }
     }
   } else if (!!(properties.flags & FontFlags.Symbolic)) {
@@ -4719,6 +4735,8 @@ function type1FontGlyphMapping(properties, builtInEncoding, glyphNames) {
       glyphId = glyphNames.indexOf(baseEncoding[charCode]);
       if (glyphId >= 0) {
         charCodeToGlyphId[charCode] = glyphId;
+      } else {
+        charCodeToGlyphId[charCode] = 0; // notdef
       }
     }
   }
@@ -4731,6 +4749,8 @@ function type1FontGlyphMapping(properties, builtInEncoding, glyphNames) {
       glyphId = glyphNames.indexOf(glyphName);
       if (glyphId >= 0) {
         charCodeToGlyphId[charCode] = glyphId;
+      } else {
+        charCodeToGlyphId[charCode] = 0; // notdef
       }
     }
   }
