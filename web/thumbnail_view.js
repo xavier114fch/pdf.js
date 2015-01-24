@@ -20,6 +20,7 @@
 'use strict';
 
 var THUMBNAIL_SCROLL_MARGIN = -19;
+var THUMBNAIL_CANVAS_BORDER_WIDTH = 1;
 
 /**
  * @constructor
@@ -53,8 +54,8 @@ var ThumbnailView = function thumbnailView(container, id, defaultViewport,
   this.renderingId = 'thumbnail' + id;
 
   this.canvasWidth = 98;
-  this.canvasHeight = this.canvasWidth / this.pageWidth * this.pageHeight;
-  this.scale = (this.canvasWidth / this.pageWidth);
+  this.canvasHeight = (this.canvasWidth / this.pageRatio) | 0;
+  this.scale = this.canvasWidth / this.pageWidth;
 
   var div = this.el = document.createElement('div');
   div.id = 'thumbnailContainer' + id;
@@ -68,8 +69,10 @@ var ThumbnailView = function thumbnailView(container, id, defaultViewport,
 
   var ring = document.createElement('div');
   ring.className = 'thumbnailSelectionRing';
-  ring.style.width = this.canvasWidth + 'px';
-  ring.style.height = this.canvasHeight + 'px';
+  ring.style.width = this.canvasWidth + 2 * THUMBNAIL_CANVAS_BORDER_WIDTH +
+                     'px';
+  ring.style.height = this.canvasHeight + 2 * THUMBNAIL_CANVAS_BORDER_WIDTH +
+                      'px';
 
   div.appendChild(ring);
   anchor.appendChild(div);
@@ -100,13 +103,15 @@ var ThumbnailView = function thumbnailView(container, id, defaultViewport,
     this.pageHeight = this.viewport.height;
     this.pageRatio = this.pageWidth / this.pageHeight;
 
-    this.canvasHeight = this.canvasWidth / this.pageWidth * this.pageHeight;
+    this.canvasHeight = (this.canvasWidth / this.pageRatio) | 0;
     this.scale = (this.canvasWidth / this.pageWidth);
 
     div.removeAttribute('data-loaded');
     ring.textContent = '';
-    ring.style.width = this.canvasWidth + 'px';
-    ring.style.height = this.canvasHeight + 'px';
+    ring.style.width = this.canvasWidth + 2 * THUMBNAIL_CANVAS_BORDER_WIDTH +
+                       'px';
+    ring.style.height = this.canvasHeight + 2 * THUMBNAIL_CANVAS_BORDER_WIDTH +
+                        'px';
 
     this.hasImage = false;
     this.renderingState = RenderingStates.INITIAL;
@@ -127,12 +132,7 @@ var ThumbnailView = function thumbnailView(container, id, defaultViewport,
 
     ring.appendChild(canvas);
 
-    var ctx = canvas.getContext('2d');
-    ctx.save();
-    ctx.fillStyle = 'rgb(255, 255, 255)';
-    ctx.fillRect(0, 0, this.canvasWidth, this.canvasHeight);
-    ctx.restore();
-    return ctx;
+    return canvas.getContext('2d');
   };
 
   this.drawingRequired = function thumbnailViewDrawingRequired() {
@@ -195,6 +195,15 @@ var ThumbnailView = function thumbnailView(container, id, defaultViewport,
     }
     tempCanvas.width = width;
     tempCanvas.height = height;
+
+    // Since this is a temporary canvas, we need to fill
+    // the canvas with a white background ourselves.
+    // |getPageDrawContext| uses CSS rules for this.
+    var ctx = tempCanvas.getContext('2d');
+    ctx.save();
+    ctx.fillStyle = 'rgb(255, 255, 255)';
+    ctx.fillRect(0, 0, width, height);
+    ctx.restore();
     return tempCanvas;
   }
 
@@ -208,33 +217,35 @@ var ThumbnailView = function thumbnailView(container, id, defaultViewport,
     }
     this.renderingState = RenderingStates.FINISHED;
     var ctx = this.getPageDrawContext();
+    var canvas = ctx.canvas;
 
-    var reducedImage = img;
-    var reducedWidth = img.width;
-    var reducedHeight = img.height;
-
-    // drawImage does an awful job of rescaling the image, doing it gradually
-    var MAX_SCALE_FACTOR = 2.0;
-    if (Math.max(img.width / ctx.canvas.width,
-                 img.height / ctx.canvas.height) > MAX_SCALE_FACTOR) {
-      reducedWidth >>= 1;
-      reducedHeight >>= 1;
-      reducedImage = getTempCanvas(reducedWidth, reducedHeight);
+    if (img.width <= 2 * canvas.width) {
+      ctx.drawImage(img, 0, 0, img.width, img.height,
+                    0, 0, canvas.width, canvas.height);
+    } else {
+      // drawImage does an awful job of rescaling the image, doing it gradually
+      var MAX_NUM_SCALING_STEPS = 3;
+      var reducedWidth = canvas.width << MAX_NUM_SCALING_STEPS;
+      var reducedHeight = canvas.height << MAX_NUM_SCALING_STEPS;
+      var reducedImage = getTempCanvas(reducedWidth, reducedHeight);
       var reducedImageCtx = reducedImage.getContext('2d');
+
+      while (reducedWidth > img.width || reducedHeight > img.height) {
+        reducedWidth >>= 1;
+        reducedHeight >>= 1;
+      }
       reducedImageCtx.drawImage(img, 0, 0, img.width, img.height,
                                 0, 0, reducedWidth, reducedHeight);
-      while (Math.max(reducedWidth / ctx.canvas.width,
-                      reducedHeight / ctx.canvas.height) > MAX_SCALE_FACTOR) {
+      while (reducedWidth > 2 * canvas.width) {
         reducedImageCtx.drawImage(reducedImage,
                                   0, 0, reducedWidth, reducedHeight,
                                   0, 0, reducedWidth >> 1, reducedHeight >> 1);
         reducedWidth >>= 1;
         reducedHeight >>= 1;
       }
+      ctx.drawImage(reducedImage, 0, 0, reducedWidth, reducedHeight,
+                    0, 0, canvas.width, canvas.height);
     }
-
-    ctx.drawImage(reducedImage, 0, 0, reducedWidth, reducedHeight,
-                  0, 0, ctx.canvas.width, ctx.canvas.height);
 
     this.hasImage = true;
   };
