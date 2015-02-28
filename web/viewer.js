@@ -863,8 +863,6 @@ var PDFViewerApplication = {
 
       self.loadingBar.setWidth(document.getElementById('viewer'));
 
-      self.findController.resolveFirstPage();
-
       if (!PDFJS.disableHistory && !self.isViewerEmbedded) {
         // The browsing history is only enabled when the viewer is standalone,
         // i.e. not when it is embedded in a web page.
@@ -1157,6 +1155,23 @@ var PDFViewerApplication = {
       PDFHistory.updateNextHashParam(unescape(hash));
       this.navigateTo(unescape(hash));
     }
+  },
+
+  refreshThumbnailViewer: function pdfViewRefreshThumbnailViewer() {
+    var pdfViewer = this.pdfViewer;
+    var thumbnailViewer = this.pdfThumbnailViewer;
+
+    // set thumbnail images of rendered pages
+    var pagesCount = pdfViewer.pagesCount;
+    for (var pageIndex = 0; pageIndex < pagesCount; pageIndex++) {
+      var pageView = pdfViewer.getPageView(pageIndex);
+      if (pageView && pageView.renderingState === RenderingStates.FINISHED) {
+        var thumbnailView = thumbnailViewer.getThumbnail(pageIndex);
+        thumbnailView.setImage(pageView);
+      }
+    }
+
+    thumbnailViewer.scrollThumbnailIntoView(this.page);
   },
 
   switchSidebarView: function pdfViewSwitchSidebarView(view, openSidebar) {
@@ -1553,6 +1568,9 @@ function webViewerInitialized() {
       outerContainer.classList.toggle('sidebarOpen');
       PDFViewerApplication.sidebarOpen =
         outerContainer.classList.contains('sidebarOpen');
+      if (PDFViewerApplication.sidebarOpen) {
+        PDFViewerApplication.refreshThumbnailViewer();
+      }
       PDFViewerApplication.forceRendering();
     });
 
@@ -1667,9 +1685,12 @@ document.addEventListener('pagerendered', function (e) {
   var pageNumber = e.detail.pageNumber;
   var pageIndex = pageNumber - 1;
   var pageView = PDFViewerApplication.pdfViewer.getPageView(pageIndex);
-  var thumbnailView = PDFViewerApplication.pdfThumbnailViewer.
-                      getThumbnail(pageIndex);
-  thumbnailView.setImage(pageView);
+
+  if (PDFViewerApplication.sidebarOpen) {
+    var thumbnailView = PDFViewerApplication.pdfThumbnailViewer.
+                        getThumbnail(pageIndex);
+    thumbnailView.setImage(pageView);
+  }
 
   if (PDFJS.pdfBug && Stats.enabled && pageView.stats) {
     Stats.add(pageNumber, pageView.stats);
@@ -1899,7 +1920,9 @@ window.addEventListener('pagechange', function pagechange(evt) {
   var page = evt.pageNumber;
   if (evt.previousPageNumber !== page) {
     document.getElementById('pageNumber').value = page;
-    PDFViewerApplication.pdfThumbnailViewer.scrollThumbnailIntoView(page);
+    if (PDFViewerApplication.sidebarOpen) {
+      PDFViewerApplication.pdfThumbnailViewer.scrollThumbnailIntoView(page);
+    }
   }
   var numPages = PDFViewerApplication.pagesCount;
 

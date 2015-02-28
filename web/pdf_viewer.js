@@ -306,6 +306,10 @@ var PDFViewer = (function pdfViewer() {
         if (this.defaultRenderingQueue) {
           this.update();
         }
+
+        if (this.findController) {
+          this.findController.resolveFirstPage();
+        }
       }.bind(this));
     },
 
@@ -335,12 +339,27 @@ var PDFViewer = (function pdfViewer() {
       }
     },
 
+    _setScaleDispatchEvent: function pdfViewer_setScaleDispatchEvent(
+        newScale, newValue, preset) {
+      var event = document.createEvent('UIEvents');
+      event.initUIEvent('scalechange', true, true, window, 0);
+      event.scale = newScale;
+      if (preset) {
+        event.presetValue = newValue;
+      }
+      this.container.dispatchEvent(event);
+    },
+
     _setScaleUpdatePages: function pdfViewer_setScaleUpdatePages(
         newScale, newValue, noScroll, preset) {
       this._currentScaleValue = newValue;
       if (newScale === this._currentScale) {
+        if (preset) {
+          this._setScaleDispatchEvent(newScale, newValue, true);
+        }
         return;
       }
+
       for (var i = 0, ii = this.pages.length; i < ii; i++) {
         this.pages[i].update(newScale);
       }
@@ -360,13 +379,7 @@ var PDFViewer = (function pdfViewer() {
         this.scrollPageIntoView(page, dest);
       }
 
-      var event = document.createEvent('UIEvents');
-      event.initUIEvent('scalechange', true, true, window, 0);
-      event.scale = newScale;
-      if (preset) {
-        event.presetValue = newValue;
-      }
-      this.container.dispatchEvent(event);
+      this._setScaleDispatchEvent(newScale, newValue, preset);
     },
 
     _setScale: function pdfViewer_setScale(value, noScroll) {
