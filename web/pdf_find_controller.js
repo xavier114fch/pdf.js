@@ -65,7 +65,8 @@ var PDFFindController = (function PDFFindControllerClosure() {
       '\u201F': '"', // Double high-reversed-9 quotation mark
       '\u00BC': '1/4', // Vulgar fraction one quarter
       '\u00BD': '1/2', // Vulgar fraction one half
-      '\u00BE': '3/4' // Vulgar fraction three quarters
+      '\u00BE': '3/4', // Vulgar fraction three quarters
+      '\u00A0': ' ' // No-break space
     };
     this.findBar = options.findBar || null;
 
@@ -301,7 +302,7 @@ var PDFFindController = (function PDFFindControllerClosure() {
           if (this.pagesToSearch < 0) {
             // No point in wrapping again, there were no matches.
             this.updateMatch(false);
-            // while matches were not found, searching for a page 
+            // while matches were not found, searching for a page
             // with matches should nevertheless halt.
             return true;
           }
@@ -354,7 +355,7 @@ var PDFFindController = (function PDFFindControllerClosure() {
       offset.matchIdx = null;
 
       this.pagesToSearch--;
-      
+
       if (offset.pageIdx >= numPages || offset.pageIdx < 0) {
         offset.pageIdx = (previous ? numPages - 1 : 0);
         offset.wrapped = true;
@@ -365,7 +366,7 @@ var PDFFindController = (function PDFFindControllerClosure() {
       var state = FindStates.FIND_NOTFOUND;
       var wrapped = this.offset.wrapped;
       this.offset.wrapped = false;
-    
+
       if (found) {
         var previousPage = this.selected.pageIdx;
         this.selected.pageIdx = this.offset.pageIdx;
@@ -376,7 +377,7 @@ var PDFFindController = (function PDFFindControllerClosure() {
           this.updatePage(previousPage);
         }
       }
-    
+
       this.updateUIState(state, this.state.findPrevious);
       if (this.selected.pageIdx !== -1) {
         this.updatePage(this.selected.pageIdx);
@@ -398,4 +399,3 @@ var PDFFindController = (function PDFFindControllerClosure() {
   };
   return PDFFindController;
 })();
-
