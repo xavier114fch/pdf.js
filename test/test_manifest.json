@@ -421,6 +421,13 @@
        "rounds": 1,
        "type": "load"
     },
+    {  "id": "issue5334",
+       "file": "pdfs/issue5334.pdf",
+       "md5": "5575020f37f6e5b3c43b8183bf7f96ae",
+       "rounds": 1,
+       "link": false,
+       "type": "eq"
+    },
     {  "id": "bug850854",
        "file": "pdfs/bug850854.pdf",
        "md5": "346a034a80120d123b9fefc42bcb11da",
@@ -1329,6 +1336,13 @@
       "rounds": 1,
       "type": "eq"
     },
+    {  "id": "issue5734-text",
+       "file": "pdfs/issue5734.pdf",
+       "md5": "2cf88f1786b039ba080623085c87beb9",
+       "link": false,
+       "rounds": 1,
+       "type": "text"
+    },
     {  "id": "issue845",
       "file": "pdfs/issue845.pdf",
       "md5": "89ddf9e63cac4fa2dedcfe32a62e5407",
@@ -1594,6 +1608,15 @@
       "link": true,
       "type": "eq"
     },
+    {  "id": "bug1140761",
+       "file": "pdfs/bug1140761.pdf",
+       "md5": "b74eced7634d4f248dc6265f8225d432",
+       "rounds": 1,
+       "link": true,
+       "firstPage": 1,
+       "lastPage": 1,
+       "type": "eq"
+    },
     {  "id": "bug1011159",
       "file": "pdfs/bug1011159.pdf",
       "md5": "4532e22deb92d4cd2992d0cfe255582a",
@@ -1712,6 +1735,13 @@
        "rounds": 1,
        "type": "eq",
        "about": "Invisible Type3 font used for text selection and searching."
+    },
+    {  "id": "issue5421-text",
+       "file": "pdfs/issue5421.pdf",
+       "md5": "273f6813758a2349090003c7c8a0d85e",
+       "link": false,
+       "rounds": 1,
+       "type": "text"
     },
     {  "id": "issue5701",
        "file": "pdfs/issue5701.pdf",
