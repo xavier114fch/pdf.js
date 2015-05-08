@@ -1284,8 +1284,13 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
               var data = diffEncoding[j];
               if (isNum(data)) {
                 index = data;
-              } else {
+              } else if (isName(data)) {
                 differences[index++] = data.name;
+              } else if (isRef(data)) {
+                diffEncoding[j--] = xref.fetch(data);
+                continue;
+              } else {
+                error('Invalid entry in \'Differences\' array: ' + data);
               }
             }
           }
@@ -1339,7 +1344,11 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         return new ToUnicodeMap(cmap.getMap());
       } else if (isStream(cmapObj)) {
         cmap = CMapFactory.create(cmapObj,
-          { url: PDFJS.cMapUrl, packed: PDFJS.cMapPacked }, null).getMap();
+          { url: PDFJS.cMapUrl, packed: PDFJS.cMapPacked }, null);
+        if (cmap instanceof IdentityCMap) {
+          return new IdentityToUnicodeMap(0, 0xFFFF);
+        }
+        cmap = cmap.getMap();
         // Convert UTF-16BE
         // NOTE: cmap can be a sparse array, so use forEach instead of for(;;)
         // to iterate over all keys.
@@ -1567,6 +1576,21 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
           hash.update(encoding.name);
         } else if (isRef(encoding)) {
           hash.update(encoding.num + '_' + encoding.gen);
+        } else if (isDict(encoding)) {
+          var keys = encoding.getKeys();
+          for (var i = 0, ii = keys.length; i < ii; i++) {
+            var entry = encoding.getRaw(keys[i]);
+            if (isName(entry)) {
+              hash.update(entry.name);
+            } else if (isRef(entry)) {
+              hash.update(entry.num + '_' + entry.gen);
+            } else if (isArray(entry)) { // 'Differences' entry.
+              // Ideally we should check the contents of the array, but to avoid
+              // parsing it here and then again in |extractDataStructures|,
+              // we only use the array length for now (fixes bug1157493.pdf).
+              hash.update(entry.length.toString());
+            }
+          }
         }
 
         var toUnicode = dict.get('ToUnicode') || baseDict.get('ToUnicode');

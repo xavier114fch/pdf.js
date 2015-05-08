@@ -19,7 +19,7 @@
            PDFHistory, Preferences, SidebarView, ViewHistory, Stats,
            PDFThumbnailViewer, URL, noContextMenuHandler, SecondaryToolbar,
            PasswordPrompt, PDFPresentationMode, HandTool, Promise,
-           DocumentProperties, PDFOutlineView, PDFAttachmentView,
+           PDFDocumentProperties, PDFOutlineView, PDFAttachmentView,
            OverlayManager, PDFFindController, PDFFindBar, getVisibleElements,
            watchScroll, PDFViewer, PDFRenderingQueue, PresentationModeState,
            RenderingStates, DEFAULT_SCALE, UNKNOWN_SCALE,
@@ -88,7 +88,7 @@ var mozL10n = document.mozL10n || document.webL10n;
 //#include hand_tool.js
 //#include overlay_manager.js
 //#include password_prompt.js
-//#include document_properties.js
+//#include pdf_document_properties.js
 //#include pdf_viewer.js
 //#include pdf_thumbnail_viewer.js
 //#include pdf_outline_view.js
@@ -109,6 +109,8 @@ var PDFViewerApplication = {
   pdfRenderingQueue: null,
   /** @type {PDFPresentationMode} */
   pdfPresentationMode: null,
+  /** @type {PDFDocumentProperties} */
+  pdfDocumentProperties: null,
   pageRotation: 0,
   updateScaleControls: true,
   isInitialViewSet: false,
@@ -172,6 +174,25 @@ var PDFViewerApplication = {
       toggleHandTool: document.getElementById('toggleHandTool')
     });
 
+    this.pdfDocumentProperties = new PDFDocumentProperties({
+      overlayName: 'documentPropertiesOverlay',
+      closeButton: document.getElementById('documentPropertiesClose'),
+      fields: {
+        'fileName': document.getElementById('fileNameField'),
+        'fileSize': document.getElementById('fileSizeField'),
+        'title': document.getElementById('titleField'),
+        'author': document.getElementById('authorField'),
+        'subject': document.getElementById('subjectField'),
+        'keywords': document.getElementById('keywordsField'),
+        'creationDate': document.getElementById('creationDateField'),
+        'modificationDate': document.getElementById('modificationDateField'),
+        'creator': document.getElementById('creatorField'),
+        'producer': document.getElementById('producerField'),
+        'version': document.getElementById('versionField'),
+        'pageCount': document.getElementById('pageCountField')
+      }
+    });
+
     SecondaryToolbar.initialize({
       toolbar: document.getElementById('secondaryToolbar'),
       toggleButton: document.getElementById('secondaryToolbarToggle'),
@@ -185,7 +206,6 @@ var PDFViewerApplication = {
       lastPage: document.getElementById('lastPage'),
       pageRotateCw: document.getElementById('pageRotateCw'),
       pageRotateCcw: document.getElementById('pageRotateCcw'),
-      documentProperties: DocumentProperties,
       documentPropertiesButton: document.getElementById('documentProperties')
     });
 
@@ -214,23 +234,6 @@ var PDFViewerApplication = {
       passwordText: document.getElementById('passwordText'),
       passwordSubmit: document.getElementById('passwordSubmit'),
       passwordCancel: document.getElementById('passwordCancel')
-    });
-
-    DocumentProperties.initialize({
-      overlayName: 'documentPropertiesOverlay',
-      closeButton: document.getElementById('documentPropertiesClose'),
-      fileNameField: document.getElementById('fileNameField'),
-      fileSizeField: document.getElementById('fileSizeField'),
-      titleField: document.getElementById('titleField'),
-      authorField: document.getElementById('authorField'),
-      subjectField: document.getElementById('subjectField'),
-      keywordsField: document.getElementById('keywordsField'),
-      creationDateField: document.getElementById('creationDateField'),
-      modificationDateField: document.getElementById('modificationDateField'),
-      creatorField: document.getElementById('creatorField'),
-      producerField: document.getElementById('producerField'),
-      versionField: document.getElementById('versionField'),
-      pageCountField: document.getElementById('pageCountField')
     });
 
     var self = this;
@@ -410,7 +413,8 @@ var PDFViewerApplication = {
                                     pdfDataRangeTransport);
 
           if (args.length) {
-            DocumentProperties.setFileSize(args.length);
+            PDFViewerApplication.pdfDocumentProperties
+                                .setFileSize(args.length);
           }
           break;
         case 'range':
@@ -556,7 +560,7 @@ var PDFViewerApplication = {
     );
 
     if (args && args.length) {
-      DocumentProperties.setFileSize(args.length);
+      PDFViewerApplication.pdfDocumentProperties.setFileSize(args.length);
     }
   },
 
@@ -594,22 +598,26 @@ var PDFViewerApplication = {
   },
 
   fallback: function pdfViewFallback(featureId) {
-//#if !(FIREFOX || MOZCENTRAL)
-//  return;
-//#else
-//  // Only trigger the fallback once so we don't spam the user with messages
-//  // for one PDF.
-//  if (this.fellback)
-//    return;
-//  this.fellback = true;
-//  var url = this.url.split('#')[0];
-//  FirefoxCom.request('fallback', { featureId: featureId, url: url },
-//    function response(download) {
-//      if (!download) {
-//        return;
-//      }
-//      PDFViewerApplication.download();
-//    });
+//#if !PRODUCTION
+    if (true) {
+      return;
+    }
+//#endif
+//#if (FIREFOX || MOZCENTRAL)
+    // Only trigger the fallback once so we don't spam the user with messages
+    // for one PDF.
+    if (this.fellback) {
+      return;
+    }
+    this.fellback = true;
+    var url = this.url.split('#')[0];
+    FirefoxCom.request('fallback', { featureId: featureId, url: url },
+      function response(download) {
+        if (!download) {
+          return;
+        }
+        PDFViewerApplication.download();
+      });
 //#endif
   },
 
@@ -853,9 +861,7 @@ var PDFViewerApplication = {
 
     this.pdfDocument = pdfDocument;
 
-    DocumentProperties.url = this.url;
-    DocumentProperties.pdfDocument = pdfDocument;
-    DocumentProperties.resolveDataAvailable();
+    this.pdfDocumentProperties.setDocumentAndUrl(pdfDocument, this.url);
 
     var downloadedPromise = pdfDocument.getDownloadInfo().then(function() {
       self.downloadComplete = true;
@@ -922,9 +928,6 @@ var PDFViewerApplication = {
         // unless the viewer is embedded in a web page.
         if (!self.isViewerEmbedded) {
           self.pdfViewer.focus();
-//#if (FIREFOX || MOZCENTRAL)
-//        self.pdfViewer.blur();
-//#endif
         }
       }, function rejected(reason) {
         console.error(reason);
@@ -1035,32 +1038,38 @@ var PDFViewerApplication = {
         self.fallback(PDFJS.UNSUPPORTED_FEATURES.forms);
       }
 
+//#if !PRODUCTION
+      if (true) {
+        return;
+      }
+//#endif
 //#if (FIREFOX || MOZCENTRAL)
-//    var versionId = String(info.PDFFormatVersion).slice(-1) | 0;
-//    var generatorId = 0;
-//    var KNOWN_GENERATORS = ["acrobat distiller", "acrobat pdfwritter",
-//     "adobe livecycle", "adobe pdf library", "adobe photoshop", "ghostscript",
-//     "tcpdf", "cairo", "dvipdfm", "dvips", "pdftex", "pdfkit", "itext",
-//     "prince", "quarkxpress", "mac os x", "microsoft", "openoffice", "oracle",
-//     "luradocument", "pdf-xchange", "antenna house", "aspose.cells", "fpdf"];
-//    var generatorId = 0;
-//    if (info.Producer) {
-//      KNOWN_GENERATORS.some(function (generator, s, i) {
-//        if (generator.indexOf(s) < 0) {
-//          return false;
-//        }
-//        generatorId = i + 1;
-//        return true;
-//      }.bind(null, info.Producer.toLowerCase()));
-//    }
-//    var formType = !info.IsAcroFormPresent ? null : info.IsXFAPresent ?
-//                   'xfa' : 'acroform';
-//    FirefoxCom.request('reportTelemetry', JSON.stringify({
-//      type: 'documentInfo',
-//      version: versionId,
-//      generator: generatorId,
-//      formType: formType
-//    }));
+      var versionId = String(info.PDFFormatVersion).slice(-1) | 0;
+      var generatorId = 0;
+      var KNOWN_GENERATORS = [
+        'acrobat distiller', 'acrobat pdfwriter', 'adobe livecycle',
+        'adobe pdf library', 'adobe photoshop', 'ghostscript', 'tcpdf',
+        'cairo', 'dvipdfm', 'dvips', 'pdftex', 'pdfkit', 'itext', 'prince',
+        'quarkxpress', 'mac os x', 'microsoft', 'openoffice', 'oracle',
+        'luradocument', 'pdf-xchange', 'antenna house', 'aspose.cells', 'fpdf'
+      ];
+      if (info.Producer) {
+        KNOWN_GENERATORS.some(function (generator, s, i) {
+          if (generator.indexOf(s) < 0) {
+            return false;
+          }
+          generatorId = i + 1;
+          return true;
+        }.bind(null, info.Producer.toLowerCase()));
+      }
+      var formType = !info.IsAcroFormPresent ? null : info.IsXFAPresent ?
+                     'xfa' : 'acroform';
+      FirefoxCom.request('reportTelemetry', JSON.stringify({
+        type: 'documentInfo',
+        version: versionId,
+        generator: generatorId,
+        formType: formType
+      }));
 //#endif
     });
   },
@@ -1309,10 +1318,15 @@ var PDFViewerApplication = {
       this.pdfViewer.getPageView(i).beforePrint();
     }
 
+//#if !PRODUCTION
+    if (true) {
+      return;
+    }
+//#endif
 //#if (FIREFOX || MOZCENTRAL)
-//    FirefoxCom.request('reportTelemetry', JSON.stringify({
-//      type: 'print'
-//    }));
+    FirefoxCom.request('reportTelemetry', JSON.stringify({
+      type: 'print'
+    }));
 //#endif
   },
 
@@ -1398,7 +1412,7 @@ function webViewerInitialized() {
 //var file = DEFAULT_URL;
 //#endif
 
-//#if !(FIREFOX || MOZCENTRAL || CHROME || B2G)
+//#if GENERIC
   var fileInput = document.createElement('input');
   fileInput.id = 'fileInput';
   fileInput.className = 'fileInput';
@@ -1498,11 +1512,11 @@ function webViewerInitialized() {
   mozL10n.setLanguage(locale);
 //#endif
 //#if (FIREFOX || MOZCENTRAL)
-//if (!PDFViewerApplication.supportsDocumentFonts) {
-//  PDFJS.disableFontFace = true;
-//  console.warn(mozL10n.get('web_fonts_disabled', null,
-//    'Web fonts are disabled: unable to use embedded PDF fonts.'));
-//}
+  if (!PDFViewerApplication.supportsDocumentFonts) {
+    PDFJS.disableFontFace = true;
+    console.warn(mozL10n.get('web_fonts_disabled', null,
+      'Web fonts are disabled: unable to use embedded PDF fonts.'));
+  }
 //#endif
 
   if (!PDFViewerApplication.supportsPrinting) {
@@ -1676,41 +1690,51 @@ document.addEventListener('pagerendered', function (e) {
       'An error occurred while rendering the page.'), pageView.error);
   }
 
-//#if (FIREFOX || MOZCENTRAL)
-//FirefoxCom.request('reportTelemetry', JSON.stringify({
-//  type: 'pageInfo'
-//}));
-//// It is a good time to report stream and font types
-//PDFViewerApplication.pdfDocument.getStats().then(function (stats) {
-//  FirefoxCom.request('reportTelemetry', JSON.stringify({
-//    type: 'documentStats',
-//    stats: stats
-//  }));
-//});
-//#endif
-
   // If the page is still visible when it has finished rendering,
   // ensure that the page number input loading indicator is hidden.
   if (pageNumber === PDFViewerApplication.page) {
     var pageNumberInput = document.getElementById('pageNumber');
     pageNumberInput.classList.remove(PAGE_NUMBER_LOADING_INDICATOR);
   }
+
+//#if !PRODUCTION
+  if (true) {
+    return;
+  }
+//#endif
+//#if (FIREFOX || MOZCENTRAL)
+  FirefoxCom.request('reportTelemetry', JSON.stringify({
+    type: 'pageInfo'
+  }));
+  // It is a good time to report stream and font types.
+  PDFViewerApplication.pdfDocument.getStats().then(function (stats) {
+    FirefoxCom.request('reportTelemetry', JSON.stringify({
+      type: 'documentStats',
+      stats: stats
+    }));
+  });
+//#endif
 }, true);
 
 document.addEventListener('textlayerrendered', function (e) {
   var pageIndex = e.detail.pageNumber - 1;
   var pageView = PDFViewerApplication.pdfViewer.getPageView(pageIndex);
 
+//#if !PRODUCTION
+  if (true) {
+    return;
+  }
+//#endif
 //#if (FIREFOX || MOZCENTRAL)
-//if (pageView.textLayer && pageView.textLayer.textDivs &&
-//    pageView.textLayer.textDivs.length > 0 &&
-//    !PDFViewerApplication.supportsDocumentColors) {
-//  console.error(mozL10n.get('document_colors_disabled', null,
-//    'PDF documents are not allowed to use their own colors: ' +
-//    '\'Allow pages to choose their own colors\' ' +
-//    'is deactivated in the browser.'));
-//  PDFViewerApplication.fallback();
-//}
+  if (pageView.textLayer && pageView.textLayer.textDivs &&
+      pageView.textLayer.textDivs.length > 0 &&
+      !PDFViewerApplication.supportsDocumentColors) {
+    console.error(mozL10n.get('document_colors_disabled', null,
+      'PDF documents are not allowed to use their own colors: ' +
+      '\'Allow pages to choose their own colors\' ' +
+      'is deactivated in the browser.'));
+    PDFViewerApplication.fallback();
+  }
 //#endif
 }, true);
 
@@ -1787,7 +1811,7 @@ window.addEventListener('hashchange', function webViewerHashchange(evt) {
   }
 });
 
-//#if !(FIREFOX || MOZCENTRAL || CHROME)
+//#if GENERIC
 window.addEventListener('change', function webViewerChange(evt) {
   var files = evt.target.files;
   if (!files || files.length === 0) {
@@ -2169,16 +2193,9 @@ window.addEventListener('keydown', function keydown(evt) {
       pdfViewer.focus();
     }
     // 32=Spacebar
-    if (evt.keyCode === 32 && curElementTagName !== 'BUTTON') {
-//#if (FIREFOX || MOZCENTRAL)
-//    // Workaround for issue in Firefox, that prevents scroll keys from
-//    // working when elements with 'tabindex' are focused. (#3498)
-//    pdfViewer.blur();
-//#else
-      if (!pdfViewer.containsElement(curElement)) {
-        pdfViewer.focus();
-      }
-//#endif
+    if (evt.keyCode === 32 && curElementTagName !== 'BUTTON' &&
+        !pdfViewer.containsElement(curElement)) {
+      pdfViewer.focus();
     }
   }
 
@@ -2225,7 +2242,9 @@ window.addEventListener('afterprint', function afterPrint(evt) {
 //window.navigator.mozSetMessageHandler('activity', function(activity) {
 //  var blob = activity.source.data.blob;
 //  PDFJS.maxImageSize = 1024 * 1024;
-//  var fileURL = activity.source.data.url;
+//  var fileURL = activity.source.data.url ||
+//    activity.source.data.filename ||
+//    " "; // if no url or filename, use a non-empty string
 //
 //  var url = URL.createObjectURL(blob);
 //  // We need to delay opening until all HTML is loaded.

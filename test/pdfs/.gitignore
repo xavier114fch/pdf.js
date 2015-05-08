@@ -2,8 +2,10 @@
 *.error
 
 !tracemonkey.pdf
+!franz.pdf
 !issue2391-1.pdf
 !issue2391-2.pdf
+!issue5801.pdf
 !filled-background.pdf
 !ArabicCIDTrueType.pdf
 !ThuluthFeatures.pdf
@@ -32,6 +34,7 @@
 !bug894572.pdf
 !bug911034.pdf
 !bug1108301.pdf
+!bug1157493.pdf
 !pdfjsbad1586.pdf
 !freeculture.pdf
 !pdfkit_compressed.pdf
