@@ -458,6 +458,13 @@
        "rounds": 1,
        "type": "eq"
     },
+    {  "id": "issue4909",
+       "file": "pdfs/issue4909.pdf",
+       "md5": "ecd62637532aa8383837ef11d72a96b9",
+       "rounds": 1,
+       "link": false,
+       "type": "eq"
+    },
     {  "id": "fit11-talk",
        "file": "pdfs/fit11-talk.pdf",
        "md5": "eb7b224107205db4fea9f7df0185f77d",
@@ -557,6 +564,13 @@
        "rounds": 1,
        "link": false,
        "type": "load"
+    },
+    {  "id": "issue5677",
+       "file": "pdfs/issue5677.pdf",
+       "md5": "c9101578fcb806269145132724d24ac1",
+       "rounds": 1,
+       "link": false,
+       "type": "eq"
     },
     {  "id": "issue5954",
        "file": "pdfs/issue5954.pdf",
@@ -726,6 +740,15 @@
        "md5": "aac6a91725435d1376c6ff492dc5cb75",
        "link": false,
        "rounds": 1,
+       "type": "eq"
+    },
+    {  "id": "issue5939",
+       "file": "pdfs/issue5939.pdf",
+       "md5": "43c61e06ad407c158763f0860c99bb04",
+       "rounds": 1,
+       "link": true,
+       "firstPage": 1,
+       "lastPage": 1,
        "type": "eq"
     },
     {  "id": "cmykjpeg",
@@ -1306,6 +1329,15 @@
       "link": true,
       "type": "eq"
     },
+    {  "id": "issue6117",
+       "file": "pdfs/issue6117.pdf",
+       "md5": "691f5f8268e07f3831e8293258a68da7",
+       "rounds": 1,
+       "link": true,
+       "firstPage": 6,
+       "lastPage": 6,
+       "type": "eq"
+    },
     {  "id": "cid_cff",
       "file": "pdfs/cid_cff.pdf",
       "md5": "a19a18eaa626262cc45e0760004d6de9",
@@ -1517,6 +1549,12 @@
       "rounds": 1,
       "type": "load"
     },
+    {  "id": "issue5540",
+      "file": "pdfs/issue5540.pdf",
+      "md5": "12b69b19e366232422812ad8b2534f37",
+      "rounds": 1,
+      "type": "eq"
+    },
     {  "id": "issue2176",
       "file": "pdfs/issue2176.pdf",
       "md5": "ca5cbbc7e2b717997f0b24ffa485eac6",
@@ -1611,6 +1649,21 @@
       "type": "eq",
       "lastPage": 1,
       "about": "CFF font with multiply-encoded glyph and no pdf encoding dict."
+    },
+    {  "id": "bug1151216",
+       "file": "pdfs/bug1151216.pdf",
+       "md5": "e66ea6ee0e0cdd5119224eb073055eca",
+       "rounds": 1,
+       "link": false,
+       "type": "eq"
+    },
+    {  "id": "bug1175962",
+       "file": "pdfs/bug1175962.pdf",
+       "md5": "012a5ea0d2733408ac7f8b88f7352bba",
+       "rounds": 1,
+       "link": false,
+       "type": "eq",
+       "about": "The same PDF file as in bug1175943."
     },
     {  "id": "issue1878",
       "file": "pdfs/issue1878.pdf",
@@ -2200,6 +2253,12 @@
        "rounds": 1,
        "type": "eq",
        "about": "Free image obtained from www.unsplash.com"
+    },
+    {  "id": "annotation-border-styles.pdf",
+       "file": "pdfs/annotation-border-styles.pdf",
+       "md5": "22930fc09c7386e1131b14d936e554af",
+       "rounds": 1,
+       "type": "eq"
     },
     {  "id": "issue5481.pdf",
        "file": "pdfs/issue5481.pdf",

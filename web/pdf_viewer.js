@@ -18,7 +18,7 @@
            SCROLLBAR_PADDING, VERTICAL_PADDING, MAX_AUTO_SCALE, CSS_UNITS,
            DEFAULT_SCALE, scrollIntoView, getVisibleElements, RenderingStates,
            PDFJS, Promise, TextLayerBuilder, PDFRenderingQueue,
-           AnnotationsLayerBuilder */
+           AnnotationsLayerBuilder, DEFAULT_SCALE_VALUE */
 
 'use strict';
 
@@ -137,13 +137,20 @@ var PDFViewer = (function pdfViewer() {
       this._currentPageNumber = val;
       event.pageNumber = val;
       this.container.dispatchEvent(event);
+
+      // Check if the caller is `PDFViewer_update`, to avoid breaking scrolling.
+      if (this.updateInProgress) {
+        return;
+      }
+      this.scrollPageIntoView(val);
     },
 
     /**
      * @returns {number}
      */
     get currentScale() {
-      return this._currentScale;
+      return this._currentScale !== UNKNOWN_SCALE ? this._currentScale :
+                                                    DEFAULT_SCALE;
     },
 
     /**
@@ -155,7 +162,7 @@ var PDFViewer = (function pdfViewer() {
       }
       if (!this.pdfDocument) {
         this._currentScale = val;
-        this._currentScaleValue = val.toString();
+        this._currentScaleValue = val !== UNKNOWN_SCALE ? val.toString() : null;
         return;
       }
       this._setScale(val, false);
@@ -259,7 +266,7 @@ var PDFViewer = (function pdfViewer() {
       // Fetch a single page so we can get a viewport that will be the default
       // viewport for all pages
       return firstPagePromise.then(function(pdfPage) {
-        var scale = this._currentScale || 1.0;
+        var scale = this.currentScale;
         var viewport = pdfPage.getViewport(scale * CSS_UNITS);
         for (var pageNum = 1; pageNum <= pagesCount; ++pageNum) {
           var textLayerFactory = null;
@@ -517,10 +524,10 @@ var PDFViewer = (function pdfViewer() {
           return;
       }
 
-      if (scale && scale !== this.currentScale) {
+      if (scale && scale !== this._currentScale) {
         this.currentScaleValue = scale;
-      } else if (this.currentScale === UNKNOWN_SCALE) {
-        this.currentScaleValue = DEFAULT_SCALE;
+      } else if (this._currentScale === UNKNOWN_SCALE) {
+        this.currentScaleValue = DEFAULT_SCALE_VALUE;
       }
 
       if (scale === 'page-fit' && !dest[4]) {
@@ -566,7 +573,7 @@ var PDFViewer = (function pdfViewer() {
       };
     },
 
-    update: function () {
+    update: function PDFViewer_update() {
       var visible = this._getVisiblePages();
       var visiblePages = visible.views;
       if (visiblePages.length === 0) {
@@ -581,7 +588,7 @@ var PDFViewer = (function pdfViewer() {
 
       this.renderingQueue.renderHighestPriority(visible);
 
-      var currentId = this.currentPageNumber;
+      var currentId = this._currentPageNumber;
       var firstPage = visible.first;
 
       for (var i = 0, ii = visiblePages.length, stillFullyVisible = false;

@@ -22,8 +22,8 @@
            Promise, PDFLinkService, PDFOutlineView, PDFAttachmentView,
            OverlayManager, PDFFindController, PDFFindBar, getVisibleElements,
            watchScroll, PDFViewer, PDFRenderingQueue, PresentationModeState,
-           parseQueryString, RenderingStates, DEFAULT_SCALE, UNKNOWN_SCALE,
-           IGNORE_CURRENT_POSITION_ON_ZOOM: true */
+           parseQueryString, RenderingStates, UNKNOWN_SCALE,
+           DEFAULT_SCALE_VALUE, IGNORE_CURRENT_POSITION_ON_ZOOM: true */
 
 'use strict';
 
@@ -36,13 +36,9 @@ var SCALE_SELECT_CONTAINER_PADDING = 8;
 var SCALE_SELECT_PADDING = 22;
 var PAGE_NUMBER_LOADING_INDICATOR = 'visiblePageIsLoading';
 var DISABLE_AUTO_FETCH_LOADING_BAR_TIMEOUT = 5000;
-//#if B2G
-//PDFJS.useOnlyCssZoom = true;
-//PDFJS.disableTextLayer = true;
-//#endif
 
 PDFJS.imageResourcesPath = './images/';
-//#if (FIREFOX || MOZCENTRAL || B2G || GENERIC || CHROME)
+//#if (FIREFOX || MOZCENTRAL || GENERIC || CHROME)
 //PDFJS.workerSrc = '../build/pdf.worker.js';
 //#endif
 //#if !PRODUCTION
@@ -58,17 +54,12 @@ var mozL10n = document.mozL10n || document.webL10n;
 //#include ui_utils.js
 //#include preferences.js
 
-//#if !(FIREFOX || MOZCENTRAL || B2G)
+//#if !(FIREFOX || MOZCENTRAL)
 //#include mozPrintCallback_polyfill.js
 //#endif
 
 //#if GENERIC || CHROME
 //#include download_manager.js
-//#endif
-//#if B2G
-//var DownloadManager = (function DownloadManagerClosure() {
-//  return function DownloadManager() {};
-//})();
 //#endif
 
 //#if FIREFOX || MOZCENTRAL
@@ -475,9 +466,6 @@ var PDFViewerApplication = {
       return;
     }
     document.title = title;
-//#if B2G
-//  document.getElementById('activityTitle').textContent = title;
-//#endif
   },
 
   close: function pdfViewClose() {
@@ -526,7 +514,6 @@ var PDFViewerApplication = {
     }
 
     var self = this;
-    self.loading = true;
     self.downloadComplete = false;
 
     var passwordNeeded = function passwordNeeded(updatePassword, reason) {
@@ -543,7 +530,6 @@ var PDFViewerApplication = {
                       getDocumentProgress).then(
       function getDocumentCallback(pdfDocument) {
         self.load(pdfDocument, scale);
-        self.loading = false;
       },
       function getDocumentError(exception) {
         var message = exception && exception.message;
@@ -562,16 +548,11 @@ var PDFViewerApplication = {
           loadingErrorMessage = mozL10n.get('unexpected_response_error', null,
                                             'Unexpected server response.');
         }
-//#if B2G
-//      window.alert(loadingErrorMessage);
-//      return window.close();
-//#endif
 
         var moreInfo = {
           message: message
         };
         self.error(loadingErrorMessage, moreInfo);
-        self.loading = false;
       }
     );
 
@@ -760,7 +741,7 @@ var PDFViewerApplication = {
     var id = this.documentFingerprint = pdfDocument.fingerprint;
     var store = this.store = new ViewHistory(id);
 
-//#if (GENERIC || B2G)
+//#if GENERIC
     var baseDocumentUrl = null;
 //#endif
 //#if (FIREFOX || MOZCENTRAL)
@@ -796,7 +777,7 @@ var PDFViewerApplication = {
         // The browsing history is only enabled when the viewer is standalone,
         // i.e. not when it is embedded in a web page.
         if (!self.preferenceShowPreviousViewOnLoad) {
-          PDFHistory.clearHistoryState();
+          self.pdfHistory.clearHistoryState();
         }
         self.pdfHistory.initialize(self.documentFingerprint);
 
@@ -997,10 +978,10 @@ var PDFViewerApplication = {
       this.page = 1;
     }
 
-    if (this.pdfViewer.currentScale === UNKNOWN_SCALE) {
+    if (!this.pdfViewer.currentScaleValue) {
       // Scale was not initialized: invalid bookmark or scale was not specified.
       // Setting the default one.
-      this.setScale(DEFAULT_SCALE, true);
+      this.setScale(DEFAULT_SCALE_VALUE, true);
     }
   },
 
@@ -1256,7 +1237,7 @@ function webViewerLoad(evt) {
 }
 
 function webViewerInitialized() {
-//#if (GENERIC || B2G)
+//#if GENERIC
   var queryString = document.location.search.substring(1);
   var params = parseQueryString(queryString);
   var file = 'file' in params ? params.file : DEFAULT_URL;
@@ -1822,16 +1803,6 @@ window.addEventListener('pagechange', function pagechange(evt) {
       Stats.add(page, pageView.stats);
     }
   }
-
-  // checking if the this.page was called from the updateViewarea function
-  if (evt.updateInProgress) {
-    return;
-  }
-  // Avoid scrolling the first page during loading
-  if (this.loading && page === 1) {
-    return;
-  }
-  PDFViewerApplication.pdfViewer.scrollPageIntoView(page);
 }, true);
 
 function handleMouseWheel(evt) {
@@ -1840,14 +1811,31 @@ function handleMouseWheel(evt) {
               evt.wheelDelta / MOUSE_WHEEL_DELTA_FACTOR;
   var direction = (ticks < 0) ? 'zoomOut' : 'zoomIn';
 
-  if (PDFViewerApplication.pdfViewer.isInPresentationMode) {
+  var pdfViewer = PDFViewerApplication.pdfViewer;
+  if (pdfViewer.isInPresentationMode) {
     evt.preventDefault();
     PDFViewerApplication.scrollPresentationMode(ticks *
                                                 MOUSE_WHEEL_DELTA_FACTOR);
   } else if (evt.ctrlKey || evt.metaKey) {
     // Only zoom the pages, not the entire viewer.
     evt.preventDefault();
+
+    var previousScale = pdfViewer.currentScale;
+
     PDFViewerApplication[direction](Math.abs(ticks));
+
+    var currentScale = pdfViewer.currentScale;
+    if (previousScale !== currentScale) {
+      // After scaling the page via zoomIn/zoomOut, the position of the upper-
+      // left corner is restored. When the mouse wheel is used, the position
+      // under the cursor should be restored instead.
+      var scaleCorrectionFactor = currentScale / previousScale - 1;
+      var rect = pdfViewer.container.getBoundingClientRect();
+      var dx = evt.clientX - rect.left;
+      var dy = evt.clientY - rect.top;
+      pdfViewer.container.scrollLeft += dx * scaleCorrectionFactor;
+      pdfViewer.container.scrollTop += dy * scaleCorrectionFactor;
+    }
   }
 }
 
@@ -1916,7 +1904,7 @@ window.addEventListener('keydown', function keydown(evt) {
           // keeping it unhandled (to restore page zoom to 100%)
           setTimeout(function () {
             // ... and resetting the scale after browser adjusts its scale
-            PDFViewerApplication.setScale(DEFAULT_SCALE, true);
+            PDFViewerApplication.setScale(DEFAULT_SCALE_VALUE, true);
           });
           handled = false;
         }
@@ -2119,24 +2107,3 @@ window.addEventListener('afterprint', function afterPrint(evt) {
     window.requestAnimationFrame(resolve);
   });
 })();
-
-//#if B2G
-//window.navigator.mozSetMessageHandler('activity', function(activity) {
-//  var blob = activity.source.data.blob;
-//  PDFJS.maxImageSize = 1024 * 1024;
-//  var fileURL = activity.source.data.url ||
-//    activity.source.data.filename ||
-//    " "; // if no url or filename, use a non-empty string
-//
-//  var url = URL.createObjectURL(blob);
-//  // We need to delay opening until all HTML is loaded.
-//  PDFViewerApplication.animationStartedPromise.then(function () {
-//    PDFViewerApplication.open({url : url, originalUrl: fileURL});
-//
-//    var header = document.getElementById('header');
-//    header.addEventListener('action', function() {
-//      activity.postResult('close');
-//    });
-//  });
-//});
-//#endif
