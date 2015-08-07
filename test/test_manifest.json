@@ -435,6 +435,20 @@
        "link": false,
        "type": "eq"
     },
+    {  "id": "bug1186827",
+       "file": "pdfs/bug1186827.pdf",
+       "md5": "6c5526ae1a9d66cb517153001afc196e",
+       "rounds": 1,
+       "link": false,
+       "type": "eq"
+    },
+    {  "id": "issue215",
+       "file": "pdfs/issue215.pdf",
+       "md5": "31f3dc60ecf008987d970edfd2b1df61",
+       "rounds": 1,
+       "link": false,
+       "type": "eq"
+    },
     {  "id": "bug850854",
        "file": "pdfs/bug850854.pdf",
        "md5": "346a034a80120d123b9fefc42bcb11da",
@@ -631,6 +645,20 @@
     {  "id": "personwithdog",
        "file": "pdfs/personwithdog.pdf",
        "md5": "cd68fb2ce00dab97801b3e51495b99e3",
+       "rounds": 1,
+       "type": "eq"
+    },
+    {  "id": "issue2948",
+       "file": "pdfs/issue2948.pdf",
+       "md5": "26210bed6a57d5466042aff22f0249f0",
+       "link": false,
+       "rounds": 1,
+       "type": "eq"
+    },
+    {  "id": "issue6231_1",
+       "file": "pdfs/issue6231_1.pdf",
+       "md5": "eb13a9366a5142833a858472c68b4749",
+       "link": false,
        "rounds": 1,
        "type": "eq"
     },
@@ -1336,6 +1364,15 @@
        "link": true,
        "firstPage": 6,
        "lastPage": 6,
+       "type": "eq"
+    },
+    {  "id": "issue6238",
+       "file": "pdfs/issue6238.pdf",
+       "md5": "6d7731ee22fbbdf746c8da01b8922d50",
+       "rounds": 1,
+       "link": true,
+       "firstPage": 3,
+       "lastPage": 3,
        "type": "eq"
     },
     {  "id": "cid_cff",
@@ -2208,6 +2245,18 @@
        "link": true,
        "firstPage": 4,
        "lastPage": 4,
+       "type": "eq"
+    },
+    {  "id": "issue4227",
+       "file": "pdfs/coons-allflags-withfunction.pdf",
+       "md5": "c5f79c24bf9eb66698be0e4ecaa1bdf8",
+       "rounds": 1,
+       "type": "eq"
+    },
+    {  "id": "issue6305-part-1",
+       "file": "pdfs/tensor-allflags-withfunction.pdf",
+       "md5": "b47260d50f6a0f26aaccbfa3b7176ae8",
+       "rounds": 1,
        "type": "eq"
     },
     {  "id": "issue4246",

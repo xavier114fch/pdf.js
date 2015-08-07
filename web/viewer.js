@@ -20,10 +20,10 @@
            PDFThumbnailViewer, URL, noContextMenuHandler, SecondaryToolbar,
            PasswordPrompt, PDFPresentationMode, PDFDocumentProperties, HandTool,
            Promise, PDFLinkService, PDFOutlineView, PDFAttachmentView,
-           OverlayManager, PDFFindController, PDFFindBar, getVisibleElements,
-           watchScroll, PDFViewer, PDFRenderingQueue, PresentationModeState,
-           parseQueryString, RenderingStates, UNKNOWN_SCALE,
-           DEFAULT_SCALE_VALUE, IGNORE_CURRENT_POSITION_ON_ZOOM: true */
+           OverlayManager, PDFFindController, PDFFindBar, PDFViewer,
+           PDFRenderingQueue, PresentationModeState, parseQueryString,
+           RenderingStates, UNKNOWN_SCALE, DEFAULT_SCALE_VALUE,
+           IGNORE_CURRENT_POSITION_ON_ZOOM: true */
 
 'use strict';
 
@@ -790,7 +790,7 @@ var PDFViewerApplication = {
             store.get('exists', false)) {
           var pageNum = store.get('page', '1');
           var zoom = self.preferenceDefaultZoomValue ||
-                     store.get('zoom', self.pdfViewer.currentScale);
+                     store.get('zoom', DEFAULT_SCALE_VALUE);
           var left = store.get('scrollLeft', '0');
           var top = store.get('scrollTop', '0');
 
@@ -820,7 +820,7 @@ var PDFViewerApplication = {
             self.fallback(PDFJS.UNSUPPORTED_FEATURES.javaScript);
           }
           // Hack to support auto printing.
-          var regex = /\bprint\s*\(/g;
+          var regex = /\bprint\s*\(/;
           for (var i = 0, ii = javaScript.length; i < ii; i++) {
             var js = javaScript[i];
             if (js && regex.test(js)) {
@@ -1440,6 +1440,9 @@ function webViewerInitialized() {
   });
 
   document.getElementById('scaleSelect').addEventListener('change', function() {
+    if (this.value === 'custom') {
+      return;
+    }
     PDFViewerApplication.pdfViewer.currentScaleValue = this.value;
   });
 
@@ -1588,13 +1591,6 @@ window.addEventListener('presentationmodechanged', function (e) {
     active ? PresentationModeState.FULLSCREEN : PresentationModeState.NORMAL;
 });
 
-function updateViewarea() {
-  if (!PDFViewerApplication.initialized) {
-    return;
-  }
-  PDFViewerApplication.pdfViewer.update();
-}
-
 window.addEventListener('updateviewarea', function (evt) {
   if (!PDFViewerApplication.initialized) {
     return;
@@ -1636,16 +1632,19 @@ window.addEventListener('updateviewarea', function (evt) {
 window.addEventListener('resize', function webViewerResize(evt) {
   if (PDFViewerApplication.initialized) {
     var currentScaleValue = PDFViewerApplication.pdfViewer.currentScaleValue;
-    switch (currentScaleValue) {
-      case 'auto':
-      case 'page-fit':
-      case 'page-width':
-        // Note: the scale is constant for 'page-actual'.
-        PDFViewerApplication.pdfViewer.currentScaleValue = currentScaleValue;
-        break;
+    if (currentScaleValue === 'auto' ||
+        currentScaleValue === 'page-fit' ||
+        currentScaleValue === 'page-width') {
+      // Note: the scale is constant for 'page-actual'.
+      PDFViewerApplication.pdfViewer.currentScaleValue = currentScaleValue;
+    } else if (!currentScaleValue) {
+      // Normally this shouldn't happen, but if the scale wasn't initialized
+      // we set it to the default value in order to prevent any issues.
+      // (E.g. the document being rendered with the wrong scale on load.)
+      PDFViewerApplication.pdfViewer.currentScaleValue = DEFAULT_SCALE_VALUE;
     }
+    PDFViewerApplication.pdfViewer.update();
   }
-  updateViewarea();
 
   // Set the 'max-height' CSS property of the secondary toolbar.
   SecondaryToolbar.setMaxHeight(document.getElementById('viewerContainer'));
@@ -1753,7 +1752,10 @@ window.addEventListener('scalechange', function scalechange(evt) {
       mozL10n.get('page_scale_percent', { scale: customScale }, '{{scale}}%');
     customScaleOption.selected = true;
   }
-  updateViewarea();
+  if (!PDFViewerApplication.initialized) {
+    return;
+  }
+  PDFViewerApplication.pdfViewer.update();
 }, true);
 
 window.addEventListener('pagechange', function pagechange(evt) {
@@ -1932,6 +1934,7 @@ window.addEventListener('keydown', function keydown(evt) {
       return;
     }
   }
+  var ensureViewerFocused = false;
 
   if (cmd === 0) { // no control key pressed at all.
     switch (evt.keyCode) {
@@ -1990,6 +1993,7 @@ window.addEventListener('keydown', function keydown(evt) {
         if (isViewerInPresentationMode || PDFViewerApplication.page > 1) {
           PDFViewerApplication.page = 1;
           handled = true;
+          ensureViewerFocused = true;
         }
         break;
       case 35: // end
@@ -1997,6 +2001,7 @@ window.addEventListener('keydown', function keydown(evt) {
             PDFViewerApplication.page < PDFViewerApplication.pagesCount)) {
           PDFViewerApplication.page = PDFViewerApplication.pagesCount;
           handled = true;
+          ensureViewerFocused = true;
         }
         break;
 
@@ -2031,17 +2036,10 @@ window.addEventListener('keydown', function keydown(evt) {
   if (!handled && !isViewerInPresentationMode) {
     // 33=Page Up  34=Page Down  35=End    36=Home
     // 37=Left     38=Up         39=Right  40=Down
-    if (evt.keyCode >= 33 && evt.keyCode <= 40 &&
-        !pdfViewer.containsElement(curElement)) {
-      // The page container is not focused, but a page navigation key has been
-      // pressed. Change the focus to the viewer container to make sure that
-      // navigation by keyboard works as expected.
-      pdfViewer.focus();
-    }
     // 32=Spacebar
-    if (evt.keyCode === 32 && curElementTagName !== 'BUTTON' &&
-        !pdfViewer.containsElement(curElement)) {
-      pdfViewer.focus();
+    if ((evt.keyCode >= 33 && evt.keyCode <= 40) ||
+        (evt.keyCode === 32 && curElementTagName !== 'BUTTON')) {
+      ensureViewerFocused = true;
     }
   }
 
@@ -2060,6 +2058,13 @@ window.addEventListener('keydown', function keydown(evt) {
         }
         break;
     }
+  }
+
+  if (ensureViewerFocused && !pdfViewer.containsElement(curElement)) {
+    // The page container is not focused, but a page navigation key has been
+    // pressed. Change the focus to the viewer container to make sure that
+    // navigation by keyboard works as expected.
+    pdfViewer.focus();
   }
 
   if (handled) {
