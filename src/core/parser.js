@@ -58,6 +58,9 @@ var Parser = (function ParserClosure() {
         this.shift();
         return true;
       } catch (e) {
+        if (e instanceof MissingDataException) {
+          throw e;
+        }
         // Upon failure, the caller should reset this.lexer.pos to a known good
         // state and call this.shift() twice to reset the buffers.
         return false;
@@ -524,7 +527,8 @@ var Parser = (function ParserClosure() {
       return stream;
     },
     makeFilter: function Parser_makeFilter(stream, name, maybeLength, params) {
-      if (stream.dict.get('Length') === 0) {
+      if (stream.dict.get('Length') === 0 && !maybeLength) {
+        warn('Empty "' + name + '" stream.');
         return new NullStream(stream);
       }
       try {

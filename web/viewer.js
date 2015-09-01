@@ -271,6 +271,12 @@ var PDFViewerApplication = {
         }
         PDFJS.disableRange = value;
       }),
+      Preferences.get('disableStream').then(function resolved(value) {
+        if (PDFJS.disableStream === true) {
+          return;
+        }
+        PDFJS.disableStream = value;
+      }),
       Preferences.get('disableAutoFetch').then(function resolved(value) {
         PDFJS.disableAutoFetch = value;
       }),
@@ -1397,6 +1403,11 @@ function webViewerInitialized() {
   document.getElementById('viewOutline').addEventListener('click',
     function() {
       PDFViewerApplication.switchSidebarView('outline');
+    });
+
+  document.getElementById('viewOutline').addEventListener('dblclick',
+    function() {
+      PDFViewerApplication.outline.toggleOutlineTree();
     });
 
   document.getElementById('viewAttachments').addEventListener('click',

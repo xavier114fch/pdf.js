@@ -178,6 +178,14 @@ PDFJS.openExternalLinksInNewWindow = (
     false : PDFJS.openExternalLinksInNewWindow);
 
 /**
+  * Determines if we can eval strings as JS. Primarily used to improve
+  * performance for font rendering.
+  * @var {boolean}
+  */
+PDFJS.isEvalSupported = (PDFJS.isEvalSupported === undefined ?
+                         true : PDFJS.isEvalSupported);
+
+/**
  * Document initialization / loading parameters object.
  *
  * @typedef {Object} DocumentInitParameters
@@ -286,6 +294,8 @@ PDFJS.getDocument = function getDocument(src,
         params[key] = stringToBytes(pdfBytes);
       } else if (typeof pdfBytes === 'object' && pdfBytes !== null &&
                  !isNaN(pdfBytes.length)) {
+        params[key] = new Uint8Array(pdfBytes);
+      } else if (isArrayBuffer(pdfBytes)) {
         params[key] = new Uint8Array(pdfBytes);
       } else {
         error('Invalid PDF binary data: either typed array, string or ' +
