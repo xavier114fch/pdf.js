@@ -629,6 +629,13 @@
        "link": false,
        "type": "eq"
     },
+    {  "id": "bug1200096",
+       "file": "pdfs/bug1200096.pdf",
+       "md5": "b6bd8df094b5d511c13ed095d2a07515",
+       "rounds": 1,
+       "link": false,
+       "type": "eq"
+    },
     {  "id": "hudsonsurvey",
        "file": "pdfs/hudsonsurvey.pdf",
        "md5": "bf0e6576a7b6c2fe7485bce1b78e006f",
@@ -1043,6 +1050,22 @@
        "lastPage": 1,
        "type": "load"
     },
+    {  "id": "issue1940",
+       "file": "pdfs/issue1940.pdf",
+       "md5": "4f0a0b92c1b5e6e86e1a82490087e6e5",
+       "rounds": 1,
+       "link": true,
+       "lastPage": 1,
+       "type": "load"
+    },
+    {  "id": "pr4606",
+       "file": "pdfs/pr4606.pdf",
+       "md5": "6574fde2314648600056bd0e229df98c",
+       "rounds": 1,
+       "link": true,
+       "lastPage": 1,
+       "type": "load"
+    },
     {  "id": "S2-eq",
        "file": "pdfs/S2.pdf",
        "md5": "d0b6137846df6e0fe058f234a87fb588",
@@ -1062,6 +1085,13 @@
       "rounds": 1,
       "link": true,
       "type": "eq"
+    },
+    {  "id": "issue6413",
+       "file": "pdfs/issue6413.pdf",
+       "md5": "08926ac7a46e27a4abbb31256b3a7b29",
+       "rounds": 1,
+       "link": false,
+       "type": "eq"
     },
     {  "id": "issue1685",
       "file": "pdfs/issue1685.pdf",
