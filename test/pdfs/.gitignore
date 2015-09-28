@@ -22,6 +22,7 @@
 !rotation.pdf
 !simpletype3font.pdf
 !sizes.pdf
+!issue3205r.pdf
 !close-path-bug.pdf
 !issue2948.pdf
 !issue6231_1.pdf
@@ -49,6 +50,7 @@
 !freeculture.pdf
 !pdfkit_compressed.pdf
 !TAMReview.pdf
+!pr4922.pdf
 !bug900822.pdf
 !issue918.pdf
 !issue1905.pdf
@@ -98,6 +100,8 @@
 !issue5747.pdf
 !issue6099.pdf
 !issue6336.pdf
+!issue6387.pdf
+!issue6410.pdf
 !gradientfill.pdf
 !bug903856.pdf
 !bug850854.pdf
