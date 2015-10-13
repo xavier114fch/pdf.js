@@ -1099,12 +1099,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
           ctx.fill();
           ctx.mozFillRule = 'nonzero';
         } else {
-          try {
-            ctx.fill('evenodd');
-          } catch (ex) {
-            // shouldn't really happen, but browsers might think differently
-            ctx.fill();
-          }
+          ctx.fill('evenodd');
         }
         this.pendingEOFill = false;
       } else {
@@ -1558,8 +1553,10 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
       var pattern;
       if (IR[0] === 'TilingPattern') {
         var color = IR[1];
+        var baseTransform = this.baseTransform ||
+                            this.ctx.mozCurrentTransform.slice();
         pattern = new TilingPattern(IR, color, this.ctx, this.objs,
-                                    this.commonObjs, this.baseTransform);
+                                    this.commonObjs, baseTransform);
       } else {
         pattern = getShadingPatternFromIR(IR);
       }
@@ -2115,12 +2112,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
             ctx.clip();
             ctx.mozFillRule = 'nonzero';
           } else {
-            try {
-              ctx.clip('evenodd');
-            } catch (ex) {
-              // shouldn't really happen, but browsers might think differently
-              ctx.clip();
-            }
+            ctx.clip('evenodd');
           }
         } else {
           ctx.clip();

@@ -322,7 +322,7 @@
     },
     {
       "id": "issue3115",
-      "file": "pdfs/issue3115.pdf",
+      "file": "pdfs/issue3115r.pdf",
       "md5": "ea10f4131202b9b8f2a6cb7770d3f185",
       "rounds": 1,
       "type": "eq",
@@ -527,6 +527,14 @@
        "type": "eq",
        "about": "Type1 font with |Ref|s in the Differences array of the Encoding dictionary."
     },
+    {  "id": "franz_2",
+       "file": "pdfs/franz_2.pdf",
+       "md5": "9d301ed8816e879891115b5cc3c39559",
+       "link": false,
+       "rounds": 1,
+       "type": "eq",
+       "about": "XObject with BBox array containing indirect object."
+    },
     {  "id": "issue4934",
        "file": "pdfs/issue4934.pdf",
        "md5": "6099da44f677702ae65a648b51a2226d",
@@ -563,6 +571,13 @@
        "rounds": 1,
        "link": false,
        "type": "eq"
+    },
+    {  "id": "xref_command_missing",
+       "file": "pdfs/xref_command_missing.pdf",
+       "md5": "06cdb0f13cfeff41d6bfb24b7bbe1268",
+       "rounds": 1,
+       "link": false,
+       "type": "load"
     },
     {  "id": "issue5501",
        "file": "pdfs/issue5501.pdf",
@@ -1050,6 +1065,14 @@
        "lastPage": 1,
        "type": "load"
     },
+    {  "id": "pr4897",
+       "file": "pdfs/pr4897.pdf",
+       "md5": "26897633eea5e6d10345a130b1c1777c",
+       "rounds": 1,
+       "link": true,
+       "lastPage": 1,
+       "type": "eq"
+    },
     {  "id": "issue1940",
        "file": "pdfs/issue1940.pdf",
        "md5": "4f0a0b92c1b5e6e86e1a82490087e6e5",
@@ -1167,6 +1190,13 @@
        "link": false,
        "rounds": 1,
        "type": "eq"
+    },
+    {  "id": "issue4387",
+       "file": "pdfs/issue4387.pdf",
+       "md5": "e06da177b5b9e36016fa2442510d62da",
+       "rounds": 1,
+       "link": true,
+       "type": "load"
     },
     {  "id": "issue4722",
        "file": "pdfs/issue4722.pdf",
@@ -1364,6 +1394,13 @@
        "rounds": 1,
        "link": false,
        "type": "eq"
+    },
+    {  "id": "bug1020858",
+       "file": "pdfs/bug1020858.pdf",
+       "md5": "cde53bcf75df14ff59c8a5a96fe437b9",
+       "rounds": 1,
+       "link": false,
+       "type": "load"
     },
     {  "id": "bug1157493",
        "file": "pdfs/bug1157493.pdf",
@@ -1751,6 +1788,15 @@
        "password": "\u00E6\u00F8\u00E5",
        "about": "The password (זרו) is UTF8 encoded."
     },
+    {  "id": "High-Pressure-Measurement-WP-001287",
+       "file": "pdfs/High-Pressure-Measurement-WP-001287.pdf",
+       "md5": "aeba7e47bbe50cbf08bb8bdff78fec8c",
+       "rounds": 1,
+       "link": true,
+       "firstPage": 3,
+       "lastPage": 3,
+       "type": "eq"
+    },
     { "id": "issue3458.pdf",
       "file": "pdfs/issue3458.pdf",
       "md5": "dab8bd3ad1acfc8dc82a8381a3c8ff94",
@@ -1913,12 +1959,11 @@
       "type": "eq"
     },
     {  "id": "javauninstall-7",
-      "file": "pdfs/javauninstall-7.pdf",
-      "md5": "c9eb59503923c9125b9660e348618675",
-      "rounds": 1,
-      "link": true,
-      "lastPage": 1,
-      "type": "eq"
+       "file": "pdfs/javauninstall-7r.pdf",
+       "md5": "c0089082a86826fa0195eeeb73f7f895",
+       "rounds": 1,
+       "link": false,
+       "type": "eq"
     },
     {  "id": "jst2007-5",
       "file": "pdfs/JST2007-5.pdf",
@@ -2389,12 +2434,10 @@
       "about": "Image mask in higher resolution than the image itself"
     },
     {  "id": "issue4436",
-       "file": "pdfs/issue4436.pdf",
-       "md5": "34e6af7441961f5940e6440a62e37427",
+       "file": "pdfs/issue4436r.pdf",
+       "md5": "4e43d692d213f56674fcac92110c7364",
        "rounds": 1,
-       "link": true,
-       "firstPage": 9,
-       "lastPage": 9,
+       "link": false,
        "type": "eq"
     },
     {  "id": "issue4926",

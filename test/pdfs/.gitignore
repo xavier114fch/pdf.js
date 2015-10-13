@@ -3,6 +3,8 @@
 
 !tracemonkey.pdf
 !franz.pdf
+!franz_2.pdf
+!xref_command_missing.pdf
 !issue2391-1.pdf
 !issue2391-2.pdf
 !issue5801.pdf
@@ -14,6 +16,7 @@
 !arial_unicode_ab_cidfont.pdf
 !arial_unicode_en_cidfont.pdf
 !asciihexdecode.pdf
+!bug1020858.pdf
 !bug1050040.pdf
 !bug1200096.pdf
 !canvas.pdf
@@ -22,6 +25,7 @@
 !rotation.pdf
 !simpletype3font.pdf
 !sizes.pdf
+!javauninstall-7r.pdf
 !issue3205r.pdf
 !close-path-bug.pdf
 !issue2948.pdf
@@ -79,6 +83,7 @@
 !zerowidthline.pdf
 !bug868745.pdf
 !mmtype1.pdf
+!issue4436r.pdf
 !issue5704.pdf
 !issue5751.pdf
 !bug893730.pdf
@@ -112,6 +117,7 @@
 !bug1065245.pdf
 !bug1151216.pdf
 !bug1175962.pdf
+!bug1020226.pdf
 !basicapi.pdf
 !mixedfonts.pdf
 !shading_extend.pdf
