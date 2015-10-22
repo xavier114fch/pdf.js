@@ -487,6 +487,15 @@
        "link": false,
        "type": "eq"
     },
+    {  "id": "issue4914",
+       "file": "pdfs/issue4914.pdf",
+       "md5": "6e1da9c5283d9acef0314d87ce953659",
+       "rounds": 1,
+       "link": true,
+       "lastPage": 1,
+       "type": "eq",
+       "about": "PDF with annotations, some of which have the Hidden flag set."
+    },
     {  "id": "fit11-talk",
        "file": "pdfs/fit11-talk.pdf",
        "md5": "eb7b224107205db4fea9f7df0185f77d",
@@ -681,6 +690,13 @@
     {  "id": "issue2948",
        "file": "pdfs/issue2948.pdf",
        "md5": "26210bed6a57d5466042aff22f0249f0",
+       "link": false,
+       "rounds": 1,
+       "type": "eq"
+    },
+    {  "id": "issue6541",
+       "file": "pdfs/issue6541.pdf",
+       "md5": "81bc5b146404207ea40f2c55301b2bb6",
        "link": false,
        "rounds": 1,
        "type": "eq"

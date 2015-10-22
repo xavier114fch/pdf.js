@@ -2,7 +2,8 @@
 /* vim: set shiftwidth=2 tabstop=2 autoindent cindent expandtab: */
 /* globals PDFJS, expect, it, describe, Promise, combineUrl, waitsFor,
            InvalidPDFException, MissingPDFException, StreamType, FontType,
-           PDFPageProxy */
+           PDFDocumentProxy, PasswordException, PasswordResponses,
+           PDFPageProxy, createPromiseCapability */
 
 'use strict';
 
@@ -37,12 +38,31 @@ describe('api', function() {
       return data !== undefined;
     }, 20000);
   }
+
   describe('PDFJS', function() {
     describe('getDocument', function() {
       it('creates pdf doc from URL', function() {
-        var promise = PDFJS.getDocument(basicApiUrl);
-        waitsForPromiseResolved(promise, function(data) {
-          expect(true).toEqual(true);
+        var loadingTask = PDFJS.getDocument(basicApiUrl);
+
+        var isProgressReportedResolved = false;
+        var progressReportedCapability = createPromiseCapability();
+
+        // Attach the callback that is used to report loading progress;
+        // similarly to how viewer.js works.
+        loadingTask.onProgress = function (progressData) {
+          if (!isProgressReportedResolved) {
+            isProgressReportedResolved = true;
+            progressReportedCapability.resolve(progressData);
+          }
+        };
+
+        var promises = [
+          progressReportedCapability.promise,
+          loadingTask.promise
+        ];
+        waitsForPromiseResolved(Promise.all(promises), function (data) {
+          expect((data[0].loaded / data[0].total) > 0).toEqual(true);
+          expect(data[1] instanceof PDFDocumentProxy).toEqual(true);
         });
       });
       it('creates pdf doc from typed array', function() {
@@ -77,7 +97,7 @@ describe('api', function() {
 
         var promise = PDFJS.getDocument(typedArrayPdf);
         waitsForPromiseResolved(promise, function(data) {
-          expect(true).toEqual(true);
+          expect(data instanceof PDFDocumentProxy).toEqual(true);
         });
       });
       it('creates pdf doc from invalid PDF file', function() {
@@ -95,6 +115,75 @@ describe('api', function() {
         var promise = PDFJS.getDocument(nonExistentUrl);
         waitsForPromiseRejected(promise, function(error) {
           expect(error instanceof MissingPDFException).toEqual(true);
+        });
+      });
+      it('creates pdf doc from PDF file protected with user and owner password',
+         function () {
+        var url = combineUrl(window.location.href, '../pdfs/pr6531_1.pdf');
+        var loadingTask = PDFJS.getDocument(url);
+
+        var isPasswordNeededResolved = false;
+        var passwordNeededCapability = createPromiseCapability();
+        var isPasswordIncorrectResolved = false;
+        var passwordIncorrectCapability = createPromiseCapability();
+
+        // Attach the callback that is used to request a password;
+        // similarly to how viewer.js handles passwords.
+        loadingTask.onPassword = function (updatePassword, reason) {
+          if (reason === PasswordResponses.NEED_PASSWORD &&
+              !isPasswordNeededResolved) {
+            isPasswordNeededResolved = true;
+            passwordNeededCapability.resolve();
+
+            updatePassword('qwerty'); // Provide an incorrect password.
+            return;
+          }
+          if (reason === PasswordResponses.INCORRECT_PASSWORD &&
+              !isPasswordIncorrectResolved) {
+            isPasswordIncorrectResolved = true;
+            passwordIncorrectCapability.resolve();
+
+            updatePassword('asdfasdf'); // Provide the correct password.
+            return;
+          }
+          // Shouldn't get here.
+          expect(false).toEqual(true);
+        };
+
+        var promises = [
+          passwordNeededCapability.promise,
+          passwordIncorrectCapability.promise,
+          loadingTask.promise
+        ];
+        waitsForPromiseResolved(Promise.all(promises), function (data) {
+          expect(data[2] instanceof PDFDocumentProxy).toEqual(true);
+        });
+      });
+      it('creates pdf doc from PDF file protected with only a user password',
+         function () {
+        var url = combineUrl(window.location.href, '../pdfs/pr6531_2.pdf');
+
+        var passwordNeededPromise = PDFJS.getDocument({
+          url: url, password: '',
+        });
+        waitsForPromiseRejected(passwordNeededPromise, function (data) {
+          expect(data instanceof PasswordException).toEqual(true);
+          expect(data.code).toEqual(PasswordResponses.NEED_PASSWORD);
+        });
+
+        var passwordIncorrectPromise = PDFJS.getDocument({
+          url: url, password: 'qwerty',
+        });
+        waitsForPromiseRejected(passwordIncorrectPromise, function (data) {
+          expect(data instanceof PasswordException).toEqual(true);
+          expect(data.code).toEqual(PasswordResponses.INCORRECT_PASSWORD);
+        });
+
+        var passwordAcceptedPromise = PDFJS.getDocument({
+          url: url, password: 'asdfasdf',
+        });
+        waitsForPromiseResolved(passwordAcceptedPromise, function (data) {
+          expect(data instanceof PDFDocumentProxy).toEqual(true);
         });
       });
     });
