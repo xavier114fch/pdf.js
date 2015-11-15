@@ -19,9 +19,6 @@
 
 'use strict';
 
-// The maximum number of bytes fetched per range request
-var RANGE_CHUNK_SIZE = 65536;
-
 // TODO(mack): Make use of PDFJS.Util.inherit() when it becomes available
 var BasePdfManager = (function BasePdfManagerClosure() {
   function BasePdfManager() {
@@ -153,7 +150,8 @@ var NetworkPdfManager = (function NetworkPdfManagerClosure() {
       disableAutoFetch: args.disableAutoFetch,
       initialData: args.initialData
     };
-    this.streamManager = new ChunkedStreamManager(args.length, RANGE_CHUNK_SIZE,
+    this.streamManager = new ChunkedStreamManager(args.length,
+                                                  args.rangeChunkSize,
                                                   args.url, params);
 
     this.pdfDocument = new PDFDocument(this, this.streamManager.getStream(),
@@ -183,7 +181,8 @@ var NetworkPdfManager = (function NetworkPdfManagerClosure() {
             reject(e);
             return;
           }
-          pdfManager.streamManager.requestRange(e.begin, e.end, ensureHelper);
+          pdfManager.streamManager.requestRange(e.begin, e.end).
+            then(ensureHelper, reject);
         }
       }
 
@@ -193,11 +192,7 @@ var NetworkPdfManager = (function NetworkPdfManagerClosure() {
 
   NetworkPdfManager.prototype.requestRange =
       function NetworkPdfManager_requestRange(begin, end) {
-    return new Promise(function (resolve) {
-      this.streamManager.requestRange(begin, end, function() {
-        resolve();
-      });
-    }.bind(this));
+    return this.streamManager.requestRange(begin, end);
   };
 
   NetworkPdfManager.prototype.requestLoadedStream =
@@ -217,7 +212,7 @@ var NetworkPdfManager = (function NetworkPdfManagerClosure() {
 
   NetworkPdfManager.prototype.terminate =
       function NetworkPdfManager_terminate() {
-    this.streamManager.networkManager.abortAllRequests();
+    this.streamManager.abort();
   };
 
   return NetworkPdfManager;

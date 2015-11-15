@@ -265,11 +265,13 @@ target.web = function() {
         GH_PAGES_DIR + '/getting_started/index.html');
     echo('Done building with wintersmith.');
 
+    var reason = process.env['PDFJS_UPDATE_REASON'];
     cd(GH_PAGES_DIR);
     exec('git init');
     exec('git remote add origin ' + REPO);
     exec('git add -A');
-    exec('git commit -am "gh-pages site created via make.js script"');
+    exec('git commit -am "gh-pages site created via make.js script" -m ' +
+         '"PDF.js version ' + VERSION + (reason ? ' - ' + reason : '') + '"');
     exec('git branch -m gh-pages');
 
     echo();
@@ -354,7 +356,8 @@ target.dist = function() {
   echo('### Commiting changes');
 
   cd(DIST_DIR);
-  var message = 'PDF.js version ' + VERSION;
+  var reason = process.env['PDFJS_UPDATE_REASON'];
+  var message = 'PDF.js version ' + VERSION + (reason ? ' - ' + reason : '');
   exec('git add *');
   exec('git commit -am \"' + message + '\"');
   exec('git tag -a v' + VERSION + ' -m \"' + message + '\"');
@@ -893,7 +896,6 @@ target.mozcentral = function() {
       MOZCENTRAL_EXTENSION_DIR = MOZCENTRAL_DIR + 'browser/extensions/pdfjs/',
       MOZCENTRAL_CONTENT_DIR = MOZCENTRAL_EXTENSION_DIR + 'content/',
       MOZCENTRAL_L10N_DIR = MOZCENTRAL_DIR + 'browser/locales/en-US/pdfviewer/',
-      MOZCENTRAL_TEST_DIR = MOZCENTRAL_EXTENSION_DIR + 'test/',
       FIREFOX_CONTENT_DIR = EXTENSION_SRC_DIR + '/firefox/content/',
       FIREFOX_EXTENSION_FILES_TO_COPY =
         ['*.svg',
@@ -990,10 +992,6 @@ target.mozcentral = function() {
       MOZCENTRAL_CONTENT_DIR + 'PdfStreamConverter.jsm');
   sed('-i', /PDFJSSCRIPT_PREF_PREFIX/, MOZCENTRAL_PREF_PREFIX,
       MOZCENTRAL_CONTENT_DIR + 'PdfjsChromeUtils.jsm');
-
-  // Copy test files
-  mkdir('-p', MOZCENTRAL_TEST_DIR);
-  cp('-Rf', 'test/mozcentral/*', MOZCENTRAL_TEST_DIR);
 };
 
 target.b2g = function() {

@@ -15,7 +15,8 @@
  * limitations under the License.
  */
 /* globals RenderingStates, PDFJS, CustomStyle, CSS_UNITS, getOutputScale,
-           TextLayerBuilder, AnnotationsLayerBuilder, Promise */
+           TextLayerBuilder, AnnotationsLayerBuilder, Promise,
+           approximateFraction, roundToDivide */
 
 'use strict';
 
@@ -101,7 +102,7 @@ var PDFPageView = (function PDFPageViewClosure() {
       this.zoomLayer = null;
       this.reset();
       if (this.pdfPage) {
-        this.pdfPage.destroy();
+        this.pdfPage.cleanup();
       }
     },
 
@@ -180,6 +181,14 @@ var PDFPageView = (function PDFPageViewClosure() {
         if (PDFJS.useOnlyCssZoom ||
             (this.hasRestrictedScaling && isScalingRestricted)) {
           this.cssTransform(this.canvas, true);
+
+          var event = document.createEvent('CustomEvent');
+          event.initCustomEvent('pagerendered', true, true, {
+            pageNumber: this.id,
+            cssTransform: true,
+          });
+          this.div.dispatchEvent(event);
+
           return;
         }
         if (!this.zoomLayer) {
@@ -315,7 +324,7 @@ var PDFPageView = (function PDFPageViewClosure() {
       var outputScale = getOutputScale(ctx);
 
       if (PDFJS.useOnlyCssZoom) {
-        var actualSizeViewport = viewport.clone({ scale: CSS_UNITS });
+        var actualSizeViewport = viewport.clone({scale: CSS_UNITS});
         // Use a scale that will make the canvas be the original intended size
         // of the page.
         outputScale.sx *= actualSizeViewport.width / viewport.width;
@@ -336,10 +345,12 @@ var PDFPageView = (function PDFPageViewClosure() {
         }
       }
 
-      canvas.width = (Math.floor(viewport.width) * outputScale.sx) | 0;
-      canvas.height = (Math.floor(viewport.height) * outputScale.sy) | 0;
-      canvas.style.width = Math.floor(viewport.width) + 'px';
-      canvas.style.height = Math.floor(viewport.height) + 'px';
+      var sfx = approximateFraction(outputScale.sx);
+      var sfy = approximateFraction(outputScale.sy);
+      canvas.width = roundToDivide(viewport.width * outputScale.sx, sfx[0]);
+      canvas.height = roundToDivide(viewport.height * outputScale.sy, sfy[0]);
+      canvas.style.width = roundToDivide(viewport.width, sfx[1]) + 'px';
+      canvas.style.height = roundToDivide(viewport.height, sfy[1]) + 'px';
       // Add the viewport so it's known what it was originally drawn with.
       canvas._viewport = viewport;
 
@@ -348,8 +359,8 @@ var PDFPageView = (function PDFPageViewClosure() {
       if (this.textLayerFactory) {
         textLayerDiv = document.createElement('div');
         textLayerDiv.className = 'textLayer';
-        textLayerDiv.style.width = canvas.style.width;
-        textLayerDiv.style.height = canvas.style.height;
+        textLayerDiv.style.width = canvasWrapper.style.width;
+        textLayerDiv.style.height = canvasWrapper.style.height;
         if (this.annotationLayer && this.annotationLayer.div) {
           // annotationLayer needs to stay on top
           div.insertBefore(textLayerDiv, this.annotationLayer.div);
@@ -418,7 +429,8 @@ var PDFPageView = (function PDFPageViewClosure() {
         }
         var event = document.createEvent('CustomEvent');
         event.initCustomEvent('pagerendered', true, true, {
-          pageNumber: self.id
+          pageNumber: self.id,
+          cssTransform: false,
         });
         div.dispatchEvent(event);
 //#if GENERIC
@@ -457,9 +469,9 @@ var PDFPageView = (function PDFPageViewClosure() {
         canvasContext: ctx,
         viewport: this.viewport,
         // intent: 'default', // === 'display'
-        continueCallback: renderContinueCallback
       };
       var renderTask = this.renderTask = this.pdfPage.render(renderContext);
+      renderTask.onContinue = renderContinueCallback;
 
       this.renderTask.promise.then(
         function pdfPageRenderCallback() {

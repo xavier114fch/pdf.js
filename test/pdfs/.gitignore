@@ -2,11 +2,13 @@
 *.error
 
 !tracemonkey.pdf
+!TrueType_without_cmap.pdf
 !franz.pdf
 !franz_2.pdf
 !xref_command_missing.pdf
 !issue2391-1.pdf
 !issue2391-2.pdf
+!issue4665.pdf
 !issue5801.pdf
 !issue5972.pdf
 !issue5874.pdf
@@ -27,7 +29,13 @@
 !sizes.pdf
 !javauninstall-7r.pdf
 !issue3205r.pdf
+!issue3207r.pdf
+!issue3263r.pdf
+!issue3879r.pdf
 !close-path-bug.pdf
+!issue6019.pdf
+!issue6621.pdf
+!issue1293r.pdf
 !issue6541.pdf
 !issue2948.pdf
 !issue6231_1.pdf
@@ -67,11 +75,13 @@
 !issue4304.pdf
 !issue4379.pdf
 !issue4550.pdf
+!issue4575.pdf
 !bug1011159.pdf
 !issue5734.pdf
 !issue4875.pdf
 !issue4881.pdf
 !issue5994.pdf
+!issue6151.pdf
 !rotated.pdf
 !issue1249.pdf
 !issue1171.pdf
@@ -132,6 +142,7 @@
 !vertical.pdf
 !ZapfDingbats.pdf
 !bug878026.pdf
+!issue1045.pdf
 !issue5010.pdf
 !issue4934.pdf
 !issue4650.pdf
@@ -154,6 +165,7 @@
 !issue5334.pdf
 !bug1186827.pdf
 !issue215.pdf
+!issue2128r.pdf
 !issue5540.pdf
 !issue5549.pdf
 !issue5475.pdf

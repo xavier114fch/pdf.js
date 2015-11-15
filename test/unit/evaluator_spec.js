@@ -1,13 +1,13 @@
 /* -*- Mode: Java; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* vim: set shiftwidth=2 tabstop=2 autoindent cindent expandtab: */
 /* globals expect, it, describe, PartialEvaluator, StringStream, OPS,
-           OperatorList, waitsFor, runs, Dict, Name, Stream */
+           OperatorList, waitsFor, runs, Dict, Name, Stream, WorkerTask */
 
 'use strict';
 
 describe('evaluator', function() {
   function XrefMock(queue) {
-    this.queue = queue;
+    this.queue = queue || [];
   }
   XrefMock.prototype = {
     fetchIfRef: function() {
@@ -35,7 +35,9 @@ describe('evaluator', function() {
     var done = false;
     runs(function () {
       var result = new OperatorList();
-      evaluator.getOperatorList(stream, resources, result).then(function () {
+      var task = new WorkerTask('OperatorListCheck');
+      evaluator.getOperatorList(stream, task, resources, result).then(
+          function () {
         check(result);
         done = true;
       });
@@ -257,6 +259,71 @@ describe('evaluator', function() {
         expect(result.argsArray).toEqual([]);
         expect(result.fnArray).toEqual([]);
       });
+    });
+  });
+
+  describe('thread control', function() {
+    it('should abort operator list parsing', function () {
+      var evaluator = new PartialEvaluator(new PdfManagerMock(),
+                                           new XrefMock(), new HandlerMock(),
+                                           'prefix');
+      var stream = new StringStream('qqQQ');
+      var resources = new ResourcesMock();
+      var done = false;
+      runs(function () {
+        var result = new OperatorList();
+        var task = new WorkerTask('OperatorListAbort');
+        task.terminate();
+        evaluator.getOperatorList(stream, task, resources, result).catch(
+          function () {
+            done = true;
+            expect(!!result.fnArray && !!result.argsArray).toEqual(true);
+            expect(result.fnArray.length).toEqual(0);
+          });
+      });
+      waitsFor(function () {
+        return done;
+      });
+    });
+    it('should abort text parsing parsing', function () {
+      var resources = new ResourcesMock();
+      var evaluator = new PartialEvaluator(new PdfManagerMock(),
+                                           new XrefMock(), new HandlerMock(),
+                                           'prefix');
+      var stream = new StringStream('qqQQ');
+      var done = false;
+      runs(function () {
+        var task = new WorkerTask('TextContentAbort');
+        task.terminate();
+        evaluator.getTextContent(stream, task, resources).catch(
+          function () {
+            done = true;
+          });
+      });
+      waitsFor(function () {
+        return done;
+      });
+    });
+  });
+
+  describe('operator list', function () {
+    function MessageHandlerMock() { }
+    MessageHandlerMock.prototype = {
+      send: function () { },
+    };
+
+    it('should get correct total length after flushing', function () {
+      var operatorList = new OperatorList(null, new MessageHandlerMock());
+      operatorList.addOp(OPS.save, null);
+      operatorList.addOp(OPS.restore, null);
+
+      expect(operatorList.totalLength).toEqual(2);
+      expect(operatorList.length).toEqual(2);
+
+      operatorList.flush();
+
+      expect(operatorList.totalLength).toEqual(2);
+      expect(operatorList.length).toEqual(0);
     });
   });
 });
