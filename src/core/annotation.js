@@ -1,5 +1,3 @@
-/* -*- Mode: Java; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set shiftwidth=2 tabstop=2 autoindent cindent expandtab: */
 /* Copyright 2012 Mozilla Foundation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,8 +14,8 @@
  */
 /* globals PDFJS, Util, isDict, isName, stringToPDFString, warn, Dict, Stream,
            stringToBytes, Promise, isArray, ObjectLoader, OperatorList,
-           isValidUrl, OPS, createPromiseCapability, AnnotationType,
-           stringToUTF8String, AnnotationBorderStyleType, ColorSpace */
+           isValidUrl, OPS, AnnotationType, stringToUTF8String,
+           AnnotationBorderStyleType, ColorSpace, AnnotationFlag, isInt */
 
 'use strict';
 
@@ -120,26 +118,83 @@ var Annotation = (function AnnotationClosure() {
 
   function Annotation(params) {
     var dict = params.dict;
-    var data = this.data = {};
 
-    data.subtype = dict.get('Subtype').name;
-    data.annotationFlags = dict.get('F');
-
+    this.setFlags(dict.get('F'));
     this.setRectangle(dict.get('Rect'));
-    data.rect = this.rectangle;
-
     this.setColor(dict.get('C'));
-    data.color = this.color;
-
-    this.borderStyle = data.borderStyle = new AnnotationBorderStyle();
     this.setBorderStyle(dict);
-
     this.appearance = getDefaultAppearance(dict);
-    data.hasAppearance = !!this.appearance;
-    data.id = params.ref.num;
+
+    // Expose public properties using a data object.
+    this.data = {};
+    this.data.id = params.ref.num;
+    this.data.subtype = dict.get('Subtype').name;
+    this.data.annotationFlags = this.flags;
+    this.data.rect = this.rectangle;
+    this.data.color = this.color;
+    this.data.borderStyle = this.borderStyle;
+    this.data.hasAppearance = !!this.appearance;
   }
 
   Annotation.prototype = {
+    /**
+     * @return {boolean}
+     */
+    get viewable() {
+      if (this.flags) {
+        return !this.hasFlag(AnnotationFlag.INVISIBLE) &&
+               !this.hasFlag(AnnotationFlag.HIDDEN) &&
+               !this.hasFlag(AnnotationFlag.NOVIEW);
+      }
+      return true;
+    },
+
+    /**
+     * @return {boolean}
+     */
+    get printable() {
+      if (this.flags) {
+        return this.hasFlag(AnnotationFlag.PRINT) &&
+               !this.hasFlag(AnnotationFlag.INVISIBLE) &&
+               !this.hasFlag(AnnotationFlag.HIDDEN);
+      }
+      return false;
+    },
+
+    /**
+     * Set the flags.
+     *
+     * @public
+     * @memberof Annotation
+     * @param {number} flags - Unsigned 32-bit integer specifying annotation
+     *                         characteristics
+     * @see {@link shared/util.js}
+     */
+    setFlags: function Annotation_setFlags(flags) {
+      if (isInt(flags)) {
+        this.flags = flags;
+      } else {
+        this.flags = 0;
+      }
+    },
+
+    /**
+     * Check if a provided flag is set.
+     *
+     * @public
+     * @memberof Annotation
+     * @param {number} flag - Hexadecimal representation for an annotation
+     *                        characteristic
+     * @return {boolean}
+     * @see {@link shared/util.js}
+     */
+    hasFlag: function Annotation_hasFlag(flag) {
+      if (this.flags) {
+        return (this.flags & flag) > 0;
+      }
+      return false;
+    },
+
     /**
      * Set the rectangle.
      *
@@ -205,6 +260,7 @@ var Annotation = (function AnnotationClosure() {
      * @param {Dict} borderStyle - The border style dictionary
      */
     setBorderStyle: function Annotation_setBorderStyle(borderStyle) {
+      this.borderStyle = new AnnotationBorderStyle();
       if (!isDict(borderStyle)) {
         return;
       }
@@ -239,32 +295,6 @@ var Annotation = (function AnnotationClosure() {
       }
     },
 
-    isInvisible: function Annotation_isInvisible() {
-      var data = this.data;
-      return !!(data &&
-                data.annotationFlags &&            // Default: not invisible
-                data.annotationFlags & 0x1);       // Invisible
-    },
-
-    isViewable: function Annotation_isViewable() {
-      var data = this.data;
-      return !!(!this.isInvisible() &&
-                data &&
-                (!data.annotationFlags ||
-                 !(data.annotationFlags & 0x22)) &&  // Hidden or NoView
-                data.rect);                          // rectangle is necessary
-    },
-
-    isPrintable: function Annotation_isPrintable() {
-      var data = this.data;
-      return !!(!this.isInvisible() &&
-                data &&
-                data.annotationFlags &&              // Default: not printable
-                data.annotationFlags & 0x4 &&        // Print
-                !(data.annotationFlags & 0x2) &&     // Hidden
-                data.rect);                          // rectangle is necessary
-    },
-
     loadResources: function Annotation_loadResources(keys) {
       return new Promise(function (resolve, reject) {
         this.appearance.dict.getAsync('Resources').then(function (resources) {
@@ -283,13 +313,11 @@ var Annotation = (function AnnotationClosure() {
     },
 
     getOperatorList: function Annotation_getOperatorList(evaluator, task) {
-
       if (!this.appearance) {
         return Promise.resolve(new OperatorList());
       }
 
       var data = this.data;
-
       var appearanceDict = this.appearance.dict;
       var resourcesPromise = this.loadResources([
         'ExtGState',
@@ -321,33 +349,22 @@ var Annotation = (function AnnotationClosure() {
   };
 
   Annotation.appendToOperatorList = function Annotation_appendToOperatorList(
-      annotations, opList, pdfManager, partialEvaluator, task, intent) {
-
-    function reject(e) {
-      annotationsReadyCapability.reject(e);
-    }
-
-    var annotationsReadyCapability = createPromiseCapability();
-
+      annotations, opList, partialEvaluator, task, intent) {
     var annotationPromises = [];
     for (var i = 0, n = annotations.length; i < n; ++i) {
-      if (intent === 'display' && annotations[i].isViewable() ||
-          intent === 'print' && annotations[i].isPrintable()) {
+      if ((intent === 'display' && annotations[i].viewable) ||
+          (intent === 'print' && annotations[i].printable)) {
         annotationPromises.push(
           annotations[i].getOperatorList(partialEvaluator, task));
       }
     }
-    Promise.all(annotationPromises).then(function(datas) {
+    return Promise.all(annotationPromises).then(function(operatorLists) {
       opList.addOp(OPS.beginAnnotations, []);
-      for (var i = 0, n = datas.length; i < n; ++i) {
-        var annotOpList = datas[i];
-        opList.addOpList(annotOpList);
+      for (var i = 0, n = operatorLists.length; i < n; ++i) {
+        opList.addOpList(operatorLists[i]);
       }
       opList.addOp(OPS.endAnnotations, []);
-      annotationsReadyCapability.resolve();
-    }, reject);
-
-    return annotationsReadyCapability.promise;
+    });
   };
 
   return Annotation;
@@ -492,7 +509,6 @@ var AnnotationBorderStyle = (function AnnotationBorderStyleClosure() {
 })();
 
 var WidgetAnnotation = (function WidgetAnnotationClosure() {
-
   function WidgetAnnotation(params) {
     Annotation.call(this, params);
 
@@ -507,6 +523,12 @@ var WidgetAnnotation = (function WidgetAnnotationClosure() {
     data.fieldType = isName(fieldType) ? fieldType.name : '';
     data.fieldFlags = Util.getInheritableProperty(dict, 'Ff') || 0;
     this.fieldResources = Util.getInheritableProperty(dict, 'DR') || Dict.empty;
+
+    // Hide unsupported Widget signatures.
+    if (data.fieldType === 'Sig') {
+      warn('unimplemented annotation type: Widget signature');
+      this.setFlags(AnnotationFlag.HIDDEN);
+    }
 
     // Building the full field name by collecting the field and
     // its ancestors 'T' data and joining them using '.'.
@@ -541,17 +563,7 @@ var WidgetAnnotation = (function WidgetAnnotationClosure() {
     data.fullName = fieldName.join('.');
   }
 
-  var parent = Annotation.prototype;
-  Util.inherit(WidgetAnnotation, Annotation, {
-    isViewable: function WidgetAnnotation_isViewable() {
-      if (this.data.fieldType === 'Sig') {
-        warn('unimplemented annotation type: Widget signature');
-        return false;
-      }
-
-      return parent.isViewable.call(this);
-    }
-  });
+  Util.inherit(WidgetAnnotation, Annotation, {});
 
   return WidgetAnnotation;
 })();
@@ -620,7 +632,7 @@ var TextAnnotation = (function TextAnnotationClosure() {
     }
   }
 
-  Util.inherit(TextAnnotation, Annotation, { });
+  Util.inherit(TextAnnotation, Annotation, {});
 
   return TextAnnotation;
 })();
@@ -650,7 +662,7 @@ var LinkAnnotation = (function LinkAnnotationClosure() {
         if (!isValidUrl(url, false)) {
           url = '';
         }
-        // According to ISO 32000-1:2008, section 12.6.4.7, 
+        // According to ISO 32000-1:2008, section 12.6.4.7,
         // URI should to be encoded in 7-bit ASCII.
         // Some bad PDFs may have URIs in UTF-8 encoding, see Bugzilla 1122280.
         try {
@@ -696,7 +708,7 @@ var LinkAnnotation = (function LinkAnnotationClosure() {
     return url;
   }
 
-  Util.inherit(LinkAnnotation, Annotation, { });
+  Util.inherit(LinkAnnotation, Annotation, {});
 
   return LinkAnnotation;
 })();

@@ -1,5 +1,3 @@
-/* -*- Mode: Java; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set shiftwidth=2 tabstop=2 autoindent cindent expandtab: */
 /* Copyright 2012 Mozilla Foundation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,8 +13,7 @@
  * limitations under the License.
  */
 /* globals ColorSpace, PDFFunction, Util, error, warn, info, isArray, isStream,
-           assert, isPDFFunction, UnsupportedManager, UNSUPPORTED_FEATURES,
-           MissingDataException */
+           assert, isPDFFunction, UNSUPPORTED_FEATURES, MissingDataException */
 
 'use strict';
 
@@ -45,7 +42,7 @@ var Pattern = (function PatternClosure() {
   };
 
   Pattern.parseShading = function Pattern_parseShading(shading, matrix, xref,
-                                                       res) {
+                                                       res, handler) {
 
     var dict = isStream(shading) ? shading.dict : shading;
     var type = dict.get('ShadingType');
@@ -68,7 +65,8 @@ var Pattern = (function PatternClosure() {
       if (ex instanceof MissingDataException) {
         throw ex;
       }
-      UnsupportedManager.notify(UNSUPPORTED_FEATURES.shadingPattern);
+      handler.send('UnsupportedFeature',
+                   {featureId: UNSUPPORTED_FEATURES.shadingPattern});
       warn(ex);
       return new Shadings.Dummy();
     }
@@ -205,6 +203,11 @@ Shadings.RadialAxial = (function RadialAxialClosure() {
       if (matrix) {
         p0 = Util.applyTransform(p0, matrix);
         p1 = Util.applyTransform(p1, matrix);
+        if (shadingType === ShadingType.RADIAL) {
+          var scale = Util.singularValueDecompose2dScale(matrix);
+          r0 *= scale[0];
+          r1 *= scale[1];
+        }
       }
 
       return ['RadialAxial', type, this.colorStops, p0, p1, r0, r1];

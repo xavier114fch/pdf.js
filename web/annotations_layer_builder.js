@@ -1,5 +1,3 @@
-/* -*- Mode: Java; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set shiftwidth=2 tabstop=2 autoindent cindent expandtab: */
 /* Copyright 2014 Mozilla Foundation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/*globals PDFJS, CustomStyle, mozL10n, SimpleLinkService */
+/*globals PDFJS, mozL10n, SimpleLinkService */
 
 'use strict';
 
@@ -29,6 +27,8 @@
  * @class
  */
 var AnnotationsLayerBuilder = (function AnnotationsLayerBuilderClosure() {
+  var CustomStyle = PDFJS.CustomStyle;
+
   /**
    * @param {AnnotationsLayerBuilderOptions} options
    * @constructs AnnotationsLayerBuilder
@@ -45,9 +45,10 @@ var AnnotationsLayerBuilder = (function AnnotationsLayerBuilderClosure() {
 
     /**
      * @param {PageViewport} viewport
+     * @param {string} intent (default value is 'display')
      */
     setupAnnotations:
-        function AnnotationsLayerBuilder_setupAnnotations(viewport) {
+        function AnnotationsLayerBuilder_setupAnnotations(viewport, intent) {
       function bindLink(link, dest) {
         link.href = linkService.getDestinationHash(dest);
         link.onclick = function annotationsLayerBuilderLinksOnclick() {
@@ -73,8 +74,12 @@ var AnnotationsLayerBuilder = (function AnnotationsLayerBuilderClosure() {
       var linkService = this.linkService;
       var pdfPage = this.pdfPage;
       var self = this;
+      var getAnnotationsParams = {
+        intent: (intent === undefined ? 'display' : intent),
+      };
 
-      pdfPage.getAnnotations().then(function (annotationsData) {
+      pdfPage.getAnnotations(getAnnotationsParams).then(
+          function (annotationsData) {
         viewport = viewport.clone({ dontFlip: true });
         var transform = viewport.transform;
         var transformStr = 'matrix(' + transform.join(',') + ')';

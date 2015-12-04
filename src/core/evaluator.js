@@ -1,5 +1,3 @@
-/* -*- Mode: Java; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set shiftwidth=2 tabstop=2 autoindent cindent expandtab: */
 /* Copyright 2012 Mozilla Foundation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,9 +19,8 @@
            MurmurHash3_64, Name, Parser, Pattern, PDFImage, PDFJS, serifFonts,
            stdFontMap, symbolsFonts, getTilingPatternIR, warn, Util, Promise,
            RefSetCache, isRef, TextRenderingMode, IdentityToUnicodeMap,
-           OPS, UNSUPPORTED_FEATURES, UnsupportedManager, NormalizedUnicodes,
-           IDENTITY_MATRIX, reverseIfRtl, createPromiseCapability, ToUnicodeMap,
-           getFontType */
+           OPS, UNSUPPORTED_FEATURES, NormalizedUnicodes, IDENTITY_MATRIX,
+           reverseIfRtl, createPromiseCapability, ToUnicodeMap, getFontType */
 
 'use strict';
 
@@ -323,6 +320,12 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         return translated.loadType3Data(self, resources, operatorList, task).
           then(function () {
           return translated;
+        }, function (reason) {
+          // Error in the font data -- sending unsupported feature notification.
+          self.handler.send('UnsupportedFeature',
+                            {featureId: UNSUPPORTED_FEATURES.font});
+          return new TranslatedFont('g_font_error',
+            new ErrorFont('Type3 font load error: ' + reason), translated.font);
         });
       }).then(function (translated) {
         state.font = translated.font;
@@ -531,7 +534,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
 
       // Keep track of each font we translated so the caller can
       // load them asynchronously before calling display on a page.
-      font.loadedName = 'g_font_' + (fontRefIsDict ?
+      font.loadedName = 'g_' + this.pdfManager.docId + '_f' + (fontRefIsDict ?
         fontName.replace(/\W/g, '') : fontID);
 
       font.translated = fontCapability.promise;
@@ -545,6 +548,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         translatedPromise = Promise.reject(e);
       }
 
+      var self = this;
       translatedPromise.then(function (translatedFont) {
         if (translatedFont.fontType !== undefined) {
           var xrefFontStats = xref.stats.fontTypes;
@@ -555,7 +559,9 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
           translatedFont, font));
       }, function (reason) {
         // TODO fontCapability.reject?
-        UnsupportedManager.notify(UNSUPPORTED_FEATURES.font);
+        // Error in the font data -- sending unsupported feature notification.
+        self.handler.send('UnsupportedFeature',
+                          {featureId: UNSUPPORTED_FEATURES.font});
 
         try {
           // error, but it's still nice to have font type reported
@@ -608,7 +614,8 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         } else if (typeNum === SHADING_PATTERN) {
           var shading = dict.get('Shading');
           var matrix = dict.get('Matrix');
-          pattern = Pattern.parseShading(shading, matrix, xref, resources);
+          pattern = Pattern.parseShading(shading, matrix, xref, resources,
+                                         this.handler);
           operatorList.addOp(fn, pattern.getIR());
           return Promise.resolve();
         } else {
@@ -845,7 +852,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
               }
 
               var shadingFill = Pattern.parseShading(shading, null, xref,
-                resources);
+                resources, self.handler);
               var patternIR = shadingFill.getIR();
               args = [patternIR];
               fn = OPS.shadingFill;
@@ -910,11 +917,14 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
       });
     },
 
-    getTextContent: function PartialEvaluator_getTextContent(stream, task,
-                                                             resources,
-                                                             stateManager) {
+    getTextContent:
+        function PartialEvaluator_getTextContent(stream, task, resources,
+                                                 stateManager,
+                                                 normalizeWhitespace) {
 
       stateManager = (stateManager || new StateManager(new TextState()));
+
+      var WhitespaceRegexp = /\s/g;
 
       var textContent = {
         items: [],
@@ -1029,11 +1039,23 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         return textContentItem;
       }
 
+      function replaceWhitespace(str) {
+        // Replaces all whitespaces with standard spaces (0x20), to avoid
+        // alignment issues between the textLayer and the canvas if the text
+        // contains e.g. tabs (fixes issue6612.pdf).
+        var i = 0, ii = str.length, code;
+        while (i < ii && (code = str.charCodeAt(i)) >= 0x20 && code <= 0x7F) {
+          i++;
+        }
+        return (i < ii ? str.replace(WhitespaceRegexp, ' ') : str);
+      }
+
       function runBidiTransform(textChunk) {
         var str = textChunk.str.join('');
         var bidiResult = PDFJS.bidi(str, -1, textChunk.vertical);
         return {
-          str: bidiResult.str,
+          str: (normalizeWhitespace ? replaceWhitespace(bidiResult.str) :
+                                      bidiResult.str),
           dir: bidiResult.dir,
           width: textChunk.width,
           height: textChunk.height,
@@ -1354,8 +1376,8 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
               }
 
               return self.getTextContent(xobj, task,
-                xobj.dict.get('Resources') || resources, stateManager).
-                then(function (formTextContent) {
+                xobj.dict.get('Resources') || resources, stateManager,
+                normalizeWhitespace).then(function (formTextContent) {
                   Util.appendToArray(textContent.items, formTextContent.items);
                   Util.extendObj(textContent.styles, formTextContent.styles);
                   stateManager.restore();

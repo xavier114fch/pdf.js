@@ -1,6 +1,4 @@
-/* -*- Mode: Java; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set shiftwidth=2 tabstop=2 autoindent cindent expandtab: */
-/* globals expect, it, describe, StringStream, Lexer, Linearization */
+/* globals expect, it, describe, StringStream, Lexer, Name, Linearization */
 
 'use strict';
 
@@ -78,6 +76,19 @@ describe('parser', function() {
       var result = lexer.getString();
 
       expect(result).toEqual('ABCD');
+    });
+
+    it('should handle Names with invalid usage of NUMBER SIGN (#)', function() {
+      var inputNames = ['/# 680 0 R', '/#AQwerty', '/#A<</B'];
+      var expectedNames = ['#', '#AQwerty', '#A'];
+
+      for (var i = 0, ii = inputNames.length; i < ii; i++) {
+        var input = new StringStream(inputNames[i]);
+        var lexer = new Lexer(input);
+        var result = lexer.getName();
+
+        expect(result).toEqual(Name.get(expectedNames[i]));
+      }
     });
   });
 
