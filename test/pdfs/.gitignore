@@ -11,6 +11,7 @@
 !issue2391-2.pdf
 !issue4665.pdf
 !issue5801.pdf
+!issue5946.pdf
 !issue5972.pdf
 !issue5874.pdf
 !filled-background.pdf
@@ -46,6 +47,7 @@
 !issue6413.pdf
 !issue4630.pdf
 !issue4909.pdf
+!issue5084.pdf
 !issue5202.pdf
 !issue5280.pdf
 !issue5677.pdf
@@ -173,12 +175,14 @@
 !issue5334.pdf
 !bug1186827.pdf
 !issue215.pdf
+!issue5044.pdf
 !issue1512r.pdf
 !issue2128r.pdf
 !issue5540.pdf
 !issue5549.pdf
 !issue5475.pdf
 !annotation-border-styles.pdf
+!IdentityToUnicodeMap_charCodeOf.pdf
 !issue5481.pdf
 !issue5567.pdf
 !issue5701.pdf
@@ -190,7 +194,11 @@
 !issue6081.pdf
 !issue6069.pdf
 !issue6106.pdf
+!issue6296.pdf
 !bug1001080.pdf
 !issue6108.pdf
 !issue6113.pdf
 !openoffice.pdf
+!annotation-link-text-popup.pdf
+!annotation-text-without-popup.pdf
+!annotation-underline.pdf

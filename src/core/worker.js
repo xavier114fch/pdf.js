@@ -12,13 +12,45 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/* globals PDFJS, createPromiseCapability, LocalPdfManager, NetworkPdfManager,
-           NetworkManager, isInt, MissingPDFException, UNSUPPORTED_FEATURES,
-           UnexpectedResponseException, PasswordException, Promise, warn,
-           PasswordResponses, InvalidPDFException, UnknownErrorException,
-           XRefParseException, Ref, info, globalScope, error, MessageHandler */
+/* globals NetworkManager, module */
 
 'use strict';
+
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    define('pdfjs/core/worker', ['exports', 'pdfjs/shared/util',
+      'pdfjs/core/primitives', 'pdfjs/core/pdf_manager', 'pdfjs/shared/global'],
+      factory);
+  } else if (typeof exports !== 'undefined') {
+    factory(exports, require('../shared/util.js'), require('./primitives.js'),
+      require('./pdf_manager.js'), require('../shared/global.js'));
+  } else {
+    factory((root.pdfjsCoreWorker = {}), root.pdfjsSharedUtil,
+      root.pdfjsCorePrimitives, root.pdfjsCorePdfManager,
+      root.pdfjsSharedGlobal);
+  }
+}(this, function (exports, sharedUtil, corePrimitives, corePdfManager,
+                  sharedGlobal) {
+
+var UNSUPPORTED_FEATURES = sharedUtil.UNSUPPORTED_FEATURES;
+var InvalidPDFException = sharedUtil.InvalidPDFException;
+var MessageHandler = sharedUtil.MessageHandler;
+var MissingPDFException = sharedUtil.MissingPDFException;
+var UnexpectedResponseException = sharedUtil.UnexpectedResponseException;
+var PasswordException = sharedUtil.PasswordException;
+var PasswordResponses = sharedUtil.PasswordResponses;
+var UnknownErrorException = sharedUtil.UnknownErrorException;
+var XRefParseException = sharedUtil.XRefParseException;
+var createPromiseCapability = sharedUtil.createPromiseCapability;
+var error = sharedUtil.error;
+var info = sharedUtil.info;
+var isInt = sharedUtil.isInt;
+var warn = sharedUtil.warn;
+var Ref = corePrimitives.Ref;
+var LocalPdfManager = corePdfManager.LocalPdfManager;
+var NetworkPdfManager = corePdfManager.NetworkPdfManager;
+var globalScope = sharedGlobal.globalScope;
+var PDFJS = sharedGlobal.PDFJS;
 
 var WorkerTask = (function WorkerTaskClosure() {
   function WorkerTask(name) {
@@ -52,7 +84,13 @@ var WorkerTask = (function WorkerTaskClosure() {
 
 var WorkerMessageHandler = PDFJS.WorkerMessageHandler = {
   setup: function wphSetup(handler, port) {
+    var testMessageProcessed = false;
     handler.on('test', function wphSetupTest(data) {
+      if (testMessageProcessed) {
+        return; // we already processed 'test' message once
+      }
+      testMessageProcessed = true;
+
       // check if Uint8Array can be sent to worker
       if (!(data instanceof Uint8Array)) {
         handler.send('test', 'main', false);
@@ -579,48 +617,59 @@ var WorkerMessageHandler = PDFJS.WorkerMessageHandler = {
   }
 };
 
-var consoleTimer = {};
-
-var workerConsole = {
-  log: function log() {
-    var args = Array.prototype.slice.call(arguments);
-    globalScope.postMessage({
-      targetName: 'main',
-      action: 'console_log',
-      data: args
-    });
-  },
-
-  error: function error() {
-    var args = Array.prototype.slice.call(arguments);
-    globalScope.postMessage({
-      targetName: 'main',
-      action: 'console_error',
-      data: args
-    });
-    throw 'pdf.js execution error';
-  },
-
-  time: function time(name) {
-    consoleTimer[name] = Date.now();
-  },
-
-  timeEnd: function timeEnd(name) {
-    var time = consoleTimer[name];
-    if (!time) {
-      error('Unknown timer name ' + name);
-    }
-    this.log('Timer:', name, Date.now() - time);
-  }
-};
-
-
-// Worker thread?
-if (typeof window === 'undefined') {
+function initializeWorker() {
+//#if !MOZCENTRAL
   if (!('console' in globalScope)) {
+    var consoleTimer = {};
+
+    var workerConsole = {
+      log: function log() {
+        var args = Array.prototype.slice.call(arguments);
+        globalScope.postMessage({
+          targetName: 'main',
+          action: 'console_log',
+          data: args
+        });
+      },
+
+      error: function error() {
+        var args = Array.prototype.slice.call(arguments);
+        globalScope.postMessage({
+          targetName: 'main',
+          action: 'console_error',
+          data: args
+        });
+        throw 'pdf.js execution error';
+      },
+
+      time: function time(name) {
+        consoleTimer[name] = Date.now();
+      },
+
+      timeEnd: function timeEnd(name) {
+        var time = consoleTimer[name];
+        if (!time) {
+          error('Unknown timer name ' + name);
+        }
+        this.log('Timer:', name, Date.now() - time);
+      }
+    };
+
     globalScope.console = workerConsole;
   }
+//#endif
 
-  var handler = new MessageHandler('worker', 'main', this);
-  WorkerMessageHandler.setup(handler, this);
+  var handler = new MessageHandler('worker', 'main', self);
+  WorkerMessageHandler.setup(handler, self);
+  handler.send('ready', null);
 }
+
+// Worker thread (and not node.js)?
+if (typeof window === 'undefined' &&
+    !(typeof module !== 'undefined' && module.require)) {
+  initializeWorker();
+}
+
+exports.WorkerTask = WorkerTask;
+exports.WorkerMessageHandler = WorkerMessageHandler;
+}));

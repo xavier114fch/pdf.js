@@ -12,12 +12,32 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/* globals PDFJS, shadow, isWorker, assert, warn, bytesToString, string32,
-           globalScope, FontFace, Promise */
+/* globals FontFace */
 
 'use strict';
 
-PDFJS.disableFontFace = false;
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    define('pdfjs/display/font_loader', ['exports', 'pdfjs/shared/util',
+      'pdfjs/shared/global'], factory);
+  } else if (typeof exports !== 'undefined') {
+    factory(exports, require('../shared/util.js'),
+      require('../shared/global.js'));
+  } else {
+    factory((root.pdfjsDisplayFontLoader = {}), root.pdfjsSharedUtil,
+      root.pdfjsSharedGlobal);
+  }
+}(this, function (exports, sharedUtil, sharedGlobal) {
+
+var assert = sharedUtil.assert;
+var bytesToString = sharedUtil.bytesToString;
+var string32 = sharedUtil.string32;
+var shadow = sharedUtil.shadow;
+var warn = sharedUtil.warn;
+
+var PDFJS = sharedGlobal.PDFJS;
+var globalScope = sharedGlobal.globalScope;
+var isWorker = sharedGlobal.isWorker;
 
 function FontLoader(docId) {
   this.docId = docId;
@@ -49,6 +69,7 @@ FontLoader.prototype = {
     var styleElement = this.styleElement;
     if (styleElement) {
       styleElement.parentNode.removeChild(styleElement);
+      styleElement = this.styleElement = null;
     }
 //#if !(MOZCENTRAL)
     this.nativeFontFaces.forEach(function(nativeFontFace) {
@@ -431,3 +452,7 @@ var FontFaceObject = (function FontFaceObjectClosure() {
   };
   return FontFaceObject;
 })();
+
+exports.FontFaceObject = FontFaceObject;
+exports.FontLoader = FontLoader;
+}));

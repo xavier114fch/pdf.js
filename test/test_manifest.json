@@ -440,6 +440,13 @@
        "link": false,
        "type": "eq"
     },
+    {  "id": "issue5044",
+       "file": "pdfs/issue5044.pdf",
+       "md5": "44788cd31dcb4a2495ded34a84c4a765",
+       "rounds": 1,
+       "link": false,
+       "type": "eq"
+    },
     {  "id": "bug1186827",
        "file": "pdfs/bug1186827.pdf",
        "md5": "6c5526ae1a9d66cb517153001afc196e",
@@ -491,6 +498,7 @@
        "link": true,
        "lastPage": 1,
        "type": "eq",
+       "annotations": true,
        "about": "PDF with annotations, some of which have the Hidden flag set."
     },
     {  "id": "issue4665-text",
@@ -629,6 +637,13 @@
        "link": false,
        "type": "eq"
     },
+    {  "id": "issue5946",
+       "file": "pdfs/issue5946.pdf",
+       "md5": "1217a3c8e2ee4ceb96d85a2f27e437b4",
+       "rounds": 1,
+       "link": false,
+       "type": "eq"
+    },
     {  "id": "issue5954",
        "file": "pdfs/issue5954.pdf",
        "md5": "4f60ec0d9bbeec845b681242b8982361",
@@ -737,6 +752,13 @@
     {  "id": "issue6621",
        "file": "pdfs/issue6621.pdf",
        "md5": "8079ce514fb2cdded4251eade6380ba9",
+       "link": false,
+       "rounds": 1,
+       "type": "eq"
+    },
+    {  "id": "issue5084",
+       "file": "pdfs/issue5084.pdf",
+       "md5": "a42a076ba90e20e3aae9af869eb4de45",
        "link": false,
        "rounds": 1,
        "type": "eq"
@@ -1334,9 +1356,9 @@
        "type": "eq"
     },
     {
-      "id": "issue6032",
-      "file": "pdfs/issue6032.pdf",
-      "md5": "88b4cc989f5a1e072b992dec5635e83c",
+      "id": "bug1123803",
+      "file": "pdfs/bug1123803.pdf",
+      "md5": "0f3870ac5ad8899aec34d734e045a514",
       "rounds": 1,
       "link": true,
       "type": "eq"
@@ -1452,6 +1474,13 @@
       "rounds": 1,
       "lastPage": 1,
       "type": "eq"
+    },
+    {  "id": "IdentityToUnicodeMap_charCodeOf",
+       "file": "pdfs/IdentityToUnicodeMap_charCodeOf.pdf",
+       "md5": "da030686418c5e37d889127a05dafb83",
+       "rounds": 1,
+       "link": false,
+       "type": "text"
     },
     {  "id": "bug894572",
        "file": "pdfs/bug894572.pdf",
@@ -1579,7 +1608,8 @@
       "rounds": 1,
       "lastPage": 1,
       "link": true,
-      "type": "eq"
+      "type": "eq",
+      "annotations": true
     },
     {  "id": "issue1002",
       "file": "pdfs/issue1002.pdf",
@@ -1977,6 +2007,14 @@
       "link": true,
       "type": "eq"
     },
+    {  "id": "bug951051",
+      "file": "pdfs/bug951051.pdf",
+      "md5": "05d325a5112bd3f6022367dab7bc07b9",
+      "rounds": 1,
+      "lastPage": 1,
+      "link": true,
+      "type": "load"
+    },
     {  "id": "issue3062",
       "file": "pdfs/issue3062.pdf",
       "md5": "206715f1258f0e117df4180d98dd4d68",
@@ -2031,6 +2069,7 @@
       "md5": "56321ea830be9c4f8437ca17ac535b2d",
       "rounds": 1,
       "type": "eq",
+      "annotations": true,
       "about": "Text widget annotation witout appearance streams."
     },
     {  "id": "gesamt",
@@ -2540,6 +2579,12 @@
        "link": true,
        "type": "eq"
     },
+    {  "id": "issue6296.pdf",
+       "file": "pdfs/issue6296.pdf",
+       "md5": "734e191aab1372e6fd7523ca7751fcf0",
+       "rounds": 1,
+       "type": "eq"
+    },
     {  "id": "issue5549.pdf",
        "file": "pdfs/issue5549.pdf",
        "md5": "6c36df6ebc583c9e18aad0ad00d257b8",
@@ -2558,7 +2603,8 @@
        "file": "pdfs/annotation-border-styles.pdf",
        "md5": "22930fc09c7386e1131b14d936e554af",
        "rounds": 1,
-       "type": "eq"
+       "type": "eq",
+       "annotations": true
     },
     {  "id": "issue5481.pdf",
        "file": "pdfs/issue5481.pdf",
@@ -2584,6 +2630,28 @@
        "md5": "d0ad8871f4116bca8e39513ffa8b7d8e",
        "rounds": 1,
        "type": "load"
+    },
+    {  "id": "annotation-link-text-popup",
+       "file": "pdfs/annotation-link-text-popup.pdf",
+       "md5": "4bbf56e81d47232de5f305124ab0ba27",
+       "rounds": 1,
+       "type": "eq",
+       "annotations": true
+    },
+    {  "id": "annotation-text-without-popup",
+       "file": "pdfs/annotation-text-without-popup.pdf",
+       "md5": "7c2d241babe00139e34b9f8369a909eb",
+       "rounds": 1,
+       "type": "eq",
+       "annotations": true,
+       "about": "Text annotation without a separate Popup annotation"
+    },
+    {  "id": "annotation-underline",
+       "file": "pdfs/annotation-underline.pdf",
+       "md5": "c24b3aba771de52f9bac25e854c39458",
+       "rounds": 1,
+       "type": "eq",
+       "annotations": true
     },
     {  "id": "issue6108",
        "file": "pdfs/issue6108.pdf",

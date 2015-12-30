@@ -12,9 +12,26 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/* globals PDFJS, createPromiseCapability */
 
 'use strict';
+
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    define('pdfjs/display/text_layer', ['exports', 'pdfjs/shared/util',
+      'pdfjs/display/dom_utils', 'pdfjs/shared/global'], factory);
+  } else if (typeof exports !== 'undefined') {
+    factory(exports, require('../shared/util.js'), require('./dom_utils.js'),
+      require('../shared/global.js'));
+  } else {
+    factory((root.pdfjsDisplayTextLayer = {}), root.pdfjsSharedUtil,
+      root.pdfjsDisplayDOMUtils, root.pdfjsSharedGlobal);
+  }
+}(this, function (exports, sharedUtil, displayDOMUtils, sharedGlobal) {
+
+var Util = sharedUtil.Util;
+var createPromiseCapability = sharedUtil.createPromiseCapability;
+var CustomStyle = displayDOMUtils.CustomStyle;
+var PDFJS = sharedGlobal.PDFJS;
 
 /**
  * Text layer render parameters.
@@ -48,7 +65,7 @@ var renderTextLayer = (function renderTextLayerClosure() {
       textDiv.dataset.isWhitespace = true;
       return;
     }
-    var tx = PDFJS.Util.transform(viewport.transform, geom.transform);
+    var tx = Util.transform(viewport.transform, geom.transform);
     var angle = Math.atan2(tx[1], tx[0]);
     if (style.vertical) {
       angle += Math.PI / 2;
@@ -154,7 +171,7 @@ var renderTextLayer = (function renderTextLayerClosure() {
           transform = 'rotate(' + rotation + 'deg) ' + transform;
         }
         if (transform) {
-          PDFJS.CustomStyle.setProp('transform' , textDiv, transform);
+          CustomStyle.setProp('transform' , textDiv, transform);
         }
       }
     }
@@ -235,3 +252,6 @@ var renderTextLayer = (function renderTextLayerClosure() {
 })();
 
 PDFJS.renderTextLayer = renderTextLayer;
+
+exports.renderTextLayer = renderTextLayer;
+}));

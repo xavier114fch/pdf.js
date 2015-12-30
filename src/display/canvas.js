@@ -12,12 +12,40 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/* globals IDENTITY_MATRIX, FONT_IDENTITY_MATRIX, TextRenderingMode, ImageData,
-           ImageKind, PDFJS, Uint32ArrayView, error, WebGLUtils, OPS, warn,
-           shadow, isNum, Util, TilingPattern, getShadingPatternFromIR, isArray,
-           info, assert */
+/* globals PDFJS, ImageData */
 
 'use strict';
+
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    define('pdfjs/display/canvas', ['exports', 'pdfjs/shared/util',
+      'pdfjs/display/pattern_helper', 'pdfjs/display/webgl'], factory);
+  } else if (typeof exports !== 'undefined') {
+    factory(exports, require('../shared/util.js'),
+      require('./pattern_helper.js'), require('./webgl.js'));
+  } else {
+    factory((root.pdfjsDisplayCanvas = {}), root.pdfjsSharedUtil,
+      root.pdfjsDisplayPatternHelper, root.pdfjsDisplayWebGL);
+  }
+}(this, function (exports, sharedUtil, displayPatternHelper, displayWebGL) {
+
+var FONT_IDENTITY_MATRIX = sharedUtil.FONT_IDENTITY_MATRIX;
+var IDENTITY_MATRIX = sharedUtil.IDENTITY_MATRIX;
+var ImageKind = sharedUtil.ImageKind;
+var OPS = sharedUtil.OPS;
+var TextRenderingMode = sharedUtil.TextRenderingMode;
+var Uint32ArrayView = sharedUtil.Uint32ArrayView;
+var Util = sharedUtil.Util;
+var assert = sharedUtil.assert;
+var info = sharedUtil.info;
+var isNum = sharedUtil.isNum;
+var isArray = sharedUtil.isArray;
+var error = sharedUtil.error;
+var shadow = sharedUtil.shadow;
+var warn = sharedUtil.warn;
+var TilingPattern = displayPatternHelper.TilingPattern;
+var getShadingPatternFromIR = displayPatternHelper.getShadingPatternFromIR;
+var WebGLUtils = displayWebGL.WebGLUtils;
 
 // <canvas> contexts store most of the state we need natively.
 // However, PDF needs a bit more state, which we store here.
@@ -632,27 +660,29 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
     }
   }
 
-  function composeSMaskAlpha(maskData, layerData) {
+  function composeSMaskAlpha(maskData, layerData, transferMap) {
     var length = maskData.length;
     var scale = 1 / 255;
     for (var i = 3; i < length; i += 4) {
-      var alpha = maskData[i];
+      var alpha = transferMap ? transferMap[maskData[i]] : maskData[i];
       layerData[i] = (layerData[i] * alpha * scale) | 0;
     }
   }
 
-  function composeSMaskLuminosity(maskData, layerData) {
+  function composeSMaskLuminosity(maskData, layerData, transferMap) {
     var length = maskData.length;
     for (var i = 3; i < length; i += 4) {
       var y = (maskData[i - 3] * 77) +  // * 0.3 / 255 * 0x10000
               (maskData[i - 2] * 152) + // * 0.59 ....
               (maskData[i - 1] * 28);   // * 0.11 ....
-      layerData[i] = (layerData[i] * y) >> 16;
+      layerData[i] = transferMap ?
+        (layerData[i] * transferMap[y >> 8]) >> 8 :
+        (layerData[i] * y) >> 16;
     }
   }
 
   function genericComposeSMask(maskCtx, layerCtx, width, height,
-                               subtype, backdrop) {
+                               subtype, backdrop, transferMap) {
     var hasBackdrop = !!backdrop;
     var r0 = hasBackdrop ? backdrop[0] : 0;
     var g0 = hasBackdrop ? backdrop[1] : 0;
@@ -676,7 +706,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
       if (hasBackdrop) {
         composeSMaskBackdrop(maskData.data, r0, g0, b0);
       }
-      composeFn(maskData.data, layerData.data);
+      composeFn(maskData.data, layerData.data, transferMap);
 
       maskCtx.putImageData(layerData, 0, row);
     }
@@ -690,7 +720,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
                      smask.offsetX, smask.offsetY);
 
     var backdrop = smask.backdrop || null;
-    if (WebGLUtils.isEnabled) {
+    if (!smask.transferMap && WebGLUtils.isEnabled) {
       var composed = WebGLUtils.composeSMask(layerCtx.canvas, mask,
         {subtype: smask.subtype, backdrop: backdrop});
       ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -698,7 +728,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
       return;
     }
     genericComposeSMask(maskCtx, layerCtx, mask.width, mask.height,
-                        smask.subtype, backdrop);
+                        smask.subtype, backdrop, smask.transferMap);
     ctx.drawImage(mask, 0, 0);
   }
 
@@ -1110,6 +1140,9 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
 
       if (isPatternFill) {
         ctx.save();
+        if (this.baseTransform) {
+          ctx.setTransform.apply(ctx, this.baseTransform);
+        }
         ctx.fillStyle = fillColor.getPattern(ctx, this);
         needRestore = true;
       }
@@ -1444,16 +1477,22 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
           scaledY = 0;
         }
 
-        if (font.remeasure && width > 0 && this.isFontSubpixelAAEnabled) {
-          // some standard fonts may not have the exact width, trying to
-          // rescale per character
+        if (font.remeasure && width > 0) {
+          // Some standard fonts may not have the exact width: rescale per
+          // character if measured width is greater than expected glyph width
+          // and subpixel-aa is enabled, otherwise just center the glyph.
           var measuredWidth = ctx.measureText(character).width * 1000 /
             fontSize * fontSizeScale;
-          var characterScaleX = width / measuredWidth;
-          restoreNeeded = true;
-          ctx.save();
-          ctx.scale(characterScaleX, 1);
-          scaledX /= characterScaleX;
+          if (width < measuredWidth && this.isFontSubpixelAAEnabled) {
+            var characterScaleX = width / measuredWidth;
+            restoreNeeded = true;
+            ctx.save();
+            ctx.scale(characterScaleX, 1);
+            scaledX /= characterScaleX;
+          } else if (width !== measuredWidth) {
+            scaledX += (width - measuredWidth) / 2000 *
+              fontSize / fontSizeScale;
+          }
         }
 
         if (simpleFillText && !accent) {
@@ -1569,8 +1608,14 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
         var color = IR[1];
         var baseTransform = this.baseTransform ||
                             this.ctx.mozCurrentTransform.slice();
-        pattern = new TilingPattern(IR, color, this.ctx, this.objs,
-                                    this.commonObjs, baseTransform);
+        var self = this;
+        var canvasGraphicsFactory = {
+          createCanvasGraphics: function (ctx) {
+            return new CanvasGraphics(ctx, self.commonObjs, self.objs);
+          }
+        };
+        pattern = new TilingPattern(IR, color, this.ctx, canvasGraphicsFactory,
+                                    baseTransform);
       } else {
         pattern = getShadingPatternFromIR(IR);
       }
@@ -1749,7 +1794,8 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
           scaleX: scaleX,
           scaleY: scaleY,
           subtype: group.smask.subtype,
-          backdrop: group.smask.backdrop
+          backdrop: group.smask.backdrop,
+          transferMap: group.smask.transferMap || null
         });
       } else {
         // Setup the current ctx so when the group is popped we draw it at the
@@ -1793,6 +1839,10 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
     beginAnnotations: function CanvasGraphics_beginAnnotations() {
       this.save();
       this.current = new CanvasExtraState();
+
+      if (this.baseTransform) {
+        this.ctx.setTransform.apply(this.ctx, this.baseTransform);
+      }
     },
 
     endAnnotations: function CanvasGraphics_endAnnotations() {
@@ -2155,11 +2205,11 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
       return this.cachedGetSinglePixelWidth;
     },
     getCanvasPosition: function CanvasGraphics_getCanvasPosition(x, y) {
-        var transform = this.ctx.mozCurrentTransform;
-        return [
-          transform[0] * x + transform[2] * y + transform[4],
-          transform[1] * x + transform[3] * y + transform[5]
-        ];
+      var transform = this.ctx.mozCurrentTransform;
+      return [
+        transform[0] * x + transform[2] * y + transform[4],
+        transform[1] * x + transform[3] * y + transform[5]
+      ];
     }
   };
 
@@ -2169,3 +2219,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
 
   return CanvasGraphics;
 })();
+
+exports.CanvasGraphics = CanvasGraphics;
+exports.createScratchCanvas = createScratchCanvas;
+}));
