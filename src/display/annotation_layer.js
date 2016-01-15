@@ -33,6 +33,7 @@ var AnnotationType = sharedUtil.AnnotationType;
 var Util = sharedUtil.Util;
 var isExternalLinkTargetSet = sharedUtil.isExternalLinkTargetSet;
 var LinkTargetStringMap = sharedUtil.LinkTargetStringMap;
+var removeNullCharacters = sharedUtil.removeNullCharacters;
 var warn = sharedUtil.warn;
 var CustomStyle = displayDOMUtils.CustomStyle;
 
@@ -72,8 +73,17 @@ AnnotationElementFactory.prototype =
       case AnnotationType.POPUP:
         return new PopupAnnotationElement(parameters);
 
+      case AnnotationType.HIGHLIGHT:
+        return new HighlightAnnotationElement(parameters);
+
       case AnnotationType.UNDERLINE:
         return new UnderlineAnnotationElement(parameters);
+
+      case AnnotationType.SQUIGGLY:
+        return new SquigglyAnnotationElement(parameters);
+
+      case AnnotationType.STRIKEOUT:
+        return new StrikeOutAnnotationElement(parameters);
 
       default:
         throw new Error('Unimplemented annotation type "' + subtype + '"');
@@ -223,7 +233,8 @@ var LinkAnnotationElement = (function LinkAnnotationElementClosure() {
       this.container.className = 'linkAnnotation';
 
       var link = document.createElement('a');
-      link.href = link.title = this.data.url || '';
+      link.href = link.title = (this.data.url ?
+                                removeNullCharacters(this.data.url) : '');
 
       if (this.data.url && isExternalLinkTargetSet()) {
         link.target = LinkTargetStringMap[PDFJS.externalLinkTarget];
@@ -605,6 +616,33 @@ var PopupElement = (function PopupElementClosure() {
 
 /**
  * @class
+ * @alias HighlightAnnotationElement
+ */
+var HighlightAnnotationElement = (
+    function HighlightAnnotationElementClosure() {
+  function HighlightAnnotationElement(parameters) {
+    AnnotationElement.call(this, parameters);
+  }
+
+  Util.inherit(HighlightAnnotationElement, AnnotationElement, {
+    /**
+     * Render the highlight annotation's HTML element in the empty container.
+     *
+     * @public
+     * @memberof HighlightAnnotationElement
+     * @returns {HTMLSectionElement}
+     */
+    render: function HighlightAnnotationElement_render() {
+      this.container.className = 'highlightAnnotation';
+      return this.container;
+    }
+  });
+
+  return HighlightAnnotationElement;
+})();
+
+/**
+ * @class
  * @alias UnderlineAnnotationElement
  */
 var UnderlineAnnotationElement = (
@@ -628,6 +666,59 @@ var UnderlineAnnotationElement = (
   });
 
   return UnderlineAnnotationElement;
+})();
+
+/**
+ * @class
+ * @alias SquigglyAnnotationElement
+ */
+var SquigglyAnnotationElement = (function SquigglyAnnotationElementClosure() {
+  function SquigglyAnnotationElement(parameters) {
+    AnnotationElement.call(this, parameters);
+  }
+
+  Util.inherit(SquigglyAnnotationElement, AnnotationElement, {
+    /**
+     * Render the squiggly annotation's HTML element in the empty container.
+     *
+     * @public
+     * @memberof SquigglyAnnotationElement
+     * @returns {HTMLSectionElement}
+     */
+    render: function SquigglyAnnotationElement_render() {
+      this.container.className = 'squigglyAnnotation';
+      return this.container;
+    }
+  });
+
+  return SquigglyAnnotationElement;
+})();
+
+/**
+ * @class
+ * @alias StrikeOutAnnotationElement
+ */
+var StrikeOutAnnotationElement = (
+    function StrikeOutAnnotationElementClosure() {
+  function StrikeOutAnnotationElement(parameters) {
+    AnnotationElement.call(this, parameters);
+  }
+
+  Util.inherit(StrikeOutAnnotationElement, AnnotationElement, {
+    /**
+     * Render the strikeout annotation's HTML element in the empty container.
+     *
+     * @public
+     * @memberof StrikeOutAnnotationElement
+     * @returns {HTMLSectionElement}
+     */
+    render: function StrikeOutAnnotationElement_render() {
+      this.container.className = 'strikeoutAnnotation';
+      return this.container;
+    }
+  });
+
+  return StrikeOutAnnotationElement;
 })();
 
 /**

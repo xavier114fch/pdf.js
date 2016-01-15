@@ -96,8 +96,17 @@ AnnotationFactory.prototype = /** @lends AnnotationFactory.prototype */ {
       case 'Popup':
         return new PopupAnnotation(parameters);
 
+      case 'Highlight':
+        return new HighlightAnnotation(parameters);
+
       case 'Underline':
         return new UnderlineAnnotation(parameters);
+
+      case 'Squiggly':
+        return new SquigglyAnnotation(parameters);
+
+      case 'StrikeOut':
+        return new StrikeOutAnnotation(parameters);
 
       default:
         warn('Unimplemented annotation type "' + subtype + '", ' +
@@ -789,6 +798,22 @@ var PopupAnnotation = (function PopupAnnotationClosure() {
   return PopupAnnotation;
 })();
 
+var HighlightAnnotation = (function HighlightAnnotationClosure() {
+  function HighlightAnnotation(parameters) {
+    Annotation.call(this, parameters);
+
+    this.data.annotationType = AnnotationType.HIGHLIGHT;
+    this.data.hasHtml = true;
+
+    // PDF viewers completely ignore any border styles.
+    this.data.borderStyle.setWidth(0);
+  }
+
+  Util.inherit(HighlightAnnotation, Annotation, {});
+
+  return HighlightAnnotation;
+})();
+
 var UnderlineAnnotation = (function UnderlineAnnotationClosure() {
   function UnderlineAnnotation(parameters) {
     Annotation.call(this, parameters);
@@ -803,6 +828,38 @@ var UnderlineAnnotation = (function UnderlineAnnotationClosure() {
   Util.inherit(UnderlineAnnotation, Annotation, {});
 
   return UnderlineAnnotation;
+})();
+
+var SquigglyAnnotation = (function SquigglyAnnotationClosure() {
+  function SquigglyAnnotation(parameters) {
+    Annotation.call(this, parameters);
+
+    this.data.annotationType = AnnotationType.SQUIGGLY;
+    this.data.hasHtml = true;
+
+    // PDF viewers completely ignore any border styles.
+    this.data.borderStyle.setWidth(0);
+  }
+
+  Util.inherit(SquigglyAnnotation, Annotation, {});
+
+  return SquigglyAnnotation;
+})();
+
+var StrikeOutAnnotation = (function StrikeOutAnnotationClosure() {
+  function StrikeOutAnnotation(parameters) {
+    Annotation.call(this, parameters);
+
+    this.data.annotationType = AnnotationType.STRIKEOUT;
+    this.data.hasHtml = true;
+
+    // PDF viewers completely ignore any border styles.
+    this.data.borderStyle.setWidth(0);
+  }
+
+  Util.inherit(StrikeOutAnnotation, Annotation, {});
+
+  return StrikeOutAnnotation;
 })();
 
 exports.Annotation = Annotation;

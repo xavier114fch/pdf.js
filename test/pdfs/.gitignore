@@ -14,6 +14,7 @@
 !issue5946.pdf
 !issue5972.pdf
 !issue5874.pdf
+!issue6782.pdf
 !filled-background.pdf
 !ArabicCIDTrueType.pdf
 !ThuluthFeatures.pdf
@@ -25,7 +26,10 @@
 !bug1200096.pdf
 !issue5564_reduced.pdf
 !canvas.pdf
+!issue5804.pdf
+!ShowText-ShadingPattern.pdf
 !complex_ttf_font.pdf
+!issue3694_reduced.pdf
 !extgstate.pdf
 !rotation.pdf
 !simpletype3font.pdf
@@ -38,6 +42,7 @@
 !close-path-bug.pdf
 !issue6019.pdf
 !issue6621.pdf
+!issue6286.pdf
 !issue1055r.pdf
 !issue1293r.pdf
 !issue1655r.pdf
@@ -195,6 +200,7 @@
 !issue6069.pdf
 !issue6106.pdf
 !issue6296.pdf
+!issue6298.pdf
 !bug1001080.pdf
 !issue6108.pdf
 !issue6113.pdf
@@ -202,3 +208,6 @@
 !annotation-link-text-popup.pdf
 !annotation-text-without-popup.pdf
 !annotation-underline.pdf
+!annotation-strikeout.pdf
+!annotation-squiggly.pdf
+!annotation-highlight.pdf
