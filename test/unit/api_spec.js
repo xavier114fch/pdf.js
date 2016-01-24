@@ -329,6 +329,36 @@ describe('api', function() {
         expect(data).toEqual(null);
       });
     });
+    it('gets non-existent page labels', function () {
+      var promise = doc.getPageLabels();
+      waitsForPromiseResolved(promise, function (data) {
+        expect(data).toEqual(null);
+      });
+    });
+    it('gets page labels', function () {
+      // PageLabels with Roman/Arabic numerals.
+      var url0 = combineUrl(window.location.href, '../pdfs/bug793632.pdf');
+      var promise0 = PDFJS.getDocument(url0).promise.then(function (pdfDoc) {
+        return pdfDoc.getPageLabels();
+      });
+      // PageLabels with only a label prefix.
+      var url1 = combineUrl(window.location.href, '../pdfs/issue1453.pdf');
+      var promise1 = PDFJS.getDocument(url1).promise.then(function (pdfDoc) {
+        return pdfDoc.getPageLabels();
+      });
+      // PageLabels identical to standard page numbering.
+      var url2 = combineUrl(window.location.href, '../pdfs/rotation.pdf');
+      var promise2 = PDFJS.getDocument(url2).promise.then(function (pdfDoc) {
+        return pdfDoc.getPageLabels();
+      });
+
+      waitsForPromiseResolved(Promise.all([promise0, promise1, promise2]),
+          function (pageLabels) {
+        expect(pageLabels[0]).toEqual(['i', 'ii', 'iii', '1']);
+        expect(pageLabels[1]).toEqual(['Front Page1']);
+        expect(pageLabels[2]).toEqual([]);
+      });
+    });
     it('gets attachments', function() {
       var promise = doc.getAttachments();
       waitsForPromiseResolved(promise, function (data) {
@@ -371,11 +401,33 @@ describe('api', function() {
       var promise = doc.getOutline();
       waitsForPromiseResolved(promise, function(outline) {
         // Two top level entries.
+        expect(outline instanceof Array).toEqual(true);
         expect(outline.length).toEqual(2);
         // Make sure some basic attributes are set.
-        expect(outline[1].title).toEqual('Chapter 1');
-        expect(outline[1].items.length).toEqual(1);
-        expect(outline[1].items[0].title).toEqual('Paragraph 1.1');
+        var outlineItem = outline[1];
+        expect(outlineItem.title).toEqual('Chapter 1');
+        expect(outlineItem.dest instanceof Array).toEqual(true);
+        expect(outlineItem.url).toEqual(null);
+
+        expect(outlineItem.items.length).toEqual(1);
+        expect(outlineItem.items[0].title).toEqual('Paragraph 1.1');
+      });
+    });
+    it('gets outline containing a url', function() {
+      var pdfUrl = combineUrl(window.location.href, '../pdfs/issue3214.pdf');
+      var loadingTask = PDFJS.getDocument(pdfUrl);
+
+      loadingTask.promise.then(function (pdfDocument) {
+        pdfDocument.getOutline().then(function (outline) {
+          expect(outline instanceof Array).toEqual(true);
+          expect(outline.length).toEqual(5);
+
+          var outlineItem = outline[2];
+          expect(outlineItem.dest).toEqual(null);
+          expect(outlineItem.url).toEqual('http://google.com');
+
+          loadingTask.destroy(); // Cleanup the worker.
+        });
       });
     });
     it('gets metadata', function() {

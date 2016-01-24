@@ -7,9 +7,12 @@
 !franz_2.pdf
 !german-umlaut-r.pdf
 !xref_command_missing.pdf
+!issue1155r.pdf
 !issue2391-1.pdf
 !issue2391-2.pdf
+!issue3214.pdf
 !issue4665.pdf
+!issue4684.pdf
 !issue5801.pdf
 !issue5946.pdf
 !issue5972.pdf
@@ -21,6 +24,7 @@
 !arial_unicode_ab_cidfont.pdf
 !arial_unicode_en_cidfont.pdf
 !asciihexdecode.pdf
+!bug793632.pdf
 !bug1020858.pdf
 !bug1050040.pdf
 !bug1200096.pdf
@@ -201,6 +205,7 @@
 !issue6106.pdf
 !issue6296.pdf
 !issue6298.pdf
+!issue6889.pdf
 !bug1001080.pdf
 !issue6108.pdf
 !issue6113.pdf

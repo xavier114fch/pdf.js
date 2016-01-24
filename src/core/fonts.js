@@ -4154,8 +4154,16 @@ var Font = (function FontClosure() {
         delete tables['cvt '];
         this.isOpenType = true;
       } else {
-        if (!tables.glyf || !tables.loca) {
-          error('Required "glyf" or "loca" tables are not found');
+        if (!tables.loca) {
+          error('Required "loca" table is not found');
+        }
+        if (!tables.glyf) {
+          warn('Required "glyf" table is not found -- trying to recover.');
+          // Note: We use `sanitizeGlyphLocations` to add dummy glyf data below.
+          tables.glyf = {
+            tag: 'glyf',
+            data: new Uint8Array(0),
+          };
         }
         this.isOpenType = false;
       }
@@ -4362,9 +4370,11 @@ var Font = (function FontClosure() {
               var glyphId = properties.glyphNames.indexOf(glyphName);
               if (glyphId > 0 && hasGlyph(glyphId, -1, -1)) {
                 charCodeToGlyphId[charCode] = glyphId;
-              } else {
-                charCodeToGlyphId[charCode] = 0; // notdef
+                found = true;
               }
+            }
+            if (!found) {
+              charCodeToGlyphId[charCode] = 0; // notdef
             }
           }
         } else if (cmapPlatformId === 0 && cmapEncodingId === 0) {
