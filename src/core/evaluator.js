@@ -151,17 +151,19 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         processed[resources.objId] = true;
       }
 
-      var nodes = [resources];
+      var nodes = [resources], xref = this.xref;
       while (nodes.length) {
-        var key;
+        var key, i, ii;
         var node = nodes.shift();
         // First check the current resources for blend modes.
         var graphicStates = node.get('ExtGState');
         if (isDict(graphicStates)) {
-          graphicStates = graphicStates.getAll();
-          for (key in graphicStates) {
-            var graphicState = graphicStates[key];
-            var bm = graphicState['BM'];
+          var graphicStatesKeys = graphicStates.getKeys();
+          for (i = 0, ii = graphicStatesKeys.length; i < ii; i++) {
+            key = graphicStatesKeys[i];
+
+            var graphicState = graphicStates.get(key);
+            var bm = graphicState.get('BM');
             if (isName(bm) && bm.name !== 'Normal') {
               return true;
             }
@@ -172,9 +174,20 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         if (!isDict(xObjects)) {
           continue;
         }
-        xObjects = xObjects.getAll();
-        for (key in xObjects) {
-          var xObject = xObjects[key];
+        var xObjectsKeys = xObjects.getKeys();
+        for (i = 0, ii = xObjectsKeys.length; i < ii; i++) {
+          key = xObjectsKeys[i];
+
+          var xObject = xObjects.getRaw(key);
+          if (isRef(xObject)) {
+            if (processed[xObject.toString()]) {
+              // The XObject has already been processed, and by avoiding a
+              // redundant `xref.fetch` we can *significantly* reduce the load
+              // time for badly generated PDF files (fixes issue6961.pdf).
+              continue;
+            }
+            xObject = xref.fetch(xObject);
+          }
           if (!isStream(xObject)) {
             continue;
           }
@@ -362,7 +375,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         var transferFn = PDFFunction.parse(this.xref, transferObj);
         var transferMap = new Uint8Array(256);
         var tmp = new Float32Array(1);
-        for (var i = 0; i < 255; i++) {
+        for (var i = 0; i < 256; i++) {
           tmp[0] = i / 255;
           transferFn(tmp, 0, tmp, 0);
           transferMap[i] = (tmp[0] * 255) | 0;
@@ -468,11 +481,12 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
                                                    xref, stateManager) {
       // This array holds the converted/processed state data.
       var gStateObj = [];
-      var gStateMap = gState.map;
+      var gStateKeys = gState.getKeys();
       var self = this;
       var promise = Promise.resolve();
-      for (var key in gStateMap) {
-        var value = gStateMap[key];
+      for (var i = 0, ii = gStateKeys.length; i < ii; i++) {
+        var key = gStateKeys[i];
+        var value = gState.get(key);
         switch (key) {
           case 'Type':
             break;
@@ -505,12 +519,11 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
               gStateObj.push([key, false]);
               break;
             }
-            var dict = xref.fetchIfRef(value);
-            if (isDict(dict)) {
-              promise = promise.then(function () {
+            if (isDict(value)) {
+              promise = promise.then(function (dict) {
                 return self.handleSMask(dict, resources, operatorList,
                                         task, stateManager);
-              });
+              }.bind(this, value));
               gStateObj.push([key, true]);
             } else {
               warn('Unsupported SMask type');
@@ -542,7 +555,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         }
       }
       return promise.then(function () {
-        if (gStateObj.length >= 0) {
+        if (gStateObj.length > 0) {
           operatorList.addOp(OPS.setGState, [gStateObj]);
         }
       });
@@ -2087,13 +2100,13 @@ var TranslatedFont = (function TranslatedFontClosure() {
 
       var translatedFont = this.font;
       var loadCharProcsPromise = Promise.resolve();
-      var charProcs = this.dict.get('CharProcs').getAll();
+      var charProcs = this.dict.get('CharProcs');
       var fontResources = this.dict.get('Resources') || resources;
-      var charProcKeys = Object.keys(charProcs);
+      var charProcKeys = charProcs.getKeys();
       var charProcOperatorList = Object.create(null);
       for (var i = 0, n = charProcKeys.length; i < n; ++i) {
         loadCharProcsPromise = loadCharProcsPromise.then(function (key) {
-          var glyphStream = charProcs[key];
+          var glyphStream = charProcs.get(key);
           var operatorList = new OperatorList();
           return evaluator.getOperatorList(glyphStream, task, fontResources,
                                            operatorList).then(function () {
