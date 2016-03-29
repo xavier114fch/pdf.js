@@ -19,6 +19,8 @@
 !issue5874.pdf
 !issue6782.pdf
 !issue6961.pdf
+!issue7020.pdf
+!issue7115.pdf
 !filled-background.pdf
 !ArabicCIDTrueType.pdf
 !ThuluthFeatures.pdf
@@ -31,6 +33,8 @@
 !bug1200096.pdf
 !issue5564_reduced.pdf
 !canvas.pdf
+!bug1132849.pdf
+!issue6894.pdf
 !issue5804.pdf
 !ShowText-ShadingPattern.pdf
 !complex_ttf_font.pdf
@@ -67,6 +71,7 @@
 !devicen.pdf
 !cmykjpeg.pdf
 !issue840.pdf
+!issue4402_reduced.pdf
 !issue845r.pdf
 !issue3405r.pdf
 !issue3438.pdf
@@ -166,6 +171,7 @@
 !issue5010.pdf
 !issue4934.pdf
 !issue4650.pdf
+!issue6721_reduced.pdf
 !issue3025.pdf
 !issue2099-1.pdf
 !issue3371.pdf
@@ -211,9 +217,12 @@
 !issue6108.pdf
 !issue6113.pdf
 !openoffice.pdf
+!issue7014.pdf
 !annotation-link-text-popup.pdf
 !annotation-text-without-popup.pdf
 !annotation-underline.pdf
 !annotation-strikeout.pdf
 !annotation-squiggly.pdf
 !annotation-highlight.pdf
+!annotation-fileattachment.pdf
+!zero_descent.pdf

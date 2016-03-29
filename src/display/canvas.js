@@ -19,15 +19,18 @@
 (function (root, factory) {
   if (typeof define === 'function' && define.amd) {
     define('pdfjs/display/canvas', ['exports', 'pdfjs/shared/util',
-      'pdfjs/display/pattern_helper', 'pdfjs/display/webgl'], factory);
+      'pdfjs/display/dom_utils', 'pdfjs/display/pattern_helper',
+      'pdfjs/display/webgl'], factory);
   } else if (typeof exports !== 'undefined') {
-    factory(exports, require('../shared/util.js'),
+    factory(exports, require('../shared/util.js'), require('./dom_utils.js'),
       require('./pattern_helper.js'), require('./webgl.js'));
   } else {
     factory((root.pdfjsDisplayCanvas = {}), root.pdfjsSharedUtil,
-      root.pdfjsDisplayPatternHelper, root.pdfjsDisplayWebGL);
+      root.pdfjsDisplayDOMUtils, root.pdfjsDisplayPatternHelper,
+      root.pdfjsDisplayWebGL);
   }
-}(this, function (exports, sharedUtil, displayPatternHelper, displayWebGL) {
+}(this, function (exports, sharedUtil, displayDOMUtils, displayPatternHelper,
+                  displayWebGL) {
 
 var FONT_IDENTITY_MATRIX = sharedUtil.FONT_IDENTITY_MATRIX;
 var IDENTITY_MATRIX = sharedUtil.IDENTITY_MATRIX;
@@ -856,7 +859,10 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
 
       if (this.transparentCanvas) {
         this.ctx = this.compositeCtx;
+        this.ctx.save();
+        this.ctx.setTransform(1, 0, 0, 1, 0, 0); // Avoid apply transform twice
         this.ctx.drawImage(this.transparentCanvas, 0, 0);
+        this.ctx.restore();
         this.transparentCanvas = null;
       }
 
@@ -1501,15 +1507,19 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
           }
         }
 
-        if (simpleFillText && !accent) {
-          // common case
-          ctx.fillText(character, scaledX, scaledY);
-        } else {
-          this.paintChar(character, scaledX, scaledY);
-          if (accent) {
-            scaledAccentX = scaledX + accent.offset.x / fontSizeScale;
-            scaledAccentY = scaledY - accent.offset.y / fontSizeScale;
-            this.paintChar(accent.fontChar, scaledAccentX, scaledAccentY);
+        // Only attempt to draw the glyph if it is actually in the embedded font
+        // file or if there isn't a font file so the fallback font is shown.
+        if (glyph.isInFont || font.missingFile) {
+          if (simpleFillText && !accent) {
+            // common case
+            ctx.fillText(character, scaledX, scaledY);
+          } else {
+            this.paintChar(character, scaledX, scaledY);
+            if (accent) {
+              scaledAccentX = scaledX + accent.offset.x / fontSizeScale;
+              scaledAccentY = scaledY - accent.offset.y / fontSizeScale;
+              this.paintChar(accent.fontChar, scaledAccentX, scaledAccentY);
+            }
           }
         }
 

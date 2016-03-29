@@ -543,6 +543,15 @@
        "lastPage": 1,
        "type": "eq"
     },
+    {  "id": "issue6721_reduced",
+       "file": "pdfs/issue6721_reduced.pdf",
+       "md5": "719aa66d8081a15e3ba6032ed4279237",
+       "rounds": 1,
+       "link": false,
+       "firstPage": 1,
+       "lastPage": 1,
+       "type": "eq"
+    },
     {  "id": "issue5010",
        "file": "pdfs/issue5010.pdf",
        "md5": "419f4b13403a0871c463ec69d96e342c",
@@ -567,6 +576,15 @@
        "rounds": 1,
        "type": "eq",
        "about": "XObject with BBox array containing indirect object."
+    },
+    {  "id": "issue7115",
+       "file": "pdfs/issue7115.pdf",
+       "md5": "63c78e25a0433dd5a01ddff6ec720f29",
+       "link": false,
+       "rounds": 1,
+       "type": "eq",
+       "annotations": true,
+       "about": "Annotation with Rect array containing indirect objects."
     },
     {  "id": "issue4934",
        "file": "pdfs/issue4934.pdf",
@@ -719,6 +737,20 @@
        "rounds": 1,
        "type": "eq"
     },
+    {  "id": "bug1132849",
+       "file": "pdfs/bug1132849.pdf",
+       "md5": "aedfbead1f8feb35cf2e38b279133b47",
+       "rounds": 1,
+       "link": false,
+       "type": "eq"
+    },
+    {  "id": "issue6894",
+       "file": "pdfs/issue6894.pdf",
+       "md5": "bb84f2025c11f23cf436170049f81215",
+       "rounds": 1,
+       "link": false,
+       "type": "eq"
+    },
     {  "id": "personwithdog",
        "file": "pdfs/personwithdog.pdf",
        "md5": "cd68fb2ce00dab97801b3e51495b99e3",
@@ -779,6 +811,15 @@
        "file": "pdfs/scan-bad.pdf",
        "md5": "4cf988f01ab83f61aca57f406dfd6584",
        "rounds": 1,
+       "type": "load"
+    },
+    {  "id": "issue6549",
+       "file": "pdfs/issue6549.pdf",
+       "md5": "699aeea73a6f45375022ffc6cc80f12a",
+       "link": true,
+       "rounds": 1,
+       "firstPage": 2,
+       "lastPage": 3,
        "type": "load"
     },
     {  "id": "ibwa-bad",
@@ -893,6 +934,13 @@
        "rounds": 1,
        "type": "eq"
     },
+    {  "id": "issue4402_reduced",
+       "file": "pdfs/issue4402_reduced.pdf",
+       "md5": "6cc7e61a581889eec3ed7402d87161c4",
+       "link": false,
+       "rounds": 1,
+       "type": "eq"
+    },
     {  "id": "protectip",
        "file": "pdfs/protectip.pdf",
        "md5": "676e7a7b8f96d04825361832b1838a93",
@@ -969,6 +1017,15 @@
        "rounds": 1,
        "link": true,
        "lastPage": 3,
+       "type": "eq"
+    },
+    {  "id": "issue6066",
+       "file": "pdfs/issue6066.pdf",
+       "md5": "b26eb08fc5ab2518ba8fde603bdfc46b",
+       "rounds": 1,
+       "link": true,
+       "firstPage": 2,
+       "lastPage": 2,
        "type": "eq"
     },
     {  "id": "issue1905",
@@ -1198,6 +1255,13 @@
        "link": true,
        "lastPage": 1,
        "type": "load"
+    },
+    {  "id": "issue7020",
+       "file": "pdfs/issue7020.pdf",
+       "md5": "93b464e21c649e64ae92eeafe99fc31b",
+       "link": false,
+       "rounds": 1,
+       "type": "eq"
     },
     {  "id": "pr4606",
        "file": "pdfs/pr4606.pdf",
@@ -2712,6 +2776,13 @@
        "rounds": 1,
        "type": "load"
     },
+    {  "id": "issue7014",
+       "file": "pdfs/issue7014.pdf",
+       "md5": "b410891d7a01af791364e9c530d61b17",
+       "rounds": 1,
+       "type": "eq",
+       "annotations": true
+    },
     {  "id": "annotation-link-text-popup",
        "file": "pdfs/annotation-link-text-popup.pdf",
        "md5": "4bbf56e81d47232de5f305124ab0ba27",
@@ -2755,18 +2826,25 @@
        "type": "eq",
        "annotations": true
     },
+    {  "id": "annotation-fileattachment",
+       "file": "pdfs/annotation-fileattachment.pdf",
+       "md5": "d20ecee4b53c81b2dd44c8715a1b4a83",
+       "rounds": 1,
+       "type": "eq",
+       "annotations": true
+    },
     {  "id": "issue6108",
        "file": "pdfs/issue6108.pdf",
        "md5": "8961cb55149495989a80bf0487e0f076",
        "rounds": 1,
        "type": "load"
     },
-    {  "id": "issue6961",
-       "file": "pdfs/issue6961.pdf",
-       "md5": "a80e4357a8fda758d96c2c76f2980b03",
+    {  "id": "zero_descent",
+       "file": "pdfs/zero_descent.pdf",
+       "md5": "32805ab28be1d0e91d27d9742c66eccf",
        "link": false,
        "rounds": 1,
        "lastPage": 1,
-       "type": "load"
+       "type": "text"
     }
 ]

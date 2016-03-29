@@ -1,11 +1,9 @@
 /* globals expect, it, describe, combineUrl, Dict, isDict, Name, PDFJS,
-           stringToPDFString, isExternalLinkTargetSet, LinkTarget,
-           removeNullCharacters */
+           stringToPDFString, removeNullCharacters */
 
 'use strict';
 
 describe('util', function() {
-
   describe('combineUrl', function() {
     it('absolute url with protocol stays as is', function() {
       var baseUrl = 'http://server/index.html';
@@ -97,34 +95,6 @@ describe('util', function() {
       var str2 = '\xFE\xFF';
       expect(stringToPDFString(str2)).toEqual('');
     });
-  });
-
-  describe('isExternalLinkTargetSet', function() {
-    // Save the current state, to avoid interfering with other tests.
-    var previousExternalLinkTarget = PDFJS.externalLinkTarget;
-
-    it('handles the predefined LinkTargets', function() {
-      for (var key in LinkTarget) {
-        var linkTarget = LinkTarget[key];
-        PDFJS.externalLinkTarget = linkTarget;
-
-        expect(isExternalLinkTargetSet()).toEqual(!!linkTarget);
-      }
-    });
-
-    it('handles incorrect LinkTargets', function() {
-      var targets = [true, '', false, -1, '_blank', null];
-
-      for (var i = 0, ii = targets.length; i < ii; i++) {
-        var linkTarget = targets[i];
-        PDFJS.externalLinkTarget = linkTarget;
-
-        expect(isExternalLinkTargetSet()).toEqual(false);
-      }
-    });
-
-    // Reset the state.
-    PDFJS.externalLinkTarget = previousExternalLinkTarget;
   });
 
   describe('removeNullCharacters', function() {

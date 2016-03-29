@@ -13,8 +13,7 @@
  * limitations under the License.
  */
 /* globals RenderingStates, PDFJS, DEFAULT_SCALE, CSS_UNITS, getOutputScale,
-           TextLayerBuilder, AnnotationLayerBuilder, Promise,
-           approximateFraction, roundToDivide */
+           TextLayerBuilder, Promise, approximateFraction, roundToDivide */
 
 'use strict';
 
@@ -533,7 +532,6 @@ var PDFPageView = (function PDFPageViewClosure() {
 
       // The rendered size of the canvas, relative to the size of canvasWrapper.
       canvas.style.width = (PRINT_OUTPUT_SCALE * 100) + '%';
-      canvas.style.height = (PRINT_OUTPUT_SCALE * 100) + '%';
 
       var cssScale = 'scale(' + (1 / PRINT_OUTPUT_SCALE) + ', ' +
                                 (1 / PRINT_OUTPUT_SCALE) + ')';
@@ -542,8 +540,6 @@ var PDFPageView = (function PDFPageViewClosure() {
 
       var printContainer = document.getElementById('printContainer');
       var canvasWrapper = document.createElement('div');
-      canvasWrapper.style.width = viewport.width + 'pt';
-      canvasWrapper.style.height = viewport.height + 'pt';
       canvasWrapper.appendChild(canvas);
       printContainer.appendChild(canvasWrapper);
 

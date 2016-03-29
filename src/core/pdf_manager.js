@@ -110,8 +110,9 @@ var BasePdfManager = (function BasePdfManagerClosure() {
 })();
 
 var LocalPdfManager = (function LocalPdfManagerClosure() {
-  function LocalPdfManager(docId, data, password) {
+  function LocalPdfManager(docId, data, password, evaluatorOptions) {
     this._docId = docId;
+    this.evaluatorOptions = evaluatorOptions;
     var stream = new Stream(data);
     this.pdfDocument = new PDFDocument(this, stream, password);
     this._loadedStreamCapability = createPromiseCapability();
@@ -157,21 +158,19 @@ var LocalPdfManager = (function LocalPdfManagerClosure() {
 })();
 
 var NetworkPdfManager = (function NetworkPdfManagerClosure() {
-  function NetworkPdfManager(docId, args, msgHandler) {
+  function NetworkPdfManager(docId, pdfNetworkStream, args, evaluatorOptions) {
     this._docId = docId;
-    this.msgHandler = msgHandler;
+    this.msgHandler = args.msgHandler;
+    this.evaluatorOptions = evaluatorOptions;
 
     var params = {
-      msgHandler: msgHandler,
-      httpHeaders: args.httpHeaders,
-      withCredentials: args.withCredentials,
-      chunkedViewerLoading: args.chunkedViewerLoading,
+      msgHandler: args.msgHandler,
+      url: args.url,
+      length: args.length,
       disableAutoFetch: args.disableAutoFetch,
-      initialData: args.initialData
+      rangeChunkSize: args.rangeChunkSize
     };
-    this.streamManager = new ChunkedStreamManager(args.length,
-                                                  args.rangeChunkSize,
-                                                  args.url, params);
+    this.streamManager = new ChunkedStreamManager(pdfNetworkStream, params);
     this.pdfDocument = new PDFDocument(this, this.streamManager.getStream(),
                                        args.password);
   }
