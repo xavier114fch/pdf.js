@@ -198,6 +198,7 @@ target.jsdoc = function() {
   var JSDOC_FILES = [
     'src/doc_helper.js',
     'src/display/api.js',
+    'src/display/global.js',
     'src/shared/util.js',
     'src/core/annotation.js'
   ];
@@ -332,6 +333,12 @@ target.dist = function() {
     homepage: DIST_HOMEPAGE,
     bugs: DIST_BUGS_URL,
     license: DIST_LICENSE,
+    browser: { // used by browserify and ignores following files during bundle
+      'entry?name=[hash]-worker.js!./pdf.worker.js': false,
+      './build/pdf.worker.js': false,
+      'node-ensure': false
+    },
+    format: 'amd', // to not allow system.js to choose 'cjs'
     repository: {
       type: 'git',
       url: DIST_REPO_URL
@@ -521,9 +528,7 @@ target.bundle = function(args) {
 
   var umd = require('./external/umdutils/verifier.js');
   var MAIN_SRC_FILES = [
-    SRC_DIR + 'display/annotation_layer.js',
-    SRC_DIR + 'display/text_layer.js',
-    SRC_DIR + 'display/api.js'
+    SRC_DIR + 'display/global.js'
   ];
 
   var WORKER_SRC_FILES = [
@@ -533,9 +538,8 @@ target.bundle = function(args) {
   var mainFileName = 'pdf.js';
   var workerFileName = 'pdf.worker.js';
 
-  // Extension does not need svg.js and network.js files.
+  // Extension does not need network.js file.
   if (!defines.FIREFOX && !defines.MOZCENTRAL) {
-    MAIN_SRC_FILES.push(SRC_DIR + 'display/svg.js');
     WORKER_SRC_FILES.push(SRC_DIR + 'core/network.js');
   }
 

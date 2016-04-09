@@ -1263,6 +1263,13 @@
        "rounds": 1,
        "type": "eq"
     },
+    {  "id": "issue7101",
+       "file": "pdfs/issue7101.pdf",
+       "md5": "cc9cabe12ac9ad49e5372ef33d10aeb4",
+       "link": false,
+       "rounds": 1,
+       "type": "eq"
+    },
     {  "id": "pr4606",
        "file": "pdfs/pr4606.pdf",
        "md5": "6574fde2314648600056bd0e229df98c",
@@ -1442,6 +1449,22 @@
       "rounds": 1,
       "link": false,
       "type": "eq"
+    },
+    {  "id": "issue5686",
+       "file": "pdfs/issue5686.pdf",
+       "md5": "78d16b9df07a355ad00d70504a9194f8",
+       "rounds": 1,
+       "link": false,
+       "type": "eq",
+       "about": "Type1 font where Length1/Length2 are slightly incorrect."
+    },
+    {  "id": "issue3928",
+       "file": "pdfs/issue3928.pdf",
+       "md5": "1963493f843e981cbe768b707ef7f08a",
+       "rounds": 1,
+       "link": false,
+       "type": "eq",
+       "about": "Type1 font where Length1/Length2 are several orders of magnitude too large."
     },
     {  "id": "html5checker",
       "file": "pdfs/html5checker.pdf",
