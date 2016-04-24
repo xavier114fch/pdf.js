@@ -12,9 +12,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
- /* globals RenderingStates */
 
 'use strict';
+
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    define('pdfjs-web/pdf_sidebar', ['exports',
+      'pdfjs-web/pdf_rendering_queue'], factory);
+  } else if (typeof exports !== 'undefined') {
+    factory(exports, require('./pdf_rendering_queue.js'));
+  } else {
+    factory((root.pdfjsWebPDFSidebar = {}), root.pdfjsWebPDFRenderingQueue);
+  }
+}(this, function (exports, pdfRenderingQueue) {
+
+var RenderingStates = pdfRenderingQueue.RenderingStates;
 
 var SidebarView = {
   NONE: 0,
@@ -25,9 +37,9 @@ var SidebarView = {
 
 /**
  * @typedef {Object} PDFSidebarOptions
- * @property {PDFViewer} - The document viewer.
- * @property {PDFThumbnailViewer} - The thumbnail viewer.
- * @property {PDFOutlineViewer} - The outline viewer.
+ * @property {PDFViewer} pdfViewer - The document viewer.
+ * @property {PDFThumbnailViewer} pdfThumbnailViewer - The thumbnail viewer.
+ * @property {PDFOutlineViewer} pdfOutlineViewer - The outline viewer.
  * @property {HTMLDivElement} mainContainer - The main container
  *   (in which the viewer element is placed).
  * @property {HTMLDivElement} outerContainer - The outer container
@@ -127,17 +139,25 @@ var PDFSidebar = (function PDFSidebarClosure() {
       this.isInitialViewSet = true;
 
       if (this.isOpen && view === SidebarView.NONE) {
+        this._dispatchEvent();
         // If the user has already manually opened the sidebar,
         // immediately closing it would be bad UX.
         return;
       }
-      this.switchView(view, true);
+      var isViewPreserved = (view === this.visibleView);
+      this.switchView(view, /* forceOpen */ true);
+
+      if (isViewPreserved) {
+        // Prevent dispatching two back-to-back `sidebarviewchanged` events,
+        // since `this.switchView` dispatched the event if the view changed.
+        this._dispatchEvent();
+      }
     },
 
     /**
      * @param {number} view - The sidebar view that should be switched to,
      *                        must be one of the values in {SidebarView}.
-     * @param {boolean} forceOpen - Ensure that the sidebar is opened.
+     * @param {boolean} forceOpen - (optional) Ensure that the sidebar is open.
      *                              The default value is false.
      */
     switchView: function PDFSidebar_switchView(view, forceOpen) {
@@ -145,9 +165,7 @@ var PDFSidebar = (function PDFSidebarClosure() {
         this.close();
         return;
       }
-      if (forceOpen) {
-        this.open();
-      }
+      var isViewChanged = (view !== this.active);
       var shouldForceRendering = false;
 
       switch (view) {
@@ -160,7 +178,7 @@ var PDFSidebar = (function PDFSidebarClosure() {
           this.outlineView.classList.add('hidden');
           this.attachmentsView.classList.add('hidden');
 
-          if (this.isOpen && view !== this.active) {
+          if (this.isOpen && isViewChanged) {
             this._updateThumbnailViewer();
             shouldForceRendering = true;
           }
@@ -198,8 +216,16 @@ var PDFSidebar = (function PDFSidebarClosure() {
       // in order to prevent setting it to an invalid state.
       this.active = view | 0;
 
+      if (forceOpen && !this.isOpen) {
+        this.open();
+        // NOTE: `this.open` will trigger rendering, and dispatch the event.
+        return;
+      }
       if (shouldForceRendering) {
         this._forceRendering();
+      }
+      if (isViewChanged) {
+        this._dispatchEvent();
       }
     },
 
@@ -217,6 +243,7 @@ var PDFSidebar = (function PDFSidebarClosure() {
         this._updateThumbnailViewer();
       }
       this._forceRendering();
+      this._dispatchEvent();
     },
 
     close: function PDFSidebar_close() {
@@ -230,6 +257,7 @@ var PDFSidebar = (function PDFSidebarClosure() {
       this.outerContainer.classList.remove('sidebarOpen');
 
       this._forceRendering();
+      this._dispatchEvent();
     },
 
     toggle: function PDFSidebar_toggle() {
@@ -238,6 +266,17 @@ var PDFSidebar = (function PDFSidebarClosure() {
       } else {
         this.open();
       }
+    },
+
+    /**
+     * @private
+     */
+    _dispatchEvent: function PDFSidebar_dispatchEvent() {
+      var event = document.createEvent('CustomEvent');
+      event.initCustomEvent('sidebarviewchanged', true, true, {
+        view: this.visibleView,
+      });
+      this.outerContainer.dispatchEvent(event);
     },
 
     /**
@@ -330,3 +369,7 @@ var PDFSidebar = (function PDFSidebarClosure() {
 
   return PDFSidebar;
 })();
+
+exports.SidebarView = SidebarView;
+exports.PDFSidebar = PDFSidebar;
+}));

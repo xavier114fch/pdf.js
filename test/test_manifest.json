@@ -1240,6 +1240,14 @@
        "lastPage": 1,
        "type": "load"
     },
+    {  "id": "issue3248",
+       "file": "pdfs/issue3248.pdf",
+       "md5": "970767ed68de46c316d74de67965999b",
+       "rounds": 1,
+       "link": true,
+       "lastPage": 1,
+       "type": "load"
+    },
     {  "id": "pr4897",
        "file": "pdfs/pr4897.pdf",
        "md5": "26897633eea5e6d10345a130b1c1777c",
@@ -1247,6 +1255,14 @@
        "link": true,
        "lastPage": 1,
        "type": "eq"
+    },
+    {  "id": "issue7229",
+       "file": "pdfs/issue7229.pdf",
+       "md5": "480e51aae0ac271780e4603d1561d15e",
+       "rounds": 1,
+       "link": false,
+       "lastPage": 1,
+       "type": "load"
     },
     {  "id": "issue1940",
        "file": "pdfs/issue1940.pdf",
@@ -1266,6 +1282,13 @@
     {  "id": "issue7101",
        "file": "pdfs/issue7101.pdf",
        "md5": "cc9cabe12ac9ad49e5372ef33d10aeb4",
+       "link": false,
+       "rounds": 1,
+       "type": "eq"
+    },
+    {  "id": "issue7200",
+       "file": "pdfs/issue7200.pdf",
+       "md5": "ddae17424ea23930eecf8b612a66ed0f",
        "link": false,
        "rounds": 1,
        "type": "eq"
@@ -1500,6 +1523,33 @@
       "file": "pdfs/bug1123803.pdf",
       "md5": "0f3870ac5ad8899aec34d734e045a514",
       "rounds": 1,
+      "link": true,
+      "type": "eq"
+    },
+    {
+      "id": "bug852992",
+      "file": "pdfs/bug852992_reduced.pdf",
+      "md5": "c11439fe3b7f8bc39d89dcff58c50a0c",
+      "rounds": 1,
+      "type": "eq"
+    },
+    {
+      "id": "bug1199237",
+      "file": "pdfs/bug1199237.pdf",
+      "md5": "e9a63d3207ccc65a4955d5723546e962",
+      "rounds": 1,
+      "firstPage": 1,
+      "lastPage": 1,
+      "link": true,
+      "type": "eq"
+    },
+    {
+      "id": "issue6165",
+      "file": "pdfs/issue6165.pdf",
+      "md5": "84ebde43b9121aa2ef8026388a4f4244",
+      "rounds": 1,
+      "firstPage": 1,
+      "lastPage": 1,
       "link": true,
       "type": "eq"
     },
@@ -2172,6 +2222,14 @@
     {  "id": "bug951051",
       "file": "pdfs/bug951051.pdf",
       "md5": "05d325a5112bd3f6022367dab7bc07b9",
+      "rounds": 1,
+      "lastPage": 1,
+      "link": true,
+      "type": "load"
+    },
+    {  "id": "bug1260585",
+      "file": "pdfs/bug1260585.pdf",
+      "md5": "9415b1eb00a43c97c15328cd4c8d136a",
       "rounds": 1,
       "lastPage": 1,
       "link": true,

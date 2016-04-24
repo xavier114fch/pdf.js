@@ -43,19 +43,19 @@
 var pdfjsLibs;
 
 function initializePDFJS(callback) {
-  require.config({paths: {'pdfjs': '../../src'}});
+  require.config({paths: {'pdfjs': '../../src', 'pdfjs-web': '../../web'}});
   require(['pdfjs/shared/util', 'pdfjs/display/global', 'pdfjs/core/primitives',
       'pdfjs/core/annotation', 'pdfjs/core/crypto', 'pdfjs/core/stream',
       'pdfjs/core/fonts', 'pdfjs/core/ps_parser', 'pdfjs/core/function',
       'pdfjs/core/parser', 'pdfjs/core/evaluator', 'pdfjs/core/cmap',
       'pdfjs/core/worker', 'pdfjs/core/network', 'pdfjs/core/type1_parser',
       'pdfjs/core/cff_parser', 'pdfjs/display/api', 'pdfjs/display/metadata',
-      'pdfjs/display/dom_utils'],
+      'pdfjs/display/dom_utils', 'pdfjs-web/ui_utils'],
     function (sharedUtil, displayGlobal, corePrimitives, coreAnnotation,
               coreCrypto, coreStream, coreFonts, corePsParser, coreFunction,
               coreParser, coreEvaluator, coreCMap, coreWorker, coreNetwork,
               coreType1Parser, coreCFFParser, displayAPI, displayMetadata,
-              displayDOMUtils) {
+              displayDOMUtils, webUIUtils) {
 
       pdfjsLibs = {
         sharedUtil: sharedUtil,
@@ -76,7 +76,8 @@ function initializePDFJS(callback) {
         coreCFFParser: coreCFFParser,
         displayAPI: displayAPI,
         displayMetadata: displayMetadata,
-        displayDOMUtils: displayDOMUtils
+        displayDOMUtils: displayDOMUtils,
+        webUIUtils: webUIUtils
       };
 
       // Expose all loaded internal exported members to global scope.
@@ -92,12 +93,6 @@ function initializePDFJS(callback) {
 
       // Configure the worker.
       displayGlobal.PDFJS.workerSrc = '../../src/worker_loader.js';
-
-      // Release describe() calls.
-      window.describe = oldDescribe;
-      describeQueue.forEach(function (args) {
-        oldDescribe.apply(window, args);
-      });
 
       callback();
     });
@@ -204,9 +199,3 @@ function initializePDFJS(callback) {
   }
 }());
 
-// Hacking describe() to wait for PDFJS to be loaded, since Jasmine executes
-// it without waiting for libs to be loaded and fails to use PDFJS members.
-var oldDescribe = window.describe, describeQueue = [];
-window.describe = function () {
-  describeQueue.push(Array.prototype.slice.call(arguments, 0));
-};

@@ -45,7 +45,6 @@ var UnexpectedResponseException = sharedUtil.UnexpectedResponseException;
 var UnknownErrorException = sharedUtil.UnknownErrorException;
 var Util = sharedUtil.Util;
 var createPromiseCapability = sharedUtil.createPromiseCapability;
-var combineUrl = sharedUtil.combineUrl;
 var error = sharedUtil.error;
 var deprecated = sharedUtil.deprecated;
 var getVerbosityLevel = sharedUtil.getVerbosityLevel;
@@ -71,7 +70,7 @@ var isPostMessageTransfersDisabled = false;
 
 //#if PRODUCTION && !SINGLE_FILE
 //#if GENERIC
-//#include ../src/frameworks.js
+//#include $ROOT/src/frameworks.js
 //#else
 //var fakeWorkerFilesLoader = null;
 //#endif
@@ -186,7 +185,7 @@ function getDocument(src, pdfDataRangeTransport,
   for (var key in source) {
     if (key === 'url' && typeof window !== 'undefined') {
       // The full path is required in the 'url' field.
-      params[key] = combineUrl(window.location.href, source[key]);
+      params[key] = new URL(source[key], window.location).href;
       continue;
     } else if (key === 'range') {
       rangeTransport = source[key];
@@ -1121,7 +1120,7 @@ var PDFWorker = (function PDFWorkerClosure() {
 //        // to the same origin.
 //        if (!isSameOrigin(window.location.href, workerSrc)) {
 //          workerSrc = createCDNWrapper(
-//            combineUrl(window.location.href, workerSrc));
+//            new URL(workerSrc, window.location).href);
 //        }
 //#endif
           // Some versions of FF can't create a worker on localhost, see:
@@ -1487,28 +1486,26 @@ var WorkerTransport = (function WorkerTransportClosure() {
           case 'Font':
             var exportedData = data[2];
 
-            var font;
             if ('error' in exportedData) {
-              var error = exportedData.error;
-              warn('Error during font loading: ' + error);
-              this.commonObjs.resolve(id, error);
+              var exportedError = exportedData.error;
+              warn('Error during font loading: ' + exportedError);
+              this.commonObjs.resolve(id, exportedError);
               break;
-            } else {
-              var fontRegistry = null;
-              if (getDefaultSetting('pdfBug') && globalScope.FontInspector &&
-                  globalScope['FontInspector'].enabled) {
-                fontRegistry = {
-                  registerFont: function (font, url) {
-                    globalScope['FontInspector'].fontAdded(font, url);
-                  }
-                };
-              }
-              font = new FontFaceObject(exportedData, {
-                isEvalSuported: getDefaultSetting('isEvalSupported'),
-                disableFontFace: getDefaultSetting('disableFontFace'),
-                fontRegistry: fontRegistry
-              });
             }
+            var fontRegistry = null;
+            if (getDefaultSetting('pdfBug') && globalScope.FontInspector &&
+                globalScope['FontInspector'].enabled) {
+              fontRegistry = {
+                registerFont: function (font, url) {
+                  globalScope['FontInspector'].fontAdded(font, url);
+                }
+              };
+            }
+            var font = new FontFaceObject(exportedData, {
+              isEvalSuported: getDefaultSetting('isEvalSupported'),
+              disableFontFace: getDefaultSetting('disableFontFace'),
+              fontRegistry: fontRegistry
+            });
 
             this.fontLoader.bind(
               [font],

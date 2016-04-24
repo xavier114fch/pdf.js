@@ -295,15 +295,6 @@ var UNSUPPORTED_FEATURES = {
   font: 'font'
 };
 
-// Combines two URLs. The baseUrl shall be absolute URL. If the url is an
-// absolute URL, it will be returned as is.
-function combineUrl(baseUrl, url) {
-  if (!url) {
-    return baseUrl;
-  }
-  return new URL(url, baseUrl).href;
-}
-
 // Checks if URLs have the same origin. For non-HTTP based URLs, returns false.
 function isSameOrigin(baseUrl, otherUrl) {
   try {
@@ -321,7 +312,7 @@ function isSameOrigin(baseUrl, otherUrl) {
 
 // Validates if URL is safe and allowed, e.g. to avoid XSS.
 function isValidUrl(url, allowRelative) {
-  if (!url) {
+  if (!url || typeof url !== 'string') {
     return false;
   }
   // RFC 3986 (http://tools.ietf.org/html/rfc3986#section-3.1)
@@ -2338,7 +2329,6 @@ exports.arrayByteLength = arrayByteLength;
 exports.arraysToBytes = arraysToBytes;
 exports.assert = assert;
 exports.bytesToString = bytesToString;
-exports.combineUrl = combineUrl;
 exports.createBlob = createBlob;
 exports.createPromiseCapability = createPromiseCapability;
 exports.createObjectURL = createObjectURL;
