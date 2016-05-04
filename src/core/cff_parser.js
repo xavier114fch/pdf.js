@@ -331,7 +331,7 @@ var CFFParser = (function CFFParserClosure() {
       function parseOperand() {
         var value = dict[pos++];
         if (value === 30) {
-          return parseFloatOperand(pos);
+          return parseFloatOperand();
         } else if (value === 28) {
           value = dict[pos++];
           value = ((value << 24) | (dict[pos++] << 16)) >> 16;
@@ -1382,7 +1382,7 @@ var CFFCompiler = (function CFFCompilerClosure() {
       if (value >= -107 && value <= 107) {
         code = [value + 139];
       } else if (value >= 108 && value <= 1131) {
-        value = [value - 108];
+        value = value - 108;
         code = [(value >> 8) + 247, value & 0xFF];
       } else if (value >= -1131 && value <= -108) {
         value = -value - 108;
