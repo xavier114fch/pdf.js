@@ -13,7 +13,7 @@
  * limitations under the License.
  */
 
-/* globals chrome, DEFAULT_PREFERENCES, DEFAULT_URL */
+/* globals chrome, DEFAULT_URL */
 'use strict';
 
 (function (root, factory) {
@@ -75,83 +75,59 @@
     file = file.replace(/^drive:/i,
         'filesystem:' + location.origin + '/external/');
 
-    ChromeCom.request('getPDFStream', file, function(response) {
-      if (response) {
-        // We will only get a response when the streamsPrivate API is available.
-
-        var isFTPFile = /^ftp:/i.test(file);
-        var streamUrl = response.streamUrl;
-        if (streamUrl) {
-          console.log('Found data stream for ' + file);
-          callback(streamUrl, response.contentLength, file);
+    if (/^filesystem:/.test(file) && !pdfjsLib.PDFJS.disableWorker) {
+      // The security origin of filesystem:-URLs are not preserved when the
+      // URL is passed to a Web worker, (http://crbug.com/362061), so we have
+      // to create an intermediate blob:-URL as a work-around.
+      var resolveLocalFileSystemURL = window.resolveLocalFileSystemURL ||
+                                      window.webkitResolveLocalFileSystemURL;
+      resolveLocalFileSystemURL(file, function onResolvedFSURL(fileEntry) {
+        fileEntry.file(function(fileObject) {
+          var blobUrl = URL.createObjectURL(fileObject);
+          callback(blobUrl, fileObject.size);
+        });
+      }, function onFileSystemError(error) {
+        // This should not happen. When it happens, just fall back to the
+        // usual way of getting the File's data (via the Web worker).
+        console.warn('Cannot resolve file ' + file + ', ' + error.name + ' ' +
+                     error.message);
+        callback(file);
+      });
+      return;
+    }
+    if (/^https?:/.test(file)) {
+      // Assumption: The file being opened is the file that was requested.
+      // There is no UI to input a different URL, so this assumption will hold
+      // for now.
+      setReferer(file, function() {
+        callback(file);
+      });
+      return;
+    }
+    if (/^file?:/.test(file)) {
+      getEmbedderOrigin(function(origin) {
+        // If the origin cannot be determined, let Chrome decide whether to
+        // allow embedding files. Otherwise, only allow local files to be
+        // embedded from local files or Chrome extensions.
+        // Even without this check, the file load in frames is still blocked,
+        // but this may change in the future (https://crbug.com/550151).
+        if (origin && !/^file:|^chrome-extension:/.test(origin)) {
+          PDFViewerApplication.error('Blocked ' + origin + ' from loading ' +
+              file + '. Refused to load a local file in a non-local page ' +
+              'for security reasons.');
           return;
         }
-        if (isFTPFile && !response.extensionSupportsFTP) {
-          // Stream not found, and it's loaded from FTP.
-          // When the browser does not support loading ftp resources over
-          // XMLHttpRequest, just reload the page.
-          // NOTE: This will not lead to an infinite redirect loop, because
-          // if the file exists, then the streamsPrivate API will capture the
-          // stream and send back the response. If the stream does not exist,
-          // a "Webpage not available" error will be shown (not the PDF Viewer).
-          location.replace(file);
-          return;
-        }
-      }
-      if (/^filesystem:/.test(file) && !pdfjsLib.PDFJS.disableWorker) {
-        // The security origin of filesystem:-URLs are not preserved when the
-        // URL is passed to a Web worker, (http://crbug.com/362061), so we have
-        // to create an intermediate blob:-URL as a work-around.
-        var resolveLocalFileSystemURL = window.resolveLocalFileSystemURL ||
-                                        window.webkitResolveLocalFileSystemURL;
-        resolveLocalFileSystemURL(file, function onResolvedFSURL(fileEntry) {
-          fileEntry.file(function(fileObject) {
-            var blobUrl = URL.createObjectURL(fileObject);
-            callback(blobUrl, fileObject.size);
-          });
-        }, function onFileSystemError(error) {
-          // This should not happen. When it happens, just fall back to the
-          // usual way of getting the File's data (via the Web worker).
-          console.warn('Cannot resolve file ' + file + ', ' + error.name + ' ' +
-                       error.message);
-          callback(file);
-        });
-        return;
-      }
-      if (/^https?:/.test(file)) {
-        // Assumption: The file being opened is the file that was requested.
-        // There is no UI to input a different URL, so this assumption will hold
-        // for now.
-        setReferer(file, function() {
-          callback(file);
-        });
-        return;
-      }
-      if (/^file?:/.test(file)) {
-        getEmbedderOrigin(function(origin) {
-          // If the origin cannot be determined, let Chrome decide whether to
-          // allow embedding files. Otherwise, only allow local files to be
-          // embedded from local files or Chrome extensions.
-          // Even without this check, the file load in frames is still blocked,
-          // but this may change in the future (https://crbug.com/550151).
-          if (origin && !/^file:|^chrome-extension:/.test(origin)) {
-            PDFViewerApplication.error('Blocked ' + origin + ' from loading ' +
-                file + '. Refused to load a local file in a non-local page ' +
-                'for security reasons.');
-            return;
+        isAllowedFileSchemeAccess(function(isAllowedAccess) {
+          if (isAllowedAccess) {
+            callback(file);
+          } else {
+            requestAccessToLocalFile(file);
           }
-          isAllowedFileSchemeAccess(function(isAllowedAccess) {
-            if (isAllowedAccess) {
-              callback(file);
-            } else {
-              requestAccessToLocalFile(file);
-            }
-          });
         });
-        return;
-      }
-      callback(file);
-    });
+      });
+      return;
+    }
+    callback(file);
   };
 
   function getEmbedderOrigin(callback) {
@@ -323,8 +299,8 @@
 
   Preferences._writeToStorage = function (prefObj) {
     return new Promise(function (resolve) {
-      if (prefObj === DEFAULT_PREFERENCES) {
-        var keysToRemove = Object.keys(DEFAULT_PREFERENCES);
+      if (prefObj === Preferences.defaults) {
+        var keysToRemove = Object.keys(Preferences.defaults);
         // If the storage is reset, remove the keys so that the values from
         // managed storage are applied again.
         chrome.storage.local.remove(keysToRemove, function() {
@@ -344,16 +320,16 @@
         // Get preferences as set by the system administrator.
         // See extensions/chromium/preferences_schema.json for more information.
         // These preferences can be overridden by the user.
-        chrome.storage.managed.get(DEFAULT_PREFERENCES, getPreferences);
+        chrome.storage.managed.get(Preferences.defaults, getPreferences);
       } else {
         // Managed storage not supported, e.g. in old Chromium versions.
-        getPreferences(DEFAULT_PREFERENCES);
+        getPreferences(Preferences.defaults);
       }
 
       function getPreferences(defaultPrefs) {
         if (chrome.runtime.lastError) {
           // Managed storage not supported, e.g. in Opera.
-          defaultPrefs = DEFAULT_PREFERENCES;
+          defaultPrefs = Preferences.defaults;
         }
         chrome.storage.local.get(defaultPrefs, function(readPrefs) {
           resolve(readPrefs);

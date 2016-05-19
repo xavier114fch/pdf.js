@@ -1111,6 +1111,13 @@
        "type": "eq",
        "about": "Please note that this file currently renders incorrectly."
     },
+    {  "id": "issue6962",
+       "file": "pdfs/issue6962.pdf",
+       "md5": "d40e871ecca68baf93114bd28c782148",
+       "rounds": 1,
+       "link": false,
+       "type": "text"
+    },
     {  "id": "issue5644",
        "file": "pdfs/issue5644.pdf",
        "md5": "6f9313c5043b3ecb0ab2df321d3e1847",
@@ -1127,6 +1134,15 @@
        "rounds": 1,
        "type": "eq",
        "about": "Font with an empty font file."
+    },
+    {  "id": "bug1037816",
+       "file": "pdfs/bug1037816.pdf",
+       "md5": "8a45299d7b102a9c1cadb8883b8debc9",
+       "rounds": 1,
+       "link": true,
+       "lastPage": 1,
+       "type": "load",
+       "about": "ObjStm stream containing 'endobj' commands."
     },
     {  "id": "ocs",
       "file": "pdfs/ocs.pdf",

@@ -267,8 +267,8 @@ var PDFViewerApplication = {
     this.pdfDocumentProperties =
       new PDFDocumentProperties(appConfig.documentProperties);
 
-    SecondaryToolbar.initialize(appConfig.secondaryToolbar, eventBus);
-    this.secondaryToolbar = SecondaryToolbar;
+    this.secondaryToolbar =
+      new SecondaryToolbar(appConfig.secondaryToolbar, eventBus);
 
     if (this.supportsFullscreen) {
       this.pdfPresentationMode = new PDFPresentationMode({
@@ -1288,6 +1288,24 @@ function validateFileURL(file) {
 }
 //#endif
 
+function loadAndEnablePDFBug(enabledTabs) {
+  return new Promise(function (resolve, reject) {
+    var appConfig = PDFViewerApplication.appConfig;
+    var script = document.createElement('script');
+    script.src = appConfig.debuggerScriptPath;
+    script.onload = function () {
+      PDFBug.enable(enabledTabs);
+      PDFBug.init(pdfjsLib, appConfig.mainContainer);
+      resolve();
+    };
+    script.onerror = function () {
+      reject(new Error('Cannot load debugger at ' + script.src));
+    };
+    (document.getElementsByTagName('head')[0] || document.body).
+      appendChild(script);
+  });
+}
+
 function webViewerInitialized() {
 //#if GENERIC
   var queryString = document.location.search.substring(1);
@@ -1302,6 +1320,7 @@ function webViewerInitialized() {
 //var file = DEFAULT_URL;
 //#endif
 
+  var waitForBeforeOpening = [];
   var appConfig = PDFViewerApplication.appConfig;
 //#if GENERIC
   var fileInput = document.createElement('input');
@@ -1313,14 +1332,14 @@ function webViewerInitialized() {
 
   if (!window.File || !window.FileReader || !window.FileList || !window.Blob) {
     appConfig.toolbar.openFile.setAttribute('hidden', 'true');
-    appConfig.secondaryToolbar.openFile.setAttribute('hidden', 'true');
+    appConfig.secondaryToolbar.openFileButton.setAttribute('hidden', 'true');
   } else {
     fileInput.value = null;
   }
 
 //#else
 //appConfig.toolbar.openFile.setAttribute('hidden', 'true');
-//appConfig.secondaryToolbar.openFile.setAttribute('hidden', 'true');
+//appConfig.secondaryToolbar.openFileButton.setAttribute('hidden', 'true');
 //#endif
 
   var PDFJS = pdfjsLib.PDFJS;
@@ -1393,8 +1412,7 @@ function webViewerInitialized() {
       PDFJS.pdfBug = true;
       var pdfBug = hashParams['pdfbug'];
       var enabled = pdfBug.split(',');
-      PDFBug.enable(enabled);
-      PDFBug.init(pdfjsLib, appConfig.mainContainer);
+      waitForBeforeOpening.push(loadAndEnablePDFBug(enabled));
     }
   }
 
@@ -1411,7 +1429,7 @@ function webViewerInitialized() {
 
   if (!PDFViewerApplication.supportsPrinting) {
     appConfig.toolbar.print.classList.add('hidden');
-    appConfig.secondaryToolbar.print.classList.add('hidden');
+    appConfig.secondaryToolbar.printButton.classList.add('hidden');
   }
 
   if (!PDFViewerApplication.supportsFullscreen) {
@@ -1496,13 +1514,16 @@ function webViewerInitialized() {
     PDFViewerApplication.eventBus.dispatch('download');
   });
 
-//#if (FIREFOX || MOZCENTRAL || CHROME)
-//PDFViewerApplication.setTitleUsingUrl(file);
-//PDFViewerApplication.initPassiveLoading();
-//return;
-//#endif
+  Promise.all(waitForBeforeOpening).then(function () {
+    webViewerOpenFileViaURL(file);
+  }).catch(function (reason) {
+    PDFViewerApplication.error(mozL10n.get('loading_error', null,
+      'An error occurred while opening.'), reason);
+  });
+}
 
 //#if GENERIC
+function webViewerOpenFileViaURL(file) {
   if (file && file.lastIndexOf('file:', 0) === 0) {
     // file:-scheme. Load the contents in the main thread because QtWebKit
     // cannot load file:-URLs in a Web Worker. file:-URLs are usually loaded
@@ -1526,8 +1547,19 @@ function webViewerInitialized() {
   if (file) {
     PDFViewerApplication.open(file);
   }
-//#endif
 }
+//#elif (FIREFOX || MOZCENTRAL || CHROME)
+//function webViewerOpenFileViaURL(file) {
+//  PDFViewerApplication.setTitleUsingUrl(file);
+//  PDFViewerApplication.initPassiveLoading();
+//}
+//#else
+//function webViewerOpenFileURL(file) {
+//  if (file) {
+//    throw new Error('Not implemented: webViewerOpenFileURL');
+//  }
+//}
+//#endif
 
 function webViewerPageRendered(e) {
   var pageNumber = e.pageNumber;
@@ -1690,7 +1722,8 @@ function webViewerUpdateViewarea(e) {
   var href =
     PDFViewerApplication.pdfLinkService.getAnchorUrl(location.pdfOpenParams);
   PDFViewerApplication.appConfig.toolbar.viewBookmark.href = href;
-  PDFViewerApplication.appConfig.secondaryToolbar.viewBookmark.href = href;
+  PDFViewerApplication.appConfig.secondaryToolbar.viewBookmarkButton.href =
+    href;
 
   // Update the current bookmark in the browsing history.
   PDFViewerApplication.pdfHistory.updateCurrentBookmark(location.pdfOpenParams,
@@ -1730,7 +1763,8 @@ function webViewerResize() {
   }
 
   // Set the 'max-height' CSS property of the secondary toolbar.
-  SecondaryToolbar.setMaxHeight(PDFViewerApplication.appConfig.mainContainer);
+  var mainContainer = PDFViewerApplication.appConfig.mainContainer;
+  PDFViewerApplication.secondaryToolbar.setMaxHeight(mainContainer);
 }
 
 window.addEventListener('hashchange', function webViewerHashchange(evt) {
@@ -1784,9 +1818,9 @@ function webViewerFileInputChange(e) {
   // URL does not reflect proper document location - hiding some icons.
   var appConfig = PDFViewerApplication.appConfig;
   appConfig.toolbar.viewBookmark.setAttribute('hidden', 'true');
-  appConfig.secondaryToolbar.viewBookmark.setAttribute('hidden', 'true');
+  appConfig.secondaryToolbar.viewBookmarkButton.setAttribute('hidden', 'true');
   appConfig.toolbar.download.setAttribute('hidden', 'true');
-  appConfig.secondaryToolbar.download.setAttribute('hidden', 'true');
+  appConfig.secondaryToolbar.downloadButton.setAttribute('hidden', 'true');
 }
 //#endif
 
@@ -1831,7 +1865,8 @@ function webViewerLocalized() {
     }
 
     // Set the 'max-height' CSS property of the secondary toolbar.
-    SecondaryToolbar.setMaxHeight(PDFViewerApplication.appConfig.mainContainer);
+    var mainContainer = PDFViewerApplication.appConfig.mainContainer;
+    PDFViewerApplication.secondaryToolbar.setMaxHeight(mainContainer);
   });
 }
 
@@ -1978,14 +2013,14 @@ window.addEventListener('DOMMouseScroll', handleMouseWheel);
 window.addEventListener('mousewheel', handleMouseWheel);
 
 window.addEventListener('click', function click(evt) {
-  if (!SecondaryToolbar.opened) {
+  if (!PDFViewerApplication.secondaryToolbar.isOpen) {
     return;
   }
   var appConfig = PDFViewerApplication.appConfig;
   if (PDFViewerApplication.pdfViewer.containsElement(evt.target) ||
       (appConfig.toolbar.container.contains(evt.target) &&
        evt.target !== appConfig.secondaryToolbar.toggleButton)) {
-    SecondaryToolbar.close();
+    PDFViewerApplication.secondaryToolbar.close();
   }
 }, true);
 
@@ -2128,8 +2163,8 @@ window.addEventListener('keydown', function keydown(evt) {
         handled = true;
         break;
       case 27: // esc key
-        if (SecondaryToolbar.opened) {
-          SecondaryToolbar.close();
+        if (PDFViewerApplication.secondaryToolbar.isOpen) {
+          PDFViewerApplication.secondaryToolbar.close();
           handled = true;
         }
         if (!PDFViewerApplication.supportsIntegratedFind &&
