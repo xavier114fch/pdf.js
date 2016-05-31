@@ -203,6 +203,13 @@
        "lastPage": 1,
        "type": "eq"
     },
+    {  "id": "bug1068432",
+       "file": "pdfs/bug1068432.pdf",
+       "md5": "b76ac8d7d0ef471f28535c881f421e33",
+       "rounds": 1,
+       "link": false,
+       "type": "eq"
+    },
     {  "id": "issue1512",
        "file": "pdfs/issue1512r.pdf",
        "md5": "af48ede2658d99cca423147085c6609b",
@@ -1830,6 +1837,14 @@
       "link": true,
       "type": "eq",
       "annotations": true
+    },
+    {  "id": "pr7352",
+       "file": "pdfs/pr7352.pdf",
+       "md5": "336abca4b313cb215b0569883f1f683d",
+       "link": false,
+       "rounds": 1,
+       "type": "eq",
+       "annotations": true
     },
     {  "id": "issue1002",
       "file": "pdfs/issue1002.pdf",
