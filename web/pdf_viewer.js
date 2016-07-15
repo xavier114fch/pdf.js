@@ -231,7 +231,7 @@ var PDFViewer = (function pdfViewer() {
     set currentScaleValue(val) {
       if (!this.pdfDocument) {
         this._currentScale = isNaN(val) ? UNKNOWN_SCALE : val;
-        this._currentScaleValue = val;
+        this._currentScaleValue = val.toString();
         return;
       }
       this._setScale(val, false);
@@ -418,7 +418,7 @@ var PDFViewer = (function pdfViewer() {
 
     _setScaleUpdatePages: function pdfViewer_setScaleUpdatePages(
         newScale, newValue, noScroll, preset) {
-      this._currentScaleValue = newValue;
+      this._currentScaleValue = newValue.toString();
 
       if (isSameScale(this._currentScale, newScale)) {
         if (preset) {
@@ -587,6 +587,8 @@ var PDFViewer = (function pdfViewer() {
           scale = Math.min(Math.abs(widthScale), Math.abs(heightScale));
           break;
         default:
+          console.error('PDFViewer_scrollPageIntoView: \'' + dest[1].name +
+                        '\' is not a valid destination type.');
           return;
       }
 

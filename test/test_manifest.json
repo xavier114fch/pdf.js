@@ -210,6 +210,13 @@
        "link": false,
        "type": "eq"
     },
+    {  "id": "bug1146106",
+       "file": "pdfs/bug1146106.pdf",
+       "md5": "a323d3766da49ee40f7d5dff0aeb0cc1",
+       "rounds": 1,
+       "link": false,
+       "type": "eq"
+    },
     {  "id": "issue1512",
        "file": "pdfs/issue1512r.pdf",
        "md5": "af48ede2658d99cca423147085c6609b",
@@ -736,6 +743,13 @@
        "link": false,
        "rounds": 1,
        "type": "eq"
+    },
+    {  "id": "extgstate-text",
+       "file": "pdfs/extgstate.pdf",
+       "md5": "001bb4ec04463a01d93aad748361f049",
+       "link": false,
+       "rounds": 1,
+       "type": "text"
     },
     {  "id": "usmanm-bad",
        "file": "pdfs/usmanm-bad.pdf",
@@ -1541,6 +1555,13 @@
        "link": false,
        "type": "eq"
     },
+    {  "id": "issue7180-text",
+       "file": "pdfs/issue7180.pdf",
+       "md5": "73ed92d7ca55475f1f31d1d75fee3283",
+       "rounds": 1,
+       "link": false,
+       "type": "text"
+    },
     {
       "id": "bug1123803",
       "file": "pdfs/bug1123803.pdf",
@@ -1683,6 +1704,13 @@
     {  "id": "issue6782",
        "file": "pdfs/issue6782.pdf",
        "md5": "b423f709600daa5745cc6d8234f7c608",
+       "rounds": 1,
+       "link": false,
+       "type": "eq"
+    },
+    {  "id": "issue7439",
+       "file": "pdfs/issue7439.pdf",
+       "md5": "56682657990a894c66db26560d3039d7",
        "rounds": 1,
        "link": false,
        "type": "eq"
