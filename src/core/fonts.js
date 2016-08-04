@@ -457,6 +457,7 @@ var ProblematicCharRanges = new Int32Array([
   0x0600, 0x0780,
   0x08A0, 0x10A0,
   0x1780, 0x1800,
+  0x1C00, 0x1C50,
   // General punctuation chars.
   0x2000, 0x2010,
   0x2011, 0x2012,
@@ -2637,7 +2638,7 @@ var Font = (function FontClosure() {
       // Naming tables
       builder.addTable('name', createNameTable(fontName));
 
-      // PostScript informations
+      // PostScript information
       builder.addTable('post', createPostTable(properties));
 
       return builder.toArray();
@@ -3014,7 +3015,7 @@ var Type1Font = (function Type1FontClosure() {
                           (pfbHeader[3] << 8) | pfbHeader[2];
     }
 
-    // Get the data block containing glyphs and subrs informations
+    // Get the data block containing glyphs and subrs information
     var headerBlock = getHeaderBlock(file, headerBlockLength);
     headerBlockLength = headerBlock.length;
     var headerBlockParser = new Type1Parser(headerBlock.stream, false,

@@ -503,12 +503,12 @@ var PDFPageView = (function PDFPageViewClosure() {
         function pdfPageRenderCallback() {
           pageViewDrawCallback(null);
           if (textLayer) {
-            self.pdfPage.getTextContent({ normalizeWhitespace: true }).then(
-              function textContentResolved(textContent) {
-                textLayer.setTextContent(textContent);
-                textLayer.render(TEXT_LAYER_RENDER_DELAY);
-              }
-            );
+            self.pdfPage.getTextContent({
+              normalizeWhitespace: true,
+            }).then(function textContentResolved(textContent) {
+              textLayer.setTextContent(textContent);
+              textLayer.render(TEXT_LAYER_RENDER_DELAY);
+            });
           }
         },
         function pdfPageRenderError(error) {
@@ -583,7 +583,7 @@ var PDFPageView = (function PDFPageViewClosure() {
         }, function(error) {
           console.error(error);
           // Tell the printEngine that rendering this canvas/page has failed.
-          // This will make the print proces stop.
+          // This will make the print process stop.
           if ('abort' in obj) {
             obj.abort();
           } else {

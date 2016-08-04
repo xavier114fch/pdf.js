@@ -962,6 +962,13 @@
        "rounds": 1,
        "type": "eq"
     },
+    {  "id": "issue7403",
+       "file": "pdfs/issue7403.pdf",
+       "md5": "0f7bb6b3c58e33bbf76ce5161cd665c3",
+       "link": false,
+       "rounds": 1,
+       "type": "eq"
+    },
     {  "id": "protectip",
        "file": "pdfs/protectip.pdf",
        "md5": "676e7a7b8f96d04825361832b1838a93",
@@ -1123,6 +1130,28 @@
        "rounds": 1,
        "link": false,
        "type": "eq"
+    },
+    {  "id": "issue7446",
+       "file": "pdfs/issue7446.pdf",
+       "md5": "1b5bdd8a806e6ab9eda7c1c707b75fc6",
+       "rounds": 1,
+       "link": false,
+       "type": "load",
+       "about": "Annotation without the required /Subtype."
+    },
+    {  "id": "issue7492-eq",
+       "file": "pdfs/issue7492.pdf",
+       "md5": "7b0b28919c1088a2a5a0aeedbaa4c3ca",
+       "rounds": 1,
+       "link": false,
+       "type": "eq"
+    },
+    {  "id": "issue7492-text",
+       "file": "pdfs/issue7492.pdf",
+       "md5": "7b0b28919c1088a2a5a0aeedbaa4c3ca",
+       "rounds": 1,
+       "link": false,
+       "type": "text"
     },
     {  "id": "ShowText-ShadingPattern",
        "file": "pdfs/ShowText-ShadingPattern.pdf",
@@ -1386,6 +1415,13 @@
       "rounds": 1,
       "link": true,
       "type": "eq"
+    },
+    {  "id": "issue5256",
+       "file": "pdfs/issue5256.pdf",
+       "md5": "9383e17ced31f9afc940fb7898df8e68",
+       "rounds": 1,
+       "link": false,
+       "type": "eq"
     },
     {  "id": "issue6360",
        "file": "pdfs/issue6360.pdf",
@@ -1699,6 +1735,13 @@
        "md5": "9334a52dc85747f1e3422767e0cd3ee9",
        "rounds": 1,
        "link": false,
+       "type": "eq"
+    },
+    {  "id": "issue7426",
+       "file": "pdfs/issue7426.pdf",
+       "md5": "304e6cae18fdc07f66bd621fbe16b6cb",
+       "link": false,
+       "rounds": 1,
        "type": "eq"
     },
     {  "id": "issue6782",
