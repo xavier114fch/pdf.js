@@ -1,4 +1,3 @@
-
 /* Copyright 2014 Mozilla Foundation
  *
  * Licensed under the Apache License, Version 2.0 (the 'License');
@@ -18,26 +17,28 @@
 
 (function (root, factory) {
   if (typeof define === 'function' && define.amd) {
-    define('pdfjs/core/jpg', ['exports'], factory);
+    define('pdfjs/core/jpg', ['exports', 'pdfjs/shared/util'], factory);
   } else if (typeof exports !== 'undefined') {
-    factory(exports);
+    factory(exports, require('../shared/util.js'));
   } else {
-    factory((root.pdfjsCoreJpg = {}));
+    factory((root.pdfjsCoreJpg = {}), root.pdfjsSharedUtil);
   }
-}(this, function (exports) {
+}(this, function (exports, sharedUtil) {
 
-/*
-This code was forked from https://github.com/notmasteryet/jpgjs. The original
-version was created by github user notmasteryet
+var error = sharedUtil.error;
 
-- The JPEG specification can be found in the ITU CCITT Recommendation T.81
- (www.w3.org/Graphics/JPEG/itu-t81.pdf)
-- The JFIF specification can be found in the JPEG File Interchange Format
- (www.w3.org/Graphics/JPEG/jfif3.pdf)
-- The Adobe Application-Specific JPEG markers in the Supporting the DCT Filters
- in PostScript Level 2, Technical Note #5116
- (partners.adobe.com/public/developer/en/ps/sdk/5116.DCT_Filter.pdf)
-*/
+/**
+ * This code was forked from https://github.com/notmasteryet/jpgjs.
+ * The original version was created by GitHub user notmasteryet.
+ *
+ * - The JPEG specification can be found in the ITU CCITT Recommendation T.81
+ *   (www.w3.org/Graphics/JPEG/itu-t81.pdf)
+ * - The JFIF specification can be found in the JPEG File Interchange Format
+ *   (www.w3.org/Graphics/JPEG/jfif3.pdf)
+ * - The Adobe Application-Specific JPEG markers in the
+ *   Supporting the DCT Filters in PostScript Level 2, Technical Note #5116
+ *   (partners.adobe.com/public/developer/en/ps/sdk/5116.DCT_Filter.pdf)
+ */
 
 var JpegImage = (function jpegImage() {
   var dctZigZag = new Uint8Array([
@@ -123,8 +124,8 @@ var JpegImage = (function jpegImage() {
       if (bitsData === 0xFF) {
         var nextByte = data[offset++];
         if (nextByte) {
-          throw 'unexpected marker: ' +
-            ((bitsData << 8) | nextByte).toString(16);
+          error('JPEG error: unexpected marker ' +
+                ((bitsData << 8) | nextByte).toString(16));
         }
         // unstuff 0
       }
@@ -140,7 +141,7 @@ var JpegImage = (function jpegImage() {
           return node;
         }
         if (typeof node !== 'object') {
-          throw 'invalid huffman sequence';
+          error('JPEG error: invalid huffman sequence');
         }
       }
     }
@@ -247,7 +248,7 @@ var JpegImage = (function jpegImage() {
             }
           } else {
             if (s !== 1) {
-              throw 'invalid ACn encoding';
+              error('JPEG error: invalid ACn encoding');
             }
             successiveACNextValue = receiveAndExtend(s);
             successiveACState = r ? 2 : 3;
@@ -363,7 +364,7 @@ var JpegImage = (function jpegImage() {
       bitsCount = 0;
       marker = (data[offset] << 8) | data[offset + 1];
       if (marker <= 0xFF00) {
-        throw 'marker was not found';
+        error('JPEG error: marker was not found');
       }
 
       if (marker >= 0xFFD0 && marker <= 0xFFD7) { // RSTx
@@ -386,6 +387,10 @@ var JpegImage = (function jpegImage() {
     var v0, v1, v2, v3, v4, v5, v6, v7;
     var p0, p1, p2, p3, p4, p5, p6, p7;
     var t;
+
+    if (!qt) {
+      error('JPEG error: missing required Quantization Table.');
+    }
 
     // inverse DCT on rows
     for (var row = 0; row < 64; row += 8) {
@@ -626,7 +631,7 @@ var JpegImage = (function jpegImage() {
       var huffmanTablesAC = [], huffmanTablesDC = [];
       var fileMarker = readUint16();
       if (fileMarker !== 0xFFD8) { // SOI (Start of Image)
-        throw 'SOI not found';
+        error('JPEG error: SOI not found');
       }
 
       fileMarker = readUint16();
@@ -701,7 +706,7 @@ var JpegImage = (function jpegImage() {
                   tableData[z] = readUint16();
                 }
               } else {
-                throw 'DQT: invalid table spec';
+                error('JPEG error: DQT - invalid table spec');
               }
               quantizationTables[quantizationTableSpec & 15] = tableData;
             }
@@ -711,7 +716,7 @@ var JpegImage = (function jpegImage() {
           case 0xFFC1: // SOF1 (Start of Frame, Extended DCT)
           case 0xFFC2: // SOF2 (Start of Frame, Progressive DCT)
             if (frame) {
-              throw 'Only single frame JPEGs supported';
+              error('JPEG error: Only single frame JPEGs supported');
             }
             readUint16(); // skip data length
             frame = {};
@@ -738,7 +743,8 @@ var JpegImage = (function jpegImage() {
               l = frame.components.push({
                 h: h,
                 v: v,
-                quantizationTable: quantizationTables[qId]
+                quantizationId: qId,
+                quantizationTable: null, // See comment below.
               });
               frame.componentIds[componentId] = l - 1;
               offset += 3;
@@ -810,7 +816,7 @@ var JpegImage = (function jpegImage() {
               offset -= 3;
               break;
             }
-            throw 'unknown JPEG marker ' + fileMarker.toString(16);
+            error('JPEG error: unknown marker ' + fileMarker.toString(16));
         }
         fileMarker = readUint16();
       }
@@ -822,6 +828,15 @@ var JpegImage = (function jpegImage() {
       this.components = [];
       for (i = 0; i < frame.components.length; i++) {
         component = frame.components[i];
+
+        // Prevent errors when DQT markers are placed after SOF{n} markers,
+        // by assigning the `quantizationTable` entry after the entire image
+        // has been parsed (fixes issue7406.pdf).
+        var quantizationTable = quantizationTables[component.quantizationId];
+        if (quantizationTable) {
+          component.quantizationTable = quantizationTable;
+        }
+
         this.components.push({
           output: buildComponentData(frame, component),
           scaleX: component.h / frame.maxH,
@@ -1014,7 +1029,7 @@ var JpegImage = (function jpegImage() {
 
     getData: function getData(width, height, forceRGBoutput) {
       if (this.numComponents > 4) {
-        throw 'Unsupported color mode';
+        error('JPEG error: Unsupported color mode');
       }
       // type of data: Uint8Array(width * height * numComponents)
       var data = this._getLinearizedBlockData(width, height);

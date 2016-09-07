@@ -49,6 +49,7 @@ var warn = sharedUtil.warn;
 var Dict = corePrimitives.Dict;
 var isDict = corePrimitives.isDict;
 var isName = corePrimitives.isName;
+var isRef = corePrimitives.isRef;
 var Stream = coreStream.Stream;
 var ColorSpace = coreColorSpace.ColorSpace;
 var ObjectLoader = coreObj.ObjectLoader;
@@ -66,11 +67,14 @@ AnnotationFactory.prototype = /** @lends AnnotationFactory.prototype */ {
    * @param {Object} ref
    * @returns {Annotation}
    */
-  create: function AnnotationFactory_create(xref, ref) {
+  create: function AnnotationFactory_create(xref, ref,
+                                            uniquePrefix, idCounters) {
     var dict = xref.fetchIfRef(ref);
     if (!isDict(dict)) {
       return;
     }
+    var id = isRef(ref) ? ref.toString() :
+                          'annot_' + (uniquePrefix || '') + (++idCounters.obj);
 
     // Determine the annotation's subtype.
     var subtype = dict.get('Subtype');
@@ -80,8 +84,9 @@ AnnotationFactory.prototype = /** @lends AnnotationFactory.prototype */ {
     var parameters = {
       xref: xref,
       dict: dict,
-      ref: ref,
+      ref: isRef(ref) ? ref : null,
       subtype: subtype,
+      id: id,
     };
 
     switch (subtype) {
@@ -93,9 +98,14 @@ AnnotationFactory.prototype = /** @lends AnnotationFactory.prototype */ {
 
       case 'Widget':
         var fieldType = Util.getInheritableProperty(dict, 'FT');
-        if (isName(fieldType) && fieldType.name === 'Tx') {
-          return new TextWidgetAnnotation(parameters);
+        fieldType = isName(fieldType) ? fieldType.name : null;
+
+        switch (fieldType) {
+          case 'Tx':
+            return new TextWidgetAnnotation(parameters);
         }
+        warn('Unimplemented widget field type "' + fieldType + '", ' +
+             'falling back to base field type.');
         return new WidgetAnnotation(parameters);
 
       case 'Popup':
@@ -185,7 +195,7 @@ var Annotation = (function AnnotationClosure() {
 
     // Expose public properties using a data object.
     this.data = {};
-    this.data.id = params.ref.toString();
+    this.data.id = params.id;
     this.data.subtype = params.subtype;
     this.data.annotationFlags = this.flags;
     this.data.rect = this.rectangle;
@@ -338,10 +348,9 @@ var Annotation = (function AnnotationClosure() {
       }
       if (borderStyle.has('BS')) {
         var dict = borderStyle.get('BS');
-        var dictType;
+        var dictType = dict.get('Type');
 
-        if (!dict.has('Type') || (isName(dictType = dict.get('Type')) &&
-                                  dictType.name === 'Border')) {
+        if (!dictType || isName(dictType, 'Border')) {
           this.borderStyle.setWidth(dict.get('W'));
           this.borderStyle.setStyle(dict.get('S'));
           this.borderStyle.setDashArray(dict.getArray('D'));
@@ -611,13 +620,12 @@ var WidgetAnnotation = (function WidgetAnnotationClosure() {
     data.alternativeText = stringToPDFString(dict.get('TU') || '');
     data.defaultAppearance = Util.getInheritableProperty(dict, 'DA') || '';
     var fieldType = Util.getInheritableProperty(dict, 'FT');
-    data.fieldType = isName(fieldType) ? fieldType.name : '';
+    data.fieldType = isName(fieldType) ? fieldType.name : null;
     data.fieldFlags = Util.getInheritableProperty(dict, 'Ff') || 0;
     this.fieldResources = Util.getInheritableProperty(dict, 'DR') || Dict.empty;
 
-    // Hide unsupported Widget signatures.
+    // Hide signatures because we cannot validate them.
     if (data.fieldType === 'Sig') {
-      warn('unimplemented annotation type: Widget signature');
       this.setFlags(AnnotationFlag.HIDDEN);
     }
 
