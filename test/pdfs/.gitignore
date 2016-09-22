@@ -8,6 +8,7 @@
 !german-umlaut-r.pdf
 !xref_command_missing.pdf
 !issue1155r.pdf
+!issue2017r.pdf
 !issue2391-1.pdf
 !issue2391-2.pdf
 !issue3214.pdf
@@ -21,6 +22,7 @@
 !issue5808.pdf
 !issue6204.pdf
 !issue6782.pdf
+!issue6901.pdf
 !issue6961.pdf
 !issue6962.pdf
 !issue7020.pdf
@@ -35,6 +37,8 @@
 !issue7439.pdf
 !issue7446.pdf
 !issue7492.pdf
+!issue7544.pdf
+!issue7598.pdf
 !filled-background.pdf
 !ArabicCIDTrueType.pdf
 !ThuluthFeatures.pdf
@@ -47,6 +51,7 @@
 !bug1200096.pdf
 !bug1068432.pdf
 !bug1146106.pdf
+!bug1252420.pdf
 !issue5564_reduced.pdf
 !canvas.pdf
 !bug1132849.pdf
@@ -200,6 +205,9 @@
 !bug946506.pdf
 !issue3885.pdf
 !bug859204.pdf
+!annotation-tx.pdf
+!annotation-tx2.pdf
+!annotation-tx3.pdf
 !coons-allflags-withfunction.pdf
 !tensor-allflags-withfunction.pdf
 !issue4246.pdf
@@ -246,4 +254,5 @@
 !annotation-squiggly.pdf
 !annotation-highlight.pdf
 !annotation-fileattachment.pdf
+!annotation-text-widget.pdf
 !zero_descent.pdf

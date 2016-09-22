@@ -101,7 +101,6 @@ var SCALE_SELECT_CONTAINER_PADDING = 8;
 var SCALE_SELECT_PADDING = 22;
 var PAGE_NUMBER_LOADING_INDICATOR = 'visiblePageIsLoading';
 var DISABLE_AUTO_FETCH_LOADING_BAR_TIMEOUT = 5000;
-var ENHANCE_TEXT_SELECTION = false;
 
 function configure(PDFJS) {
   PDFJS.imageResourcesPath = './images/';
@@ -211,7 +210,8 @@ var PDFViewerApplication = {
       renderingQueue: pdfRenderingQueue,
       linkService: pdfLinkService,
       downloadManager: downloadManager,
-      enhanceTextSelection: ENHANCE_TEXT_SELECTION,
+      enhanceTextSelection: false,
+      renderInteractiveForms: false,
     });
     pdfRenderingQueue.setViewer(this.pdfViewer);
     pdfLinkService.setViewer(this.pdfViewer);
@@ -270,7 +270,7 @@ var PDFViewerApplication = {
       new PDFDocumentProperties(appConfig.documentProperties);
 
     this.secondaryToolbar =
-      new SecondaryToolbar(appConfig.secondaryToolbar, eventBus);
+      new SecondaryToolbar(appConfig.secondaryToolbar, container, eventBus);
 
     if (this.supportsFullscreen) {
       this.pdfPresentationMode = new PDFPresentationMode({
@@ -323,6 +323,18 @@ var PDFViewerApplication = {
       Preferences.get('defaultZoomValue').then(function resolved(value) {
         self.preferenceDefaultZoomValue = value;
       }),
+      Preferences.get('enhanceTextSelection').then(function resolved(value) {
+        // TODO: Move the initialization and fetching of `Preferences` to occur
+        //       before the various viewer components are initialized.
+        //
+        // This was attempted in: https://github.com/mozilla/pdf.js/pull/7586,
+        // but it had to be backed out since it violated implicit assumptions
+        // about some viewer components being synchronously available.
+        //
+        // NOTE: This hack works since the `enhanceTextSelection` option is not
+        //       needed until `PDFViewer.setDocument` has been called.
+        self.pdfViewer.enhanceTextSelection = value;
+      }),
       Preferences.get('disableTextLayer').then(function resolved(value) {
         if (PDFJS.disableTextLayer === true) {
           return;
@@ -358,6 +370,12 @@ var PDFViewerApplication = {
           return;
         }
         PDFJS.externalLinkTarget = value;
+      }),
+      Preferences.get('renderInteractiveForms').then(function resolved(value) {
+        // TODO: Like the `enhanceTextSelection` preference, move the
+        //       initialization and fetching of `Preferences` to occur
+        //       before the various viewer components are initialized.
+        self.pdfViewer.renderInteractiveForms = value;
       }),
       // TODO move more preferences and other async stuff here
     ]).catch(function (reason) { });
@@ -1785,6 +1803,9 @@ function webViewerUpdateViewarea(e) {
 }
 
 window.addEventListener('resize', function webViewerResize(evt) {
+  if (!PDFViewerApplication.eventBus) {
+    return;
+  }
   PDFViewerApplication.eventBus.dispatch('resize');
 });
 
@@ -1804,10 +1825,6 @@ function webViewerResize() {
     }
     PDFViewerApplication.pdfViewer.update();
   }
-
-  // Set the 'max-height' CSS property of the secondary toolbar.
-  var mainContainer = PDFViewerApplication.appConfig.mainContainer;
-  PDFViewerApplication.secondaryToolbar.setMaxHeight(mainContainer);
 }
 
 window.addEventListener('hashchange', function webViewerHashchange(evt) {
@@ -1891,10 +1908,6 @@ function webViewerLocalized() {
       container.setAttribute('style', 'min-width: ' + width + 'px; ' +
                                       'max-width: ' + width + 'px;');
     }
-
-    // Set the 'max-height' CSS property of the secondary toolbar.
-    var mainContainer = PDFViewerApplication.appConfig.mainContainer;
-    PDFViewerApplication.secondaryToolbar.setMaxHeight(mainContainer);
   });
 }
 

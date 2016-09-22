@@ -1,7 +1,7 @@
 /* globals expect, it, describe, Dict, Name, Annotation, AnnotationBorderStyle,
            AnnotationBorderStyleType, AnnotationType, AnnotationFlag, PDFJS,
            beforeEach, afterEach, stringToBytes, AnnotationFactory, Ref, isRef,
-           beforeAll, afterAll */
+           beforeAll, afterAll, AnnotationFieldFlag */
 
 'use strict';
 
@@ -450,6 +450,134 @@ describe('Annotation layer', function() {
 
       expect(data.url).toBeUndefined();
       expect(data.dest).toEqual('LI0');
+    });
+  });
+
+  describe('TextWidgetAnnotation', function() {
+    var textWidgetDict;
+
+    beforeEach(function (done) {
+      textWidgetDict = new Dict();
+      textWidgetDict.set('Type', Name.get('Annot'));
+      textWidgetDict.set('Subtype', Name.get('Widget'));
+      textWidgetDict.set('FT', Name.get('Tx'));
+
+      done();
+    });
+
+    afterEach(function () {
+      textWidgetDict = null;
+    });
+
+    it('should handle unknown text alignment, maximum length and flags',
+        function() {
+      var textWidgetRef = new Ref(124, 0);
+      var xref = new XRefMock([
+        { ref: textWidgetRef, data: textWidgetDict, }
+      ]);
+
+      var textWidgetAnnotation = annotationFactory.create(xref, textWidgetRef);
+      expect(textWidgetAnnotation.data.textAlignment).toEqual(null);
+      expect(textWidgetAnnotation.data.maxLen).toEqual(null);
+      expect(textWidgetAnnotation.data.readOnly).toEqual(false);
+      expect(textWidgetAnnotation.data.multiLine).toEqual(false);
+      expect(textWidgetAnnotation.data.comb).toEqual(false);
+    });
+
+    it('should not set invalid text alignment, maximum length and flags',
+        function() {
+      textWidgetDict.set('Q', 'center');
+      textWidgetDict.set('MaxLen', 'five');
+      textWidgetDict.set('Ff', 'readonly');
+
+      var textWidgetRef = new Ref(43, 0);
+      var xref = new XRefMock([
+        { ref: textWidgetRef, data: textWidgetDict, }
+      ]);
+
+      var textWidgetAnnotation = annotationFactory.create(xref, textWidgetRef);
+      expect(textWidgetAnnotation.data.textAlignment).toEqual(null);
+      expect(textWidgetAnnotation.data.maxLen).toEqual(null);
+      expect(textWidgetAnnotation.data.readOnly).toEqual(false);
+      expect(textWidgetAnnotation.data.multiLine).toEqual(false);
+      expect(textWidgetAnnotation.data.comb).toEqual(false);
+    });
+
+    it('should set valid text alignment, maximum length and flags',
+        function() {
+      textWidgetDict.set('Q', 1);
+      textWidgetDict.set('MaxLen', 20);
+      textWidgetDict.set('Ff', AnnotationFieldFlag.READONLY +
+                               AnnotationFieldFlag.MULTILINE);
+
+      var textWidgetRef = new Ref(84, 0);
+      var xref = new XRefMock([
+        { ref: textWidgetRef, data: textWidgetDict, }
+      ]);
+
+      var textWidgetAnnotation = annotationFactory.create(xref, textWidgetRef);
+      expect(textWidgetAnnotation.data.textAlignment).toEqual(1);
+      expect(textWidgetAnnotation.data.maxLen).toEqual(20);
+      expect(textWidgetAnnotation.data.readOnly).toEqual(true);
+      expect(textWidgetAnnotation.data.multiLine).toEqual(true);
+    });
+
+    it('should reject comb fields without a maximum length', function() {
+      textWidgetDict.set('Ff', AnnotationFieldFlag.COMB);
+
+      var textWidgetRef = new Ref(46, 0);
+      var xref = new XRefMock([
+        { ref: textWidgetRef, data: textWidgetDict, }
+      ]);
+
+      var textWidgetAnnotation = annotationFactory.create(xref, textWidgetRef);
+      expect(textWidgetAnnotation.data.comb).toEqual(false);
+    });
+
+    it('should accept comb fields with a maximum length', function() {
+      textWidgetDict.set('MaxLen', 20);
+      textWidgetDict.set('Ff', AnnotationFieldFlag.COMB);
+
+      var textWidgetRef = new Ref(46, 0);
+      var xref = new XRefMock([
+        { ref: textWidgetRef, data: textWidgetDict, }
+      ]);
+
+      var textWidgetAnnotation = annotationFactory.create(xref, textWidgetRef);
+      expect(textWidgetAnnotation.data.comb).toEqual(true);
+    });
+
+    it('should only accept comb fields when the flags are valid', function() {
+      var invalidFieldFlags = [
+        AnnotationFieldFlag.MULTILINE, AnnotationFieldFlag.PASSWORD,
+        AnnotationFieldFlag.FILESELECT
+      ];
+
+      // Start with all invalid flags set and remove them one by one.
+      // The field may only use combs when all invalid flags are unset.
+      var flags = AnnotationFieldFlag.COMB + AnnotationFieldFlag.MULTILINE +
+                  AnnotationFieldFlag.PASSWORD + AnnotationFieldFlag.FILESELECT;
+
+      for (var i = 0, ii = invalidFieldFlags.length; i <= ii; i++) {
+        textWidgetDict.set('MaxLen', 20);
+        textWidgetDict.set('Ff', flags);
+
+        var textWidgetRef = new Ref(93, 0);
+        var xref = new XRefMock([
+          { ref: textWidgetRef, data: textWidgetDict, }
+        ]);
+
+        var textWidgetAnnotation = annotationFactory.create(xref,
+                                                            textWidgetRef);
+
+        var valid = (invalidFieldFlags.length === 0);
+        expect(textWidgetAnnotation.data.comb).toEqual(valid);
+
+        // Remove the last invalid flag for the next iteration.
+        if (!valid) {
+          flags -= invalidFieldFlags.splice(-1, 1);
+        }
+      }
     });
   });
 

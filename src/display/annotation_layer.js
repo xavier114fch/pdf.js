@@ -45,6 +45,8 @@ var getDefaultSetting = displayDOMUtils.getDefaultSetting;
  * @property {PageViewport} viewport
  * @property {IPDFLinkService} linkService
  * @property {DownloadManager} downloadManager
+ * @property {string} imageResourcesPath
+ * @property {boolean} renderInteractiveForms
  */
 
 /**
@@ -115,6 +117,7 @@ var AnnotationElement = (function AnnotationElementClosure() {
     this.linkService = parameters.linkService;
     this.downloadManager = parameters.downloadManager;
     this.imageResourcesPath = parameters.imageResourcesPath;
+    this.renderInteractiveForms = parameters.renderInteractiveForms;
 
     if (isRenderable) {
       this.container = this._createContainer();
@@ -398,7 +401,9 @@ var TextAnnotationElement = (function TextAnnotationElementClosure() {
  */
 var WidgetAnnotationElement = (function WidgetAnnotationElementClosure() {
   function WidgetAnnotationElement(parameters) {
-    AnnotationElement.call(this, parameters, true);
+    var isRenderable = parameters.renderInteractiveForms ||
+      (!parameters.data.hasAppearance && !!parameters.data.fieldValue);
+    AnnotationElement.call(this, parameters, isRenderable);
   }
 
   Util.inherit(WidgetAnnotationElement, AnnotationElement, {
@@ -424,6 +429,8 @@ var WidgetAnnotationElement = (function WidgetAnnotationElementClosure() {
  */
 var TextWidgetAnnotationElement = (
     function TextWidgetAnnotationElementClosure() {
+  var TEXT_ALIGNMENT = ['left', 'center', 'right'];
+
   function TextWidgetAnnotationElement(parameters) {
     WidgetAnnotationElement.call(this, parameters);
   }
@@ -437,18 +444,53 @@ var TextWidgetAnnotationElement = (
      * @returns {HTMLSectionElement}
      */
     render: function TextWidgetAnnotationElement_render() {
-      var content = document.createElement('div');
-      content.textContent = this.data.fieldValue;
-      var textAlignment = this.data.textAlignment;
-      content.style.textAlign = ['left', 'center', 'right'][textAlignment];
-      content.style.verticalAlign = 'middle';
-      content.style.display = 'table-cell';
+      this.container.className = 'textWidgetAnnotation';
 
-      var font = (this.data.fontRefName ?
-        this.page.commonObjs.getData(this.data.fontRefName) : null);
-      this._setTextStyle(content, font);
+      var element = null;
+      if (this.renderInteractiveForms) {
+        // NOTE: We cannot set the values using `element.value` below, since it
+        //       prevents the AnnotationLayer rasterizer in `test/driver.js`
+        //       from parsing the elements correctly for the reference tests.
+        if (this.data.multiLine) {
+          element = document.createElement('textarea');
+          element.textContent = this.data.fieldValue;
+        } else {
+          element = document.createElement('input');
+          element.type = 'text';
+          element.setAttribute('value', this.data.fieldValue);
+        }
 
-      this.container.appendChild(content);
+        element.disabled = this.data.readOnly;
+
+        if (this.data.maxLen !== null) {
+          element.maxLength = this.data.maxLen;
+        }
+
+        if (this.data.comb) {
+          var fieldWidth = this.data.rect[2] - this.data.rect[0];
+          var combWidth = fieldWidth / this.data.maxLen;
+
+          element.classList.add('comb');
+          element.style.letterSpacing = 'calc(' + combWidth + 'px - 1ch)';
+        }
+      } else {
+        element = document.createElement('div');
+        element.textContent = this.data.fieldValue;
+        element.style.verticalAlign = 'middle';
+        element.style.display = 'table-cell';
+
+        var font = null;
+        if (this.data.fontRefName) {
+          font = this.page.commonObjs.getData(this.data.fontRefName);
+        }
+        this._setTextStyle(element, font);
+      }
+
+      if (this.data.textAlignment !== null) {
+        element.style.textAlign = TEXT_ALIGNMENT[this.data.textAlignment];
+      }
+
+      this.container.appendChild(element);
       return this.container;
     },
 
@@ -875,6 +917,7 @@ var FileAttachmentAnnotationElement = (
  * @property {PDFPage} page
  * @property {IPDFLinkService} linkService
  * @property {string} imageResourcesPath
+ * @property {boolean} renderInteractiveForms
  */
 
 /**
@@ -907,7 +950,8 @@ var AnnotationLayer = (function AnnotationLayerClosure() {
           linkService: parameters.linkService,
           downloadManager: parameters.downloadManager,
           imageResourcesPath: parameters.imageResourcesPath ||
-                              getDefaultSetting('imageResourcesPath')
+                              getDefaultSetting('imageResourcesPath'),
+          renderInteractiveForms: parameters.renderInteractiveForms || false,
         };
         var element = annotationElementFactory.create(properties);
         if (element.isRenderable) {

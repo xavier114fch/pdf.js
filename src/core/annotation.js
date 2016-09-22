@@ -33,6 +33,7 @@
                   coreColorSpace, coreObj, coreEvaluator) {
 
 var AnnotationBorderStyleType = sharedUtil.AnnotationBorderStyleType;
+var AnnotationFieldFlag = sharedUtil.AnnotationFieldFlag;
 var AnnotationFlag = sharedUtil.AnnotationFlag;
 var AnnotationType = sharedUtil.AnnotationType;
 var OPS = sharedUtil.OPS;
@@ -65,6 +66,8 @@ AnnotationFactory.prototype = /** @lends AnnotationFactory.prototype */ {
   /**
    * @param {XRef} xref
    * @param {Object} ref
+   * @param {string} uniquePrefix
+   * @param {Object} idCounters
    * @returns {Annotation}
    */
   create: function AnnotationFactory_create(xref, ref,
@@ -411,7 +414,8 @@ var Annotation = (function AnnotationClosure() {
       }.bind(this));
     },
 
-    getOperatorList: function Annotation_getOperatorList(evaluator, task) {
+    getOperatorList: function Annotation_getOperatorList(evaluator, task,
+                                                         renderForms) {
       if (!this.appearance) {
         return Promise.resolve(new OperatorList());
       }
@@ -448,13 +452,13 @@ var Annotation = (function AnnotationClosure() {
   };
 
   Annotation.appendToOperatorList = function Annotation_appendToOperatorList(
-      annotations, opList, partialEvaluator, task, intent) {
+      annotations, opList, partialEvaluator, task, intent, renderForms) {
     var annotationPromises = [];
     for (var i = 0, n = annotations.length; i < n; ++i) {
       if ((intent === 'display' && annotations[i].viewable) ||
           (intent === 'print' && annotations[i].printable)) {
         annotationPromises.push(
-          annotations[i].getOperatorList(partialEvaluator, task));
+          annotations[i].getOperatorList(partialEvaluator, task, renderForms));
       }
     }
     return Promise.all(annotationPromises).then(function(operatorLists) {
@@ -621,8 +625,12 @@ var WidgetAnnotation = (function WidgetAnnotationClosure() {
     data.defaultAppearance = Util.getInheritableProperty(dict, 'DA') || '';
     var fieldType = Util.getInheritableProperty(dict, 'FT');
     data.fieldType = isName(fieldType) ? fieldType.name : null;
-    data.fieldFlags = Util.getInheritableProperty(dict, 'Ff') || 0;
     this.fieldResources = Util.getInheritableProperty(dict, 'DR') || Dict.empty;
+
+    data.fieldFlags = Util.getInheritableProperty(dict, 'Ff');
+    if (!isInt(data.fieldFlags) || data.fieldFlags < 0) {
+      data.fieldFlags = 0;
+    }
 
     // Hide signatures because we cannot validate them.
     if (data.fieldType === 'Sig') {
@@ -662,7 +670,21 @@ var WidgetAnnotation = (function WidgetAnnotationClosure() {
     data.fullName = fieldName.join('.');
   }
 
-  Util.inherit(WidgetAnnotation, Annotation, {});
+  Util.inherit(WidgetAnnotation, Annotation, {
+    /**
+     * Check if a provided field flag is set.
+     *
+     * @public
+     * @memberof WidgetAnnotation
+     * @param {number} flag - Hexadecimal representation for an annotation
+     *                        field characteristic
+     * @return {boolean}
+     * @see {@link shared/util.js}
+     */
+    hasFieldFlag: function WidgetAnnotation_hasFieldFlag(flag) {
+      return !!(this.data.fieldFlags & flag);
+    },
+  });
 
   return WidgetAnnotation;
 })();
@@ -671,31 +693,58 @@ var TextWidgetAnnotation = (function TextWidgetAnnotationClosure() {
   function TextWidgetAnnotation(params) {
     WidgetAnnotation.call(this, params);
 
-    this.data.textAlignment = Util.getInheritableProperty(params.dict, 'Q');
-    this.data.maxLen = Util.getInheritableProperty(params.dict, 'MaxLen');
+    // Determine the alignment of text in the field.
+    var alignment = Util.getInheritableProperty(params.dict, 'Q');
+    if (!isInt(alignment) || alignment < 0 || alignment > 2) {
+      alignment = null;
+    }
+    this.data.textAlignment = alignment;
+
+    // Determine the maximum length of text in the field.
+    var maximumLength = Util.getInheritableProperty(params.dict, 'MaxLen');
+    if (!isInt(maximumLength) || maximumLength < 0) {
+      maximumLength = null;
+    }
+    this.data.maxLen = maximumLength;
+
+    // Process field flags for the display layer.
+    this.data.readOnly = this.hasFieldFlag(AnnotationFieldFlag.READONLY);
+    this.data.multiLine = this.hasFieldFlag(AnnotationFieldFlag.MULTILINE);
+    this.data.comb = this.hasFieldFlag(AnnotationFieldFlag.COMB) &&
+                     !this.hasFieldFlag(AnnotationFieldFlag.MULTILINE) &&
+                     !this.hasFieldFlag(AnnotationFieldFlag.PASSWORD) &&
+                     !this.hasFieldFlag(AnnotationFieldFlag.FILESELECT) &&
+                     this.data.maxLen !== null;
   }
 
   Util.inherit(TextWidgetAnnotation, WidgetAnnotation, {
-    getOperatorList: function TextWidgetAnnotation_getOperatorList(evaluator,
-                                                                   task) {
-      if (this.appearance) {
-        return Annotation.prototype.getOperatorList.call(this, evaluator, task);
+    getOperatorList:
+        function TextWidgetAnnotation_getOperatorList(evaluator, task,
+                                                      renderForms) {
+      var operatorList = new OperatorList();
+
+      // Do not render form elements on the canvas when interactive forms are
+      // enabled. The display layer is responsible for rendering them instead.
+      if (renderForms) {
+        return Promise.resolve(operatorList);
       }
 
-      var opList = new OperatorList();
-      var data = this.data;
+      if (this.appearance) {
+        return Annotation.prototype.getOperatorList.call(this, evaluator, task,
+                                                         renderForms);
+      }
 
       // Even if there is an appearance stream, ignore it. This is the
       // behaviour used by Adobe Reader.
-      if (!data.defaultAppearance) {
-        return Promise.resolve(opList);
+      if (!this.data.defaultAppearance) {
+        return Promise.resolve(operatorList);
       }
 
-      var stream = new Stream(stringToBytes(data.defaultAppearance));
-      return evaluator.getOperatorList(stream, task,
-                                       this.fieldResources, opList).
+      var stream = new Stream(stringToBytes(this.data.defaultAppearance));
+      return evaluator.getOperatorList(stream, task, this.fieldResources,
+                                       operatorList).
         then(function () {
-          return opList;
+          return operatorList;
         });
     }
   });

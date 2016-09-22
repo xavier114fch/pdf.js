@@ -205,7 +205,8 @@ var Page = (function PageClosure() {
       }.bind(this));
     },
 
-    getOperatorList: function Page_getOperatorList(handler, task, intent) {
+    getOperatorList: function Page_getOperatorList(handler, task, intent,
+                                                   renderInteractiveForms) {
       var self = this;
 
       var pdfManager = this.pdfManager;
@@ -257,7 +258,8 @@ var Page = (function PageClosure() {
         }
 
         var annotationsReadyPromise = Annotation.appendToOperatorList(
-          annotations, pageOpList, partialEvaluator, task, intent);
+          annotations, pageOpList, partialEvaluator, task, intent,
+          renderInteractiveForms);
         return annotationsReadyPromise.then(function () {
           pageOpList.flush(true);
           return pageOpList;
