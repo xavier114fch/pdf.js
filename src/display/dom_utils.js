@@ -28,6 +28,8 @@
 
 var removeNullCharacters = sharedUtil.removeNullCharacters;
 var warn = sharedUtil.warn;
+var deprecated = sharedUtil.deprecated;
+var createValidAbsoluteUrl = sharedUtil.createValidAbsoluteUrl;
 
 /**
  * Optimised CSS custom property getter/setter.
@@ -83,17 +85,19 @@ var CustomStyle = (function CustomStyleClosure() {
   return CustomStyle;
 })();
 
-//#if !(FIREFOX || MOZCENTRAL || CHROME)
-function hasCanvasTypedArrays() {
-  var canvas = document.createElement('canvas');
-  canvas.width = canvas.height = 1;
-  var ctx = canvas.getContext('2d');
-  var imageData = ctx.createImageData(1, 1);
-  return (typeof imageData.data.buffer !== 'undefined');
+var hasCanvasTypedArrays;
+if (typeof PDFJSDev === 'undefined' ||
+    !PDFJSDev.test('FIREFOX || MOZCENTRAL || CHROME')) {
+  hasCanvasTypedArrays = function hasCanvasTypedArrays() {
+    var canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 1;
+    var ctx = canvas.getContext('2d');
+    var imageData = ctx.createImageData(1, 1);
+    return (typeof imageData.data.buffer !== 'undefined');
+  };
+} else {
+  hasCanvasTypedArrays = function () { return true; };
 }
-//#else
-//function hasCanvasTypedArrays() { return true; }
-//#endif
 
 var LinkTarget = {
   NONE: 0, // Default value.
@@ -227,9 +231,16 @@ function isExternalLinkTargetSet() {
   }
 }
 
+function isValidUrl(url, allowRelative) {
+  deprecated('isValidUrl(), please use createValidAbsoluteUrl() instead.');
+  var baseUrl = allowRelative ? 'http://example.com' : null;
+  return createValidAbsoluteUrl(url, baseUrl) !== null;
+}
+
 exports.CustomStyle = CustomStyle;
 exports.addLinkAttributes = addLinkAttributes;
 exports.isExternalLinkTargetSet = isExternalLinkTargetSet;
+exports.isValidUrl = isValidUrl;
 exports.getFilenameFromUrl = getFilenameFromUrl;
 exports.LinkTarget = LinkTarget;
 exports.hasCanvasTypedArrays = hasCanvasTypedArrays;

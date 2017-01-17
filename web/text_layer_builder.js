@@ -18,8 +18,7 @@
 (function (root, factory) {
   if (typeof define === 'function' && define.amd) {
     define('pdfjs-web/text_layer_builder', ['exports', 'pdfjs-web/dom_events',
-        'pdfjs-web/pdfjs'],
-      factory);
+        'pdfjs-web/pdfjs'], factory);
   } else if (typeof exports !== 'undefined') {
     factory(exports, require('./dom_events.js'), require('./pdfjs.js'));
   } else {
@@ -27,6 +26,8 @@
       root.pdfjsWebPDFJS);
   }
 }(this, function (exports, domEvents, pdfjsLib) {
+
+var EXPAND_DIVS_TIMEOUT = 300; // ms
 
 /**
  * @typedef {Object} TextLayerBuilderOptions
@@ -50,8 +51,8 @@ var TextLayerBuilder = (function TextLayerBuilderClosure() {
   function TextLayerBuilder(options) {
     this.textLayerDiv = options.textLayerDiv;
     this.eventBus = options.eventBus || domEvents.getGlobalEventBus();
+    this.textContent = null;
     this.renderingDone = false;
-    this.divContentDone = false;
     this.pageIdx = options.pageIndex;
     this.pageNumber = this.pageIdx + 1;
     this.matches = [];
@@ -64,6 +65,9 @@ var TextLayerBuilder = (function TextLayerBuilderClosure() {
   }
 
   TextLayerBuilder.prototype = {
+    /**
+     * @private
+     */
     _finishRendering: function TextLayerBuilder_finishRendering() {
       this.renderingDone = true;
 
@@ -75,7 +79,8 @@ var TextLayerBuilder = (function TextLayerBuilderClosure() {
 
       this.eventBus.dispatch('textlayerrendered', {
         source: this,
-        pageNumber: this.pageNumber
+        pageNumber: this.pageNumber,
+        numTextDivs: this.textDivs.length,
       });
     },
 
@@ -85,14 +90,10 @@ var TextLayerBuilder = (function TextLayerBuilderClosure() {
      *   for specified amount of ms.
      */
     render: function TextLayerBuilder_render(timeout) {
-      if (!this.divContentDone || this.renderingDone) {
+      if (!this.textContent || this.renderingDone) {
         return;
       }
-
-      if (this.textLayerRenderTask) {
-        this.textLayerRenderTask.cancel();
-        this.textLayerRenderTask = null;
-      }
+      this.cancel();
 
       this.textDivs = [];
       var textLayerFrag = document.createDocumentFragment();
@@ -109,17 +110,23 @@ var TextLayerBuilder = (function TextLayerBuilderClosure() {
         this._finishRendering();
         this.updateMatches();
       }.bind(this), function (reason) {
-        // canceled or failed to render text layer -- skipping errors
+        // cancelled or failed to render text layer -- skipping errors
       });
     },
 
-    setTextContent: function TextLayerBuilder_setTextContent(textContent) {
+    /**
+     * Cancels rendering of the text layer.
+     */
+    cancel: function TextLayerBuilder_cancel() {
       if (this.textLayerRenderTask) {
         this.textLayerRenderTask.cancel();
         this.textLayerRenderTask = null;
       }
+    },
+
+    setTextContent: function TextLayerBuilder_setTextContent(textContent) {
+      this.cancel();
       this.textContent = textContent;
-      this.divContentDone = true;
     },
 
     convertMatches: function TextLayerBuilder_convertMatches(matches,
@@ -321,45 +328,66 @@ var TextLayerBuilder = (function TextLayerBuilderClosure() {
     _bindMouse: function TextLayerBuilder_bindMouse() {
       var div = this.textLayerDiv;
       var self = this;
+      var expandDivsTimer = null;
+
       div.addEventListener('mousedown', function (e) {
         if (self.enhanceTextSelection && self.textLayerRenderTask) {
           self.textLayerRenderTask.expandTextDivs(true);
+          if ((typeof PDFJSDev === 'undefined' ||
+               !PDFJSDev.test('FIREFOX || MOZCENTRAL')) &&
+              expandDivsTimer) {
+            clearTimeout(expandDivsTimer);
+            expandDivsTimer = null;
+          }
           return;
         }
         var end = div.querySelector('.endOfContent');
         if (!end) {
           return;
         }
-//#if !(MOZCENTRAL || FIREFOX)
+        if (typeof PDFJSDev === 'undefined' ||
+            !PDFJSDev.test('FIREFOX || MOZCENTRAL')) {
         // On non-Firefox browsers, the selection will feel better if the height
         // of the endOfContent div will be adjusted to start at mouse click
         // location -- this will avoid flickering when selections moves up.
         // However it does not work when selection started on empty space.
         var adjustTop = e.target !== div;
-//#if GENERIC
-        adjustTop = adjustTop && window.getComputedStyle(end).
-          getPropertyValue('-moz-user-select') !== 'none';
-//#endif
+        if (typeof PDFJSDev === 'undefined' || PDFJSDev.test('GENERIC')) {
+          adjustTop = adjustTop && window.getComputedStyle(end).
+            getPropertyValue('-moz-user-select') !== 'none';
+        }
         if (adjustTop) {
           var divBounds = div.getBoundingClientRect();
           var r = Math.max(0, (e.pageY - divBounds.top) / divBounds.height);
           end.style.top = (r * 100).toFixed(2) + '%';
         }
-//#endif
+        }
         end.classList.add('active');
       });
+
       div.addEventListener('mouseup', function (e) {
         if (self.enhanceTextSelection && self.textLayerRenderTask) {
-          self.textLayerRenderTask.expandTextDivs(false);
+          if (typeof PDFJSDev === 'undefined' ||
+              !PDFJSDev.test('FIREFOX || MOZCENTRAL')) {
+            expandDivsTimer = setTimeout(function() {
+              if (self.textLayerRenderTask) {
+                self.textLayerRenderTask.expandTextDivs(false);
+              }
+              expandDivsTimer = null;
+            }, EXPAND_DIVS_TIMEOUT);
+          } else {
+            self.textLayerRenderTask.expandTextDivs(false);
+          }
           return;
         }
         var end = div.querySelector('.endOfContent');
         if (!end) {
           return;
         }
-//#if !(MOZCENTRAL || FIREFOX)
-        end.style.top = '';
-//#endif
+        if (typeof PDFJSDev === 'undefined' ||
+            !PDFJSDev.test('FIREFOX || MOZCENTRAL')) {
+          end.style.top = '';
+        }
         end.classList.remove('active');
       });
     },

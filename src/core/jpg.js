@@ -12,6 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/* eslint-disable no-multi-spaces */
 
 'use strict';
 
@@ -40,7 +41,7 @@ var error = sharedUtil.error;
  *   (partners.adobe.com/public/developer/en/ps/sdk/5116.DCT_Filter.pdf)
  */
 
-var JpegImage = (function jpegImage() {
+var JpegImage = (function JpegImageClosure() {
   var dctZigZag = new Uint8Array([
      0,
      1,  8,
@@ -68,7 +69,9 @@ var JpegImage = (function jpegImage() {
   var dctSqrt2 =  5793;   // sqrt(2)
   var dctSqrt1d2 = 2896;  // sqrt(2) / 2
 
-  function constructor() {
+  function JpegImage() {
+    this.decodeTransform = null;
+    this.colorTransform = -1;
   }
 
   function buildHuffmanTable(codeLengths, values) {
@@ -363,6 +366,12 @@ var JpegImage = (function jpegImage() {
       // find marker
       bitsCount = 0;
       marker = (data[offset] << 8) | data[offset + 1];
+      // Some bad images seem to pad Scan blocks with zero bytes, skip past
+      // those to attempt to find a valid marker (fixes issue4090.pdf).
+      while (data[offset] === 0x00 && offset < data.length - 1) {
+        offset++;
+        marker = (data[offset] << 8) | data[offset + 1];
+      }
       if (marker <= 0xFF00) {
         error('JPEG error: marker was not found');
       }
@@ -585,7 +594,7 @@ var JpegImage = (function jpegImage() {
     return a <= 0 ? 0 : a >= 255 ? 255 : a;
   }
 
-  constructor.prototype = {
+  JpegImage.prototype = {
     parse: function parse(data) {
 
       function readUint16() {
@@ -608,7 +617,7 @@ var JpegImage = (function jpegImage() {
           component = frame.components[i];
           var blocksPerLine = Math.ceil(Math.ceil(frame.samplesPerLine / 8) *
                                         component.h / frame.maxH);
-          var blocksPerColumn = Math.ceil(Math.ceil(frame.scanLines  / 8) *
+          var blocksPerColumn = Math.ceil(Math.ceil(frame.scanLines / 8) *
                                           component.v / frame.maxV);
           var blocksPerLineForMcu = mcusPerLine * component.h;
           var blocksPerColumnForMcu = mcusPerColumn * component.v;
@@ -637,7 +646,7 @@ var JpegImage = (function jpegImage() {
       fileMarker = readUint16();
       while (fileMarker !== 0xFFD9) { // EOI (End of image)
         var i, j, l;
-        switch(fileMarker) {
+        switch (fileMarker) {
           case 0xFFE0: // APP0 (Application Specific)
           case 0xFFE1: // APP1
           case 0xFFE2: // APP2
@@ -902,10 +911,22 @@ var JpegImage = (function jpegImage() {
         // The adobe transform marker overrides any previous setting
         return true;
       } else if (this.numComponents === 3) {
+        if (!this.adobe && this.colorTransform === 0) {
+          // If the Adobe transform marker is not present and the image
+          // dictionary has a 'ColorTransform' entry, explicitly set to `0`,
+          // then the colours should *not* be transformed.
+          return false;
+        }
         return true;
-      } else {
-        return false;
       }
+      // `this.numComponents !== 3`
+      if (!this.adobe && this.colorTransform === 1) {
+        // If the Adobe transform marker is not present and the image
+        // dictionary has a 'ColorTransform' entry, explicitly set to `1`,
+        // then the colours should be transformed.
+        return true;
+      }
+      return false;
     },
 
     _convertYccToRgb: function convertYccToRgb(data) {
@@ -1045,15 +1066,14 @@ var JpegImage = (function jpegImage() {
           rgbData[offset++] = grayColor;
         }
         return rgbData;
-      } else if (this.numComponents === 3) {
+      } else if (this.numComponents === 3 && this._isColorConversionNeeded()) {
         return this._convertYccToRgb(data);
       } else if (this.numComponents === 4) {
         if (this._isColorConversionNeeded()) {
           if (forceRGBoutput) {
             return this._convertYcckToRgb(data);
-          } else {
-            return this._convertYcckToCmyk(data);
           }
+          return this._convertYcckToCmyk(data);
         } else if (forceRGBoutput) {
           return this._convertCmykToRgb(data);
         }
@@ -1062,7 +1082,7 @@ var JpegImage = (function jpegImage() {
     }
   };
 
-  return constructor;
+  return JpegImage;
 })();
 
 exports.JpegImage = JpegImage;

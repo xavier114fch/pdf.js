@@ -146,28 +146,35 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
    */
   NativeImageDecoder.isSupported =
       function NativeImageDecoder_isSupported(image, xref, res) {
-    var cs = ColorSpace.parse(image.dict.get('ColorSpace', 'CS'), xref, res);
+    var dict = image.dict;
+    if (dict.has('DecodeParms') || dict.has('DP')) {
+      return false;
+    }
+    var cs = ColorSpace.parse(dict.get('ColorSpace', 'CS'), xref, res);
     return (cs.name === 'DeviceGray' || cs.name === 'DeviceRGB') &&
-           cs.isDefaultDecode(image.dict.getArray('Decode', 'D'));
+           cs.isDefaultDecode(dict.getArray('Decode', 'D'));
   };
   /**
    * Checks if the image can be decoded by the browser.
    */
   NativeImageDecoder.isDecodable =
       function NativeImageDecoder_isDecodable(image, xref, res) {
-    var cs = ColorSpace.parse(image.dict.get('ColorSpace', 'CS'), xref, res);
+    var dict = image.dict;
+    if (dict.has('DecodeParms') || dict.has('DP')) {
+      return false;
+    }
+    var cs = ColorSpace.parse(dict.get('ColorSpace', 'CS'), xref, res);
     return (cs.numComps === 1 || cs.numComps === 3) &&
-           cs.isDefaultDecode(image.dict.getArray('Decode', 'D'));
+           cs.isDefaultDecode(dict.getArray('Decode', 'D'));
   };
 
   function PartialEvaluator(pdfManager, xref, handler, pageIndex,
-                            uniquePrefix, idCounters, fontCache, options) {
+                            idFactory, fontCache, options) {
     this.pdfManager = pdfManager;
     this.xref = xref;
     this.handler = handler;
     this.pageIndex = pageIndex;
-    this.uniquePrefix = uniquePrefix;
-    this.idCounters = idCounters;
+    this.idFactory = idFactory;
     this.fontCache = fontCache;
     this.options = options || DefaultPartialEvaluatorOptions;
   }
@@ -383,8 +390,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
 
       // If there is no imageMask, create the PDFImage and a lot
       // of image processing can be done here.
-      var uniquePrefix = (this.uniquePrefix || '');
-      var objId = 'img_' + uniquePrefix + (++this.idCounters.obj);
+      var objId = 'img_' + this.idFactory.createObjId();
       operatorList.addDependency(objId);
       args = [objId, w, h];
 
@@ -725,7 +731,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         this.fontCache.put(fontRef, fontCapability.promise);
       } else {
         if (!fontID) {
-          fontID = (this.uniquePrefix || 'F_') + (++this.idCounters.obj);
+          fontID = this.idFactory.createObjId();
         }
         this.fontCache.put('id_' + fontID, fontCapability.promise);
       }
@@ -815,9 +821,8 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
                                          this.handler);
           operatorList.addOp(fn, pattern.getIR());
           return Promise.resolve();
-        } else {
-          return Promise.reject('Unknown PatternType: ' + typeNum);
         }
+        return Promise.reject('Unknown PatternType: ' + typeNum);
       }
       // TODO shall we fail here?
       operatorList.addOp(fn, args);
@@ -1358,10 +1363,10 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
 
         if (!font.vertical) {
           textChunk.lastAdvanceWidth = width;
-          textChunk.width += width * textChunk.textAdvanceScale;
+          textChunk.width += width;
         } else {
           textChunk.lastAdvanceHeight = height;
-          textChunk.height += Math.abs(height * textChunk.textAdvanceScale);
+          textChunk.height += Math.abs(height);
         }
 
         return textChunk;
@@ -1385,6 +1390,10 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         if (!textContentItem.initialized) {
           return;
         }
+
+        // Do final text scaling
+        textContentItem.width *= textContentItem.textAdvanceScale;
+        textContentItem.height *= textContentItem.textAdvanceScale;
         textContent.items.push(runBidiTransform(textContentItem));
 
         textContentItem.initialized = false;
@@ -1523,7 +1532,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
               for (var j = 0, jj = items.length; j < jj; j++) {
                 if (typeof items[j] === 'string') {
                   buildTextContentItem(items[j]);
-                } else {
+                } else if (isNum(items[j])) {
                   ensureTextContentItem();
 
                   // PDF Specification 5.3.2 states:
@@ -1537,10 +1546,8 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
                   advance = items[j] * textState.fontSize / 1000;
                   var breakTextRun = false;
                   if (textState.font.vertical) {
-                    offset = advance *
-                      (textState.textHScale * textState.textMatrix[2] +
-                       textState.textMatrix[3]);
-                    textState.translateTextMatrix(0, advance);
+                    offset = advance;
+                    textState.translateTextMatrix(0, offset);
                     breakTextRun = textContentItem.textRunBreakAllowed &&
                                    advance > textContentItem.fakeMultiSpaceMax;
                     if (!breakTextRun) {
@@ -1549,10 +1556,8 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
                     }
                   } else {
                     advance = -advance;
-                    offset = advance * (
-                      textState.textHScale * textState.textMatrix[0] +
-                      textState.textMatrix[1]);
-                    textState.translateTextMatrix(advance, 0);
+                    offset = advance * textState.textHScale;
+                    textState.translateTextMatrix(offset, 0);
                     breakTextRun = textContentItem.textRunBreakAllowed &&
                                    advance > textContentItem.fakeMultiSpaceMax;
                     if (!breakTextRun) {
@@ -1738,11 +1743,18 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
       if (baseEncodingName) {
         properties.defaultEncoding = getEncoding(baseEncodingName).slice();
       } else {
-        encoding = (properties.type === 'TrueType' ?
-                    WinAnsiEncoding : StandardEncoding);
+        var isSymbolicFont = !!(properties.flags & FontFlags.Symbolic);
+        var isNonsymbolicFont = !!(properties.flags & FontFlags.Nonsymbolic);
+        // According to "Table 114" in section "9.6.6.1 General" (under
+        // "9.6.6 Character Encoding") of the PDF specification, a Nonsymbolic
+        // font should use the `StandardEncoding` if no encoding is specified.
+        encoding = StandardEncoding;
+        if (properties.type === 'TrueType' && !isNonsymbolicFont) {
+          encoding = WinAnsiEncoding;
+        }
         // The Symbolic attribute can be misused for regular fonts
         // Heuristic: we have to check if the font is a standard one also
-        if (!!(properties.flags & FontFlags.Symbolic)) {
+        if (isSymbolicFont) {
           encoding = MacRomanEncoding;
           if (!properties.file) {
             if (/Symbol/i.test(properties.name)) {
@@ -1982,14 +1994,14 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         widths = dict.get('W');
         if (widths) {
           for (i = 0, ii = widths.length; i < ii; i++) {
-            start = widths[i++];
+            start = xref.fetchIfRef(widths[i++]);
             code = xref.fetchIfRef(widths[i]);
             if (isArray(code)) {
               for (j = 0, jj = code.length; j < jj; j++) {
-                glyphsWidths[start++] = code[j];
+                glyphsWidths[start++] = xref.fetchIfRef(code[j]);
               }
             } else {
-              var width = widths[++i];
+              var width = xref.fetchIfRef(widths[++i]);
               for (j = start; j <= code; j++) {
                 glyphsWidths[j] = width;
               }
@@ -1998,19 +2010,27 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         }
 
         if (properties.vertical) {
-          var vmetrics = (dict.get('DW2') || [880, -1000]);
+          var vmetrics = dict.getArray('DW2') || [880, -1000];
           defaultVMetrics = [vmetrics[1], defaultWidth * 0.5, vmetrics[0]];
           vmetrics = dict.get('W2');
           if (vmetrics) {
             for (i = 0, ii = vmetrics.length; i < ii; i++) {
-              start = vmetrics[i++];
+              start = xref.fetchIfRef(vmetrics[i++]);
               code = xref.fetchIfRef(vmetrics[i]);
               if (isArray(code)) {
                 for (j = 0, jj = code.length; j < jj; j++) {
-                  glyphsVMetrics[start++] = [code[j++], code[j++], code[j]];
+                  glyphsVMetrics[start++] = [
+                    xref.fetchIfRef(code[j++]),
+                    xref.fetchIfRef(code[j++]),
+                    xref.fetchIfRef(code[j])
+                  ];
                 }
               } else {
-                var vmetric = [vmetrics[++i], vmetrics[++i], vmetrics[++i]];
+                var vmetric = [
+                  xref.fetchIfRef(vmetrics[++i]),
+                  xref.fetchIfRef(vmetrics[++i]),
+                  xref.fetchIfRef(vmetrics[++i])
+                ];
                 for (j = start; j <= code; j++) {
                   glyphsVMetrics[j] = vmetric;
                 }
@@ -2024,7 +2044,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         if (widths) {
           j = firstChar;
           for (i = 0, ii = widths.length; i < ii; i++) {
-            glyphsWidths[j++] = widths[i];
+            glyphsWidths[j++] = xref.fetchIfRef(widths[i]);
           }
           defaultWidth = (parseFloat(descriptor.get('MissingWidth')) || 0);
         } else {
@@ -2166,11 +2186,19 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
               hash.update(entry.name);
             } else if (isRef(entry)) {
               hash.update(entry.toString());
-            } else if (isArray(entry)) { // 'Differences' entry.
-              // Ideally we should check the contents of the array, but to avoid
-              // parsing it here and then again in |extractDataStructures|,
-              // we only use the array length for now (fixes bug1157493.pdf).
-              hash.update(entry.length.toString());
+            } else if (isArray(entry)) {
+              // 'Differences' array (fixes bug1157493.pdf).
+              var diffLength = entry.length, diffBuf = new Array(diffLength);
+
+              for (var j = 0; j < diffLength; j++) {
+                var diffEntry = entry[j];
+                if (isName(diffEntry)) {
+                  diffBuf[j] = diffEntry.name;
+                } else if (isNum(diffEntry) || isRef(diffEntry)) {
+                  diffBuf[j] = diffEntry.toString();
+                }
+              }
+              hash.update(diffBuf.join());
             }
           }
         }
@@ -2842,7 +2870,7 @@ var EvaluatorPreprocessor = (function EvaluatorPreprocessorClosure() {
                 argsLength--;
               }
               while (argsLength < numArgs && nonProcessedArgs.length !== 0) {
-                if (!args) {
+                if (args === null) {
                   args = [];
                 }
                 args.unshift(nonProcessedArgs.pop());
@@ -2851,17 +2879,18 @@ var EvaluatorPreprocessor = (function EvaluatorPreprocessorClosure() {
             }
 
             if (argsLength < numArgs) {
-              // If we receive too few args, it's not possible to possible
-              // to execute the command, so skip the command
-              info('Command ' + fn + ': because expected ' +
-                   numArgs + ' args, but received ' + argsLength +
-                   ' args; skipping');
-              args = null;
+              // If we receive too few arguments, it's not possible to execute
+              // the command, hence we skip the command.
+              warn('Skipping command ' + fn + ': expected ' + numArgs +
+                   ' args, but received ' + argsLength + ' args.');
+              if (args !== null) {
+                args.length = 0;
+              }
               continue;
             }
           } else if (argsLength > numArgs) {
             info('Command ' + fn + ': expected [0,' + numArgs +
-                 '] args, but received ' + argsLength + ' args');
+                 '] args, but received ' + argsLength + ' args.');
           }
 
           // TODO figure out how to type-check vararg functions
@@ -2870,18 +2899,17 @@ var EvaluatorPreprocessor = (function EvaluatorPreprocessorClosure() {
           operation.fn = fn;
           operation.args = args;
           return true;
-        } else {
-          if (isEOF(obj)) {
-            return false; // no more commands
+        }
+        if (isEOF(obj)) {
+          return false; // no more commands
+        }
+        // argument
+        if (obj !== null) {
+          if (args === null) {
+            args = [];
           }
-          // argument
-          if (obj !== null) {
-            if (!args) {
-              args = [];
-            }
-            args.push(obj);
-            assert(args.length <= 33, 'Too many arguments');
-          }
+          args.push(obj);
+          assert(args.length <= 33, 'Too many arguments');
         }
       }
     },

@@ -27,7 +27,12 @@
       root.pdfjsWebApp, root.pdfjsWebPDFJS);
   }
 }(this, function (exports, preferences, app, pdfjsLib) {
-//#if FIREFOX || MOZCENTRAL
+if (typeof PDFJSDev === 'undefined' ||
+    !PDFJSDev.test('FIREFOX || MOZCENTRAL')) {
+  throw new Error('Module "pdfjs-web/firefoxcom" shall not be used outside ' +
+                  'FIREFOX and MOZCENTRAL builds.');
+}
+
 var Preferences = preferences.Preferences;
 var PDFViewerApplication = app.PDFViewerApplication;
 
@@ -168,7 +173,7 @@ Preferences._readFromStorage = function (prefObj) {
       highlightAll: !!evt.detail.highlightAll,
       findPrevious: !!evt.detail.findPrevious
     });
-  }.bind(this);
+  };
 
   for (var i = 0, len = events.length; i < len; i++) {
     window.addEventListener(events[i], handleEvent);
@@ -288,5 +293,4 @@ document.mozL10n.setExternalLocalizerServices({
 
 exports.DownloadManager = DownloadManager;
 exports.FirefoxCom = FirefoxCom;
-//#endif
 }));

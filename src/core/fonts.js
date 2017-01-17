@@ -505,73 +505,74 @@ var ProblematicCharRanges = new Int32Array([
   0xFFF0, 0x10000
 ]);
 
-//#if !PRODUCTION
-/**
- * Used to validate the entries in `ProblematicCharRanges`, and to ensure that
- * its total number of characters does not exceed the PUA (Private Use Area)
- * length.
- * @returns {Object} An object with {number} `numChars`, {number} `puaLength`,
- *   and {number} `percentage` parameters.
- */
-function checkProblematicCharRanges() {
-  function printRange(limits) {
-    return '[' + limits.lower.toString('16').toUpperCase() + ', ' +
-                 limits.upper.toString('16').toUpperCase() + ')';
-  }
+if (typeof PDFJSDev === 'undefined' || !PDFJSDev.test('PRODUCTION')) {
+  /**
+   * Used to validate the entries in `ProblematicCharRanges`, and to ensure that
+   * its total number of characters does not exceed the PUA (Private Use Area)
+   * length.
+   * @returns {Object} An object with {number} `numChars`, {number} `puaLength`,
+   *   and {number} `percentage` parameters.
+   */
+  var checkProblematicCharRanges = function checkProblematicCharRanges() {
+    function printRange(limits) {
+      return '[' + limits.lower.toString('16').toUpperCase() + ', ' +
+                   limits.upper.toString('16').toUpperCase() + ')';
+    }
 
-  var numRanges = ProblematicCharRanges.length;
-  if (numRanges % 2 !== 0) {
-    throw new Error('Char ranges must contain an even number of elements.');
-  }
-  var previousLimits, numChars = 0;
-  for (var i = 0; i < numRanges; i += 2) {
-    var limits = {
-      lower: ProblematicCharRanges[i],
-      upper: ProblematicCharRanges[i + 1],
-    };
-    if (!isInt(limits.lower) || !isInt(limits.upper)) {
-      throw new Error('Range endpoints must be integers: ' +
-                      printRange(limits));
+    var numRanges = ProblematicCharRanges.length;
+    if (numRanges % 2 !== 0) {
+      throw new Error('Char ranges must contain an even number of elements.');
     }
-    if (limits.lower < 0 || limits.upper < 0) {
-      throw new Error('Range endpoints must be non-negative: ' +
-                      printRange(limits));
-    }
-    var range = limits.upper - limits.lower;
-    if (range < 1) {
-      throw new Error('Range must contain at least one element: ' +
-                      printRange(limits));
-    }
-    if (previousLimits) {
-      if (limits.lower < previousLimits.lower) {
-        throw new Error('Ranges must be sorted in ascending order: ' +
-                        printRange(limits) + ', ' + printRange(previousLimits));
+    var prevLimits, numChars = 0;
+    for (var i = 0; i < numRanges; i += 2) {
+      var limits = {
+        lower: ProblematicCharRanges[i],
+        upper: ProblematicCharRanges[i + 1],
+      };
+      if (!isInt(limits.lower) || !isInt(limits.upper)) {
+        throw new Error('Range endpoints must be integers: ' +
+                        printRange(limits));
       }
-      if (limits.lower < previousLimits.upper) {
-        throw new Error('Ranges must not overlap: ' +
-                        printRange(limits) + ', ' + printRange(previousLimits));
+      if (limits.lower < 0 || limits.upper < 0) {
+        throw new Error('Range endpoints must be non-negative: ' +
+                        printRange(limits));
       }
+      var range = limits.upper - limits.lower;
+      if (range < 1) {
+        throw new Error('Range must contain at least one element: ' +
+                        printRange(limits));
+      }
+      if (prevLimits) {
+        if (limits.lower < prevLimits.lower) {
+          throw new Error('Ranges must be sorted in ascending order: ' +
+                          printRange(limits) + ', ' + printRange(prevLimits));
+        }
+        if (limits.lower < prevLimits.upper) {
+          throw new Error('Ranges must not overlap: ' +
+                          printRange(limits) + ', ' + printRange(prevLimits));
+        }
+      }
+      prevLimits = {
+        lower: limits.lower,
+        upper: limits.upper,
+      };
+      // The current range is OK.
+      numChars += range;
     }
-    previousLimits = {
-      lower: limits.lower,
-      upper: limits.upper,
+    var puaLength = (PRIVATE_USE_OFFSET_END + 1) - PRIVATE_USE_OFFSET_START;
+    if (numChars > puaLength) {
+      throw new Error('Total number of chars must not exceed the PUA length.');
+    }
+    return {
+      numChars: numChars,
+      puaLength: puaLength,
+      percentage: 100 * (numChars / puaLength),
     };
-    // The current range is OK.
-    numChars += range;
-  }
-  var puaLength = (PRIVATE_USE_OFFSET_END + 1) - PRIVATE_USE_OFFSET_START;
-  if (numChars > puaLength) {
-    throw new Error('Total number of chars must not exceed the PUA length.');
-  }
-  return {
-    numChars: numChars,
-    puaLength: puaLength,
-    percentage: 100 * (numChars / puaLength),
   };
-}
 
-exports.checkProblematicCharRanges = checkProblematicCharRanges;
-//#endif
+  exports.SEAC_ANALYSIS_ENABLED = SEAC_ANALYSIS_ENABLED;
+  exports.checkProblematicCharRanges = checkProblematicCharRanges;
+}
 
 /**
  * 'Font' is the class the outside world should use, it encapsulate all the font
@@ -673,7 +674,7 @@ var Font = (function FontClosure() {
         for (charCode in GlyphMapForStandardFonts) {
           map[+charCode] = GlyphMapForStandardFonts[charCode];
         }
-        if (/ArialBlack/i.test(name)) {
+        if (/Arial-?Black/i.test(name)) {
           var SupplementalGlyphMapForArialBlack =
             getSupplementalGlyphMapForArialBlack();
           for (charCode in SupplementalGlyphMapForArialBlack) {
@@ -878,7 +879,7 @@ var Font = (function FontClosure() {
   }
 
   /**
-   * Helper function for |adjustMapping|.
+   * Helper function for `adjustMapping`.
    * @return {boolean}
    */
   function isProblematicUnicodeLocation(code) {
@@ -921,7 +922,9 @@ var Font = (function FontClosure() {
       var fontCharCode = originalCharCode;
       // First try to map the value to a unicode position if a non identity map
       // was created.
+      var hasUnicodeValue = false;
       if (!isIdentityUnicode && toUnicode.has(originalCharCode)) {
+        hasUnicodeValue = true;
         var unicode = toUnicode.get(fontCharCode);
         // TODO: Try to map ligatures to the correct spot.
         if (unicode.length === 1) {
@@ -936,7 +939,7 @@ var Font = (function FontClosure() {
       // with firefox and thuluthfont).
       if ((usedFontCharCodes[fontCharCode] !== undefined ||
            isProblematicUnicodeLocation(fontCharCode) ||
-           (isSymbolic && isIdentityUnicode)) &&
+           (isSymbolic && !hasUnicodeValue)) &&
           nextAvailableFontCharCode <= PRIVATE_USE_OFFSET_END) { // Room left.
         // Loop to try and find a free spot in the private use area.
         do {
@@ -980,7 +983,7 @@ var Font = (function FontClosure() {
     // Split the sorted codes into ranges.
     var ranges = [];
     var length = codes.length;
-    for (var n = 0; n < length; ) {
+    for (var n = 0; n < length; ) { // eslint-disable-line space-in-parens
       var start = codes[n].fontCharCode;
       var codeIndices = [codes[n].glyphId];
       ++n;
@@ -2249,7 +2252,7 @@ var Font = (function FontClosure() {
       var isTrueType = !tables['CFF '];
       if (!isTrueType) {
         // OpenType font
-        if ((header.version === 'OTTO' && properties.type !== 'CIDFontType2') ||
+        if ((header.version === 'OTTO' && !properties.composite) ||
             !tables['head'] || !tables['hhea'] || !tables['maxp'] ||
             !tables['post']) {
           // no major tables: throwing everything at CFFFont
@@ -2394,7 +2397,7 @@ var Font = (function FontClosure() {
         return false;
       }
 
-      if (properties.type === 'CIDFontType2') {
+      if (properties.composite) {
         var cidToGidMap = properties.cidToGidMap || [];
         var isCidToGidMapEmpty = cidToGidMap.length === 0;
 
@@ -2940,6 +2943,7 @@ var ErrorFont = (function ErrorFontClosure() {
 function type1FontGlyphMapping(properties, builtInEncoding, glyphNames) {
   var charCodeToGlyphId = Object.create(null);
   var glyphId, charCode, baseEncoding;
+  var isSymbolicFont = !!(properties.flags & FontFlags.Symbolic);
 
   if (properties.baseEncodingName) {
     // If a valid base encoding name was used, the mapping is initialized with
@@ -2953,9 +2957,8 @@ function type1FontGlyphMapping(properties, builtInEncoding, glyphNames) {
         charCodeToGlyphId[charCode] = 0; // notdef
       }
     }
-  } else if (!!(properties.flags & FontFlags.Symbolic)) {
-    // For a symbolic font the encoding should be the fonts built-in
-    // encoding.
+  } else if (isSymbolicFont) {
+    // For a symbolic font the encoding should be the fonts built-in encoding.
     for (charCode in builtInEncoding) {
       charCodeToGlyphId[charCode] = builtInEncoding[charCode];
     }
@@ -3434,7 +3437,6 @@ var CFFFont = (function CFFFontClosure() {
   }
 })();
 
-exports.SEAC_ANALYSIS_ENABLED = SEAC_ANALYSIS_ENABLED;
 exports.ErrorFont = ErrorFont;
 exports.Font = Font;
 exports.FontFlags = FontFlags;

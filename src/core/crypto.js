@@ -31,11 +31,12 @@
 var PasswordException = sharedUtil.PasswordException;
 var PasswordResponses = sharedUtil.PasswordResponses;
 var bytesToString = sharedUtil.bytesToString;
+var warn = sharedUtil.warn;
 var error = sharedUtil.error;
+var assert = sharedUtil.assert;
 var isInt = sharedUtil.isInt;
 var stringToBytes = sharedUtil.stringToBytes;
 var utf8StringToString = sharedUtil.utf8StringToString;
-var warn = sharedUtil.warn;
 var Name = corePrimitives.Name;
 var isName = corePrimitives.isName;
 var isDict = corePrimitives.isDict;
@@ -497,8 +498,7 @@ var calculateSHA512 = (function calculateSHA512Closure() {
       h5 = new Word64(0x9b05688c, 0x2b3e6c1f);
       h6 = new Word64(0x1f83d9ab, 0xfb41bd6b);
       h7 = new Word64(0x5be0cd19, 0x137e2179);
-    }
-    else {
+    } else {
       // SHA384 is exactly the same
       // except with different starting values and a trimmed result
       h0 = new Word64(0xcbbb9d5d, 0xc1059ed8);
@@ -609,23 +609,22 @@ var calculateSHA512 = (function calculateSHA512Closure() {
     var result;
     if (!mode384) {
       result = new Uint8Array(64);
-      h0.copyTo(result,0);
-      h1.copyTo(result,8);
-      h2.copyTo(result,16);
-      h3.copyTo(result,24);
-      h4.copyTo(result,32);
-      h5.copyTo(result,40);
-      h6.copyTo(result,48);
-      h7.copyTo(result,56);
-    }
-    else {
+      h0.copyTo(result, 0);
+      h1.copyTo(result, 8);
+      h2.copyTo(result, 16);
+      h3.copyTo(result, 24);
+      h4.copyTo(result, 32);
+      h5.copyTo(result, 40);
+      h6.copyTo(result, 48);
+      h7.copyTo(result, 56);
+    } else {
       result = new Uint8Array(48);
-      h0.copyTo(result,0);
-      h1.copyTo(result,8);
-      h2.copyTo(result,16);
-      h3.copyTo(result,24);
-      h4.copyTo(result,32);
-      h5.copyTo(result,40);
+      h0.copyTo(result, 0);
+      h1.copyTo(result, 8);
+      h2.copyTo(result, 16);
+      h3.copyTo(result, 24);
+      h4.copyTo(result, 32);
+      h5.copyTo(result, 40);
     }
     return result;
   }
@@ -1650,11 +1649,9 @@ var PDF20 = (function PDF20Closure() {
       }
       if (remainder === 0) {
         k = calculateSHA256(e, 0, e.length);
-      }
-      else if (remainder === 1) {
+      } else if (remainder === 1) {
         k = calculateSHA384(e, 0, e.length);
-      }
-      else if (remainder === 2) {
+      } else if (remainder === 2) {
         k = calculateSHA512(e, 0, e.length);
       }
       i++;
@@ -1732,13 +1729,13 @@ var PDF20 = (function PDF20Closure() {
 
 var CipherTransform = (function CipherTransformClosure() {
   function CipherTransform(stringCipherConstructor, streamCipherConstructor) {
-    this.stringCipherConstructor = stringCipherConstructor;
-    this.streamCipherConstructor = streamCipherConstructor;
+    this.StringCipherConstructor = stringCipherConstructor;
+    this.StreamCipherConstructor = streamCipherConstructor;
   }
 
   CipherTransform.prototype = {
     createStream: function CipherTransform_createStream(stream, length) {
-      var cipher = new this.streamCipherConstructor();
+      var cipher = new this.StreamCipherConstructor();
       return new DecryptStream(stream, length,
         function cipherTransformDecryptStream(data, finalize) {
           return cipher.decryptBlock(data, finalize);
@@ -1746,7 +1743,7 @@ var CipherTransform = (function CipherTransformClosure() {
       );
     },
     decryptString: function CipherTransform_decryptString(s) {
-      var cipher = new this.stringCipherConstructor();
+      var cipher = new this.StringCipherConstructor();
       var data = stringToBytes(s);
       data = cipher.decryptBlock(data, true);
       return bytesToString(data);
@@ -1932,6 +1929,7 @@ var CipherTransformFactory = (function CipherTransformFactoryClosure() {
         var cfDict = dict.get('CF');
         var streamCryptoName = dict.get('StmF');
         if (isDict(cfDict) && isName(streamCryptoName)) {
+          cfDict.suppressEncryption = true; // See comment below.
           var handlerDict = cfDict.get(streamCryptoName.name);
           keyLength = (handlerDict && handlerDict.get('Length')) || 128;
           if (keyLength < 40) {
@@ -1975,8 +1973,7 @@ var CipherTransformFactory = (function CipherTransformFactoryClosure() {
       encryptionKey = prepareKeyData(fileIdBytes, passwordBytes,
                                      ownerPassword, userPassword, flags,
                                      revision, keyLength, encryptMetadata);
-    }
-    else {
+    } else {
       var ownerValidationSalt = stringToBytes(dict.get('O')).subarray(32, 40);
       var ownerKeySalt = stringToBytes(dict.get('O')).subarray(40, 48);
       var uBytes = stringToBytes(dict.get('U')).subarray(0, 48);
@@ -2013,7 +2010,15 @@ var CipherTransformFactory = (function CipherTransformFactoryClosure() {
     this.encryptionKey = encryptionKey;
 
     if (algorithm >= 4) {
-      this.cf = dict.get('CF');
+      var cf = dict.get('CF');
+      if (isDict(cf)) {
+        // The 'CF' dictionary itself should not be encrypted, and by setting
+        // `suppressEncryption` we can prevent an infinite loop inside of
+        // `XRef_fetchUncompressed` if the dictionary contains indirect objects
+        // (fixes issue7665.pdf).
+        cf.suppressEncryption = true;
+      }
+      this.cf = cf;
       this.stmf = dict.get('StmF') || identityName;
       this.strf = dict.get('StrF') || identityName;
       this.eff = dict.get('EFF') || this.stmf;
@@ -2041,6 +2046,7 @@ var CipherTransformFactory = (function CipherTransformFactoryClosure() {
   }
 
   function buildCipherConstructor(cf, name, num, gen, key) {
+    assert(isName(name), 'Invalid crypt filter name.');
     var cryptFilter = cf.get(name.name);
     var cfm;
     if (cryptFilter !== null && cryptFilter !== undefined) {
@@ -2051,17 +2057,17 @@ var CipherTransformFactory = (function CipherTransformFactoryClosure() {
         return new NullCipher();
       };
     }
-    if ('V2' === cfm.name) {
+    if (cfm.name === 'V2') {
       return function cipherTransformFactoryBuildCipherConstructorV2() {
         return new ARCFourCipher(buildObjectKey(num, gen, key, false));
       };
     }
-    if ('AESV2' === cfm.name) {
+    if (cfm.name === 'AESV2') {
       return function cipherTransformFactoryBuildCipherConstructorAESV2() {
         return new AES128Cipher(buildObjectKey(num, gen, key, true));
       };
     }
-    if ('AESV3' === cfm.name) {
+    if (cfm.name === 'AESV3') {
       return function cipherTransformFactoryBuildCipherConstructorAESV3() {
         return new AES256Cipher(key);
       };

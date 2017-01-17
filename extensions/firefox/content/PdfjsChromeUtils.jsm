@@ -12,7 +12,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/* jshint esnext:true */
 /* globals Components, Services, XPCOMUtils */
 
 'use strict';
@@ -95,7 +94,7 @@ var PdfjsChromeUtils = {
       this._mmg.removeMessageListener('PDFJS:Parent:removeEventListener', this);
       this._mmg.removeMessageListener('PDFJS:Parent:updateControlState', this);
 
-      Services.obs.removeObserver(this, 'quit-application', false);
+      Services.obs.removeObserver(this, 'quit-application');
 
       this._mmg = null;
       this._ppmm = null;
@@ -338,4 +337,3 @@ var PdfjsChromeUtils = {
     });
   }
 };
-

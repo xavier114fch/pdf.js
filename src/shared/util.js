@@ -12,7 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/* globals URL, global */
+/* globals global */
 
 'use strict';
 
@@ -332,28 +332,40 @@ function isSameOrigin(baseUrl, otherUrl) {
   return base.origin === other.origin;
 }
 
-// Validates if URL is safe and allowed, e.g. to avoid XSS.
-function isValidUrl(url, allowRelative) {
-  if (!url || typeof url !== 'string') {
+// Checks if URLs use one of the whitelisted protocols, e.g. to avoid XSS.
+function isValidProtocol(url) {
+  if (!url) {
     return false;
   }
-  // RFC 3986 (http://tools.ietf.org/html/rfc3986#section-3.1)
-  // scheme = ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )
-  var protocol = /^[a-z][a-z0-9+\-.]*(?=:)/i.exec(url);
-  if (!protocol) {
-    return allowRelative;
-  }
-  protocol = protocol[0].toLowerCase();
-  switch (protocol) {
-    case 'http':
-    case 'https':
-    case 'ftp':
-    case 'mailto':
-    case 'tel':
+  switch (url.protocol) {
+    case 'http:':
+    case 'https:':
+    case 'ftp:':
+    case 'mailto:':
+    case 'tel:':
       return true;
     default:
       return false;
   }
+}
+
+/**
+ * Attempts to create a valid absolute URL (utilizing `isValidProtocol`).
+ * @param {URL|string} url - An absolute, or relative, URL.
+ * @param {URL|string} baseUrl - An absolute URL.
+ * @returns Either a valid {URL}, or `null` otherwise.
+ */
+function createValidAbsoluteUrl(url, baseUrl) {
+  if (!url) {
+    return null;
+  }
+  try {
+    var absoluteUrl = baseUrl ? new URL(url, baseUrl) : new URL(url);
+    if (isValidProtocol(absoluteUrl)) {
+      return absoluteUrl;
+    }
+  } catch (ex) { /* `new URL()` will throw on incorrect data. */ }
+  return null;
 }
 
 function shadow(obj, prop, value) {
@@ -545,7 +557,7 @@ function arraysToBytes(arr) {
   }
   var resultLength = 0;
   var i, ii = arr.length;
-  var item, itemLength ;
+  var item, itemLength;
   for (i = 0; i < ii; i++) {
     item = arr[i];
     itemLength = arrayByteLength(item);
@@ -608,57 +620,56 @@ function isLittleEndian() {
 // Checks if it's possible to eval JS expressions.
 function isEvalSupported() {
   try {
-    /* jshint evil: true */
-    new Function('');
+    new Function(''); // eslint-disable-line no-new, no-new-func
     return true;
   } catch (e) {
     return false;
   }
 }
 
-//#if !(FIREFOX || MOZCENTRAL || CHROME)
-var Uint32ArrayView = (function Uint32ArrayViewClosure() {
-
-  function Uint32ArrayView(buffer, length) {
-    this.buffer = buffer;
-    this.byteLength = buffer.length;
-    this.length = length === undefined ? (this.byteLength >> 2) : length;
-    ensureUint32ArrayViewProps(this.length);
-  }
-  Uint32ArrayView.prototype = Object.create(null);
-
-  var uint32ArrayViewSetters = 0;
-  function createUint32ArrayProp(index) {
-    return {
-      get: function () {
-        var buffer = this.buffer, offset = index << 2;
-        return (buffer[offset] | (buffer[offset + 1] << 8) |
-          (buffer[offset + 2] << 16) | (buffer[offset + 3] << 24)) >>> 0;
-      },
-      set: function (value) {
-        var buffer = this.buffer, offset = index << 2;
-        buffer[offset] = value & 255;
-        buffer[offset + 1] = (value >> 8) & 255;
-        buffer[offset + 2] = (value >> 16) & 255;
-        buffer[offset + 3] = (value >>> 24) & 255;
-      }
-    };
-  }
-
-  function ensureUint32ArrayViewProps(length) {
-    while (uint32ArrayViewSetters < length) {
-      Object.defineProperty(Uint32ArrayView.prototype,
-        uint32ArrayViewSetters,
-        createUint32ArrayProp(uint32ArrayViewSetters));
-      uint32ArrayViewSetters++;
+if (typeof PDFJSDev === 'undefined' ||
+    !PDFJSDev.test('FIREFOX || MOZCENTRAL || CHROME')) {
+  var Uint32ArrayView = (function Uint32ArrayViewClosure() {
+    function Uint32ArrayView(buffer, length) {
+      this.buffer = buffer;
+      this.byteLength = buffer.length;
+      this.length = length === undefined ? (this.byteLength >> 2) : length;
+      ensureUint32ArrayViewProps(this.length);
     }
-  }
+    Uint32ArrayView.prototype = Object.create(null);
 
-  return Uint32ArrayView;
-})();
+    var uint32ArrayViewSetters = 0;
+    function createUint32ArrayProp(index) {
+      return {
+        get: function () {
+          var buffer = this.buffer, offset = index << 2;
+          return (buffer[offset] | (buffer[offset + 1] << 8) |
+            (buffer[offset + 2] << 16) | (buffer[offset + 3] << 24)) >>> 0;
+        },
+        set: function (value) {
+          var buffer = this.buffer, offset = index << 2;
+          buffer[offset] = value & 255;
+          buffer[offset + 1] = (value >> 8) & 255;
+          buffer[offset + 2] = (value >> 16) & 255;
+          buffer[offset + 3] = (value >>> 24) & 255;
+        }
+      };
+    }
 
-exports.Uint32ArrayView = Uint32ArrayView;
-//#endif
+    function ensureUint32ArrayViewProps(length) {
+      while (uint32ArrayViewSetters < length) {
+        Object.defineProperty(Uint32ArrayView.prototype,
+          uint32ArrayViewSetters,
+          createUint32ArrayProp(uint32ArrayViewSetters));
+        uint32ArrayViewSetters++;
+      }
+    }
+
+    return Uint32ArrayView;
+  })();
+
+  exports.Uint32ArrayView = Uint32ArrayView;
+}
 
 var IDENTITY_MATRIX = [1, 0, 0, 1, 0, 0];
 
@@ -873,15 +884,15 @@ var Util = (function UtilClosure() {
     }
   };
 
-  Util.getInheritableProperty = function Util_getInheritableProperty(dict,
-                                                                     name) {
+  Util.getInheritableProperty =
+      function Util_getInheritableProperty(dict, name, getArray) {
     while (dict && !dict.has(name)) {
       dict = dict.get('Parent');
     }
     if (!dict) {
       return null;
     }
-    return dict.get(name);
+    return getArray ? dict.getArray(name) : dict.get(name);
   };
 
   Util.inherit = function Util_inherit(sub, base, prototype) {
@@ -1199,7 +1210,8 @@ function createPromiseCapability() {
     }
     return;
   }
-//#if !MOZCENTRAL
+
+if (typeof PDFJSDev === 'undefined' || !PDFJSDev.test('MOZCENTRAL')) {
   var STATUS_PENDING = 0;
   var STATUS_RESOLVED = 1;
   var STATUS_REJECTED = 2;
@@ -1317,7 +1329,7 @@ function createPromiseCapability() {
     }
   };
 
-  function Promise(resolver) {
+  var Promise = function Promise(resolver) {
     this._status = STATUS_PENDING;
     this._handlers = [];
     try {
@@ -1325,7 +1337,8 @@ function createPromiseCapability() {
     } catch (e) {
       this._reject(e);
     }
-  }
+  };
+
   /**
    * Builds a promise that is resolved when all the passed in promises are
    * resolved.
@@ -1459,43 +1472,44 @@ function createPromiseCapability() {
   };
 
   globalScope.Promise = Promise;
-//#else
-//throw new Error('DOM Promise is not present');
-//#endif
+} else {
+  throw new Error('DOM Promise is not present');
+}
+
 })();
 
-//#if !MOZCENTRAL
-(function WeakMapClosure() {
-  if (globalScope.WeakMap) {
-    return;
-  }
-
-  var id = 0;
-  function WeakMap() {
-    this.id = '$weakmap' + (id++);
-  }
-  WeakMap.prototype = {
-    has: function(obj) {
-      return !!Object.getOwnPropertyDescriptor(obj, this.id);
-    },
-    get: function(obj, defaultValue) {
-      return this.has(obj) ? obj[this.id] : defaultValue;
-    },
-    set: function(obj, value) {
-      Object.defineProperty(obj, this.id, {
-        value: value,
-        enumerable: false,
-        configurable: true
-      });
-    },
-    delete: function(obj) {
-      delete obj[this.id];
+if (typeof PDFJSDev === 'undefined' || !PDFJSDev.test('MOZCENTRAL')) {
+  (function WeakMapClosure() {
+    if (globalScope.WeakMap) {
+      return;
     }
-  };
 
-  globalScope.WeakMap = WeakMap;
-})();
-//#endif
+    var id = 0;
+    function WeakMap() {
+      this.id = '$weakmap' + (id++);
+    }
+    WeakMap.prototype = {
+      has: function(obj) {
+        return !!Object.getOwnPropertyDescriptor(obj, this.id);
+      },
+      get: function(obj, defaultValue) {
+        return this.has(obj) ? obj[this.id] : defaultValue;
+      },
+      set: function(obj, value) {
+        Object.defineProperty(obj, this.id, {
+          value: value,
+          enumerable: false,
+          configurable: true
+        });
+      },
+      delete: function(obj) {
+        delete obj[this.id];
+      }
+    };
+
+    globalScope.WeakMap = WeakMap;
+  })();
+}
 
 var StatTimer = (function StatTimerClosure() {
   function rpad(str, pad, length) {
@@ -1736,11 +1750,13 @@ function loadJpegStream(id, imageUrl, objs) {
   img.src = imageUrl;
 }
 
-//#if !(MOZCENTRAL)
-//// Polyfill from https://github.com/Polymer/URL
+if (typeof PDFJSDev === 'undefined' || !PDFJSDev.test('MOZCENTRAL')) {
+// Polyfill from https://github.com/Polymer/URL
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 (function checkURLConstructor(scope) {
+  /* eslint-disable yoda */
+
   // feature detect for URL constructor
   var hasWorkingUrl = false;
   try {
@@ -1751,7 +1767,7 @@ function loadJpegStream(id, imageUrl, objs) {
       u.pathname = 'c%20d';
       hasWorkingUrl = u.href === 'http://a/c%20d';
     }
-  } catch(e) { }
+  } catch (e) { }
 
   if (hasWorkingUrl) {
     return;
@@ -1910,7 +1926,7 @@ function loadJpegStream(id, imageUrl, objs) {
           break;
 
         case 'relative or authority':
-          if ('/' === c && '/' === input[cursor+1]) {
+          if ('/' === c && '/' === input[cursor + 1]) {
             state = 'authority ignore slashes';
           } else {
             err('Expected /, got: ' + c);
@@ -1955,8 +1971,8 @@ function loadJpegStream(id, imageUrl, objs) {
             this._password = base._password;
             state = 'fragment';
           } else {
-            var nextC = input[cursor+1];
-            var nextNextC = input[cursor+2];
+            var nextC = input[cursor + 1];
+            var nextNextC = input[cursor + 2];
             if ('file' !== this._scheme || !ALPHA.test(c) ||
                 (nextC !== ':' && nextC !== '|') ||
                 (EOF !== nextNextC && '/' !== nextNextC && '\\' !== nextNextC &&
@@ -2151,7 +2167,7 @@ function loadJpegStream(id, imageUrl, objs) {
               err('\\ not allowed in relative path.');
             }
             var tmp;
-            if (tmp = relativePathDotMapping[buffer.toLowerCase()]) {
+            if ((tmp = relativePathDotMapping[buffer.toLowerCase()])) {
               buffer = tmp;
             }
             if ('..' === buffer) {
@@ -2377,8 +2393,10 @@ function loadJpegStream(id, imageUrl, objs) {
   }
 
   scope.URL = JURL;
+
+  /* eslint-enable yoda */
 })(globalScope);
-//#endif
+}
 
 exports.FONT_IDENTITY_MATRIX = FONT_IDENTITY_MATRIX;
 exports.IDENTITY_MATRIX = IDENTITY_MATRIX;
@@ -2428,7 +2446,7 @@ exports.isNum = isNum;
 exports.isString = isString;
 exports.isSpace = isSpace;
 exports.isSameOrigin = isSameOrigin;
-exports.isValidUrl = isValidUrl;
+exports.createValidAbsoluteUrl = createValidAbsoluteUrl;
 exports.isLittleEndian = isLittleEndian;
 exports.isEvalSupported = isEvalSupported;
 exports.loadJpegStream = loadJpegStream;

@@ -12,7 +12,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/* globals WeakMap */
 
 'use strict';
 
@@ -188,9 +187,10 @@ var renderTextLayer = (function renderTextLayerClosure() {
     }
 
     var canvas = document.createElement('canvas');
-//#if MOZCENTRAL || FIREFOX || GENERIC
-    canvas.mozOpaque = true;
-//#endif
+    if (typeof PDFJSDev === 'undefined' ||
+        PDFJSDev.test('FIREFOX || MOZCENTRAL || GENERIC')) {
+       canvas.mozOpaque = true;
+    }
     var ctx = canvas.getContext('2d', {alpha: false});
 
     var lastFontSize;
@@ -373,7 +373,7 @@ var renderTextLayer = (function renderTextLayerClosure() {
         i++;
       }
       var j = horizon.length - 1;
-      while(j >= 0 && horizon[j].start >= boundary.y2) {
+      while (j >= 0 && horizon[j].start >= boundary.y2) {
         j--;
       }
 
