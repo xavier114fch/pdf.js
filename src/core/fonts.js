@@ -594,9 +594,6 @@ var Font = (function FontClosure() {
 
     this.glyphCache = Object.create(null);
 
-    var names = name.split('+');
-    names = names.length > 1 ? names[1] : names[0];
-    names = names.split(/[-,_]/g)[0];
     this.isSerifFont = !!(properties.flags & FontFlags.Serif);
     this.isSymbolicFont = !!(properties.flags & FontFlags.Symbolic);
     this.isMonospace = !!(properties.flags & FontFlags.FixedPitch);
@@ -1013,7 +1010,9 @@ var Font = (function FontClosure() {
 
     var i, ii, j, jj;
     for (i = ranges.length - 1; i >= 0; --i) {
-      if (ranges[i][0] <= 0xFFFF) { break; }
+      if (ranges[i][0] <= 0xFFFF) {
+        break;
+      }
     }
     var bmpLength = i + 1;
 
@@ -1369,7 +1368,7 @@ var Font = (function FontClosure() {
         if (tag === 'head') {
           // clearing checksum adjustment
           data[8] = data[9] = data[10] = data[11] = 0;
-          data[17] |= 0x20; //Set font optimized for cleartype flag
+          data[17] |= 0x20; // Set font optimized for cleartype flag.
         }
 
         return {
@@ -1409,7 +1408,7 @@ var Font = (function FontClosure() {
         var start = (font.start ? font.start : 0) + cmap.offset;
         font.pos = start;
 
-        var version = font.getUint16();
+        font.getUint16(); // version
         var numTables = font.getUint16();
 
         var potentialTable;
@@ -1471,8 +1470,8 @@ var Font = (function FontClosure() {
         }
 
         var format = font.getUint16();
-        var length = font.getUint16();
-        var language = font.getUint16();
+        font.getUint16(); // length
+        font.getUint16(); // language
 
         var hasShortCmap = false;
         var mappings = [];
@@ -2121,7 +2120,7 @@ var Font = (function FontClosure() {
               op >= 0xC0 && op <= 0xDF ? -1 : op >= 0xE0 ? -2 : 0;
             if (op >= 0x71 && op <= 0x75) {
               n = stack.pop();
-              if (n === n) {
+              if (!isNaN(n)) {
                 stackDelta = -n * 2;
               }
             }

@@ -36,7 +36,6 @@ var MessageHandler = sharedUtil.MessageHandler;
 var MissingPDFException = sharedUtil.MissingPDFException;
 var UnexpectedResponseException = sharedUtil.UnexpectedResponseException;
 var PasswordException = sharedUtil.PasswordException;
-var PasswordResponses = sharedUtil.PasswordResponses;
 var UnknownErrorException = sharedUtil.UnknownErrorException;
 var XRefParseException = sharedUtil.XRefParseException;
 var arrayByteLength = sharedUtil.arrayByteLength;
@@ -95,7 +94,9 @@ IPDFStream.prototype = {
    * Gets a reader for the entire PDF data.
    * @returns {IPDFStreamReader}
    */
-  getFullReader: function () { return null; },
+  getFullReader: function () {
+    return null;
+  },
 
   /**
    * Gets a reader for the range of the PDF data.
@@ -103,7 +104,9 @@ IPDFStream.prototype = {
    * @param {number} end - the end offset of the data.
    * @returns {IPDFStreamRangeReader}
    */
-  getRangeReader: function (begin, end) { return null; },
+  getRangeReader: function (begin, end) {
+    return null;
+  },
 
   /**
    * Cancels all opened reader and closes all their opened requests.
@@ -124,14 +127,18 @@ IPDFStreamReader.prototype = {
    * the PDF data stream are available.
    * @returns {Promise}
    */
-  get headersReady() { return null; },
+  get headersReady() {
+    return null;
+  },
 
   /**
    * Gets PDF binary data length. It is defined after the headersReady promise
    * is resolved.
    * @returns {number} The data length (or 0 if unknown).
    */
-  get contentLength() { return 0; },
+  get contentLength() {
+    return 0;
+  },
 
   /**
    * Gets ability of the stream to handle range requests. It is defined after
@@ -139,14 +146,18 @@ IPDFStreamReader.prototype = {
    * or an error occurs.
    * @returns {boolean}
    */
-  get isRangeSupported() { return false; },
+  get isRangeSupported() {
+    return false;
+  },
 
   /**
    * Gets ability of the stream to progressively load binary data. It is defined
    * after the headersReady promise is resolved.
    * @returns {boolean}
    */
-  get isStreamingSupported() { return false; },
+  get isStreamingSupported() {
+    return false;
+  },
 
   /**
    * Requests a chunk of the binary data. The method returns the promise, which
@@ -184,7 +195,9 @@ IPDFStreamRangeReader.prototype = {
    * Gets ability of the stream to progressively load binary data.
    * @returns {boolean}
    */
-  get isStreamingSupported() { return false; },
+  get isStreamingSupported() {
+    return false;
+  },
 
   /**
    * Requests a chunk of the binary data. The method returns the promise, which
@@ -448,7 +461,7 @@ var WorkerMessageHandler = {
       var responseExists = 'response' in xhr;
       // check if the property is actually implemented
       try {
-        var dummy = xhr.responseType;
+        xhr.responseType; // eslint-disable-line no-unused-expressions
       } catch (e) {
         responseExists = false;
       }
@@ -724,7 +737,8 @@ var WorkerMessageHandler = {
         forceDataSchema: data.disableCreateObjectURL,
         maxImageSize: data.maxImageSize === undefined ? -1 : data.maxImageSize,
         disableFontFace: data.disableFontFace,
-        cMapOptions: cMapOptions
+        cMapOptions: cMapOptions,
+        disableNativeImageDecoder: data.disableNativeImageDecoder,
       };
 
       getPdfManager(data, evaluatorOptions).then(function (newPdfManager) {

@@ -26,10 +26,45 @@
   }
 }(this, function (exports, sharedUtil) {
 
+var assert = sharedUtil.assert;
 var removeNullCharacters = sharedUtil.removeNullCharacters;
 var warn = sharedUtil.warn;
 var deprecated = sharedUtil.deprecated;
 var createValidAbsoluteUrl = sharedUtil.createValidAbsoluteUrl;
+
+var DEFAULT_LINK_REL = 'noopener noreferrer nofollow';
+
+function DOMCanvasFactory() {}
+DOMCanvasFactory.prototype = {
+  create: function DOMCanvasFactory_create(width, height) {
+    assert(width > 0 && height > 0, 'invalid canvas size');
+    var canvas = document.createElement('canvas');
+    var context = canvas.getContext('2d');
+    canvas.width = width;
+    canvas.height = height;
+    return {
+      canvas: canvas,
+      context: context,
+    };
+  },
+
+  reset: function DOMCanvasFactory_reset(canvasAndContextPair, width, height) {
+    assert(canvasAndContextPair.canvas, 'canvas is not specified');
+    assert(width > 0 && height > 0, 'invalid canvas size');
+    canvasAndContextPair.canvas.width = width;
+    canvasAndContextPair.canvas.height = height;
+  },
+
+  destroy: function DOMCanvasFactory_destroy(canvasAndContextPair) {
+    assert(canvasAndContextPair.canvas, 'canvas is not specified');
+    // Zeroing the width and height cause Firefox to release graphics
+    // resources immediately, which can greatly reduce memory consumption.
+    canvasAndContextPair.canvas.width = 0;
+    canvasAndContextPair.canvas.height = 0;
+    canvasAndContextPair.canvas = null;
+    canvasAndContextPair.context = null;
+  }
+};
 
 /**
  * Optimised CSS custom property getter/setter.
@@ -71,7 +106,7 @@ var CustomStyle = (function CustomStyleClosure() {
       }
     }
 
-    //if all fails then set to undefined
+    // If all fails then set to undefined.
     return (_cache[propName] = 'undefined');
   };
 
@@ -96,7 +131,9 @@ if (typeof PDFJSDev === 'undefined' ||
     return (typeof imageData.data.buffer !== 'undefined');
   };
 } else {
-  hasCanvasTypedArrays = function () { return true; };
+  hasCanvasTypedArrays = function () {
+    return true;
+  };
 }
 
 var LinkTarget = {
@@ -210,7 +247,7 @@ function getDefaultSetting(id) {
       globalSettings.externalLinkTarget = LinkTarget.NONE;
       return LinkTarget.NONE;
     case 'externalLinkRel':
-      return globalSettings ? globalSettings.externalLinkRel : 'noreferrer';
+      return globalSettings ? globalSettings.externalLinkRel : DEFAULT_LINK_REL;
     case 'enableStats':
       return !!(globalSettings && globalSettings.enableStats);
     default:
@@ -245,4 +282,6 @@ exports.getFilenameFromUrl = getFilenameFromUrl;
 exports.LinkTarget = LinkTarget;
 exports.hasCanvasTypedArrays = hasCanvasTypedArrays;
 exports.getDefaultSetting = getDefaultSetting;
+exports.DEFAULT_LINK_REL = DEFAULT_LINK_REL;
+exports.DOMCanvasFactory = DOMCanvasFactory;
 }));

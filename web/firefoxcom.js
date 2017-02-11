@@ -76,9 +76,9 @@ var FirefoxCom = (function FirefoxComClosure() {
 
           document.documentElement.removeChild(node);
 
-          document.removeEventListener('pdf.js.response', listener, false);
+          document.removeEventListener('pdf.js.response', listener);
           return callback(response);
-        }, false);
+        });
       }
       document.documentElement.appendChild(request);
 
@@ -280,7 +280,7 @@ PDFViewerApplication.externalServices = {
   },
 };
 
-//// l10n.js for Firefox extension expects services to be set.
+// l10n.js for Firefox extension expects services to be set.
 document.mozL10n.setExternalLocalizerServices({
   getLocale: function () {
     return FirefoxCom.requestSync('getLocale', null);

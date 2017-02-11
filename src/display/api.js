@@ -12,8 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/* globals pdfjsFilePath, pdfjsVersion, pdfjsBuild, requirejs, pdfjsLibs,
-           __webpack_require__ */
+/* globals requirejs, __pdfjsdev_webpack__ */
 
 'use strict';
 
@@ -39,7 +38,6 @@ var InvalidPDFException = sharedUtil.InvalidPDFException;
 var MessageHandler = sharedUtil.MessageHandler;
 var MissingPDFException = sharedUtil.MissingPDFException;
 var PageViewport = sharedUtil.PageViewport;
-var PasswordResponses = sharedUtil.PasswordResponses;
 var PasswordException = sharedUtil.PasswordException;
 var StatTimer = sharedUtil.StatTimer;
 var UnexpectedResponseException = sharedUtil.UnexpectedResponseException;
@@ -61,9 +59,9 @@ var warn = sharedUtil.warn;
 var FontFaceObject = displayFontLoader.FontFaceObject;
 var FontLoader = displayFontLoader.FontLoader;
 var CanvasGraphics = displayCanvas.CanvasGraphics;
-var createScratchCanvas = displayCanvas.createScratchCanvas;
 var Metadata = displayMetadata.Metadata;
 var getDefaultSetting = displayDOMUtils.getDefaultSetting;
+var DOMCanvasFactory = displayDOMUtils.DOMCanvasFactory;
 
 var DEFAULT_RANGE_CHUNK_SIZE = 65536; // 2^16 = 65536
 
@@ -71,10 +69,18 @@ var isWorkerDisabled = false;
 var workerSrc;
 var isPostMessageTransfersDisabled = false;
 
+var pdfjsFilePath =
+  typeof PDFJSDev !== 'undefined' &&
+  PDFJSDev.test('PRODUCTION && !(MOZCENTRAL || FIREFOX)') &&
+  typeof document !== 'undefined' && document.currentScript ?
+    document.currentScript.src : null;
+
 var fakeWorkerFilesLoader = null;
 var useRequireEnsure = false;
+// The if below protected by __pdfjsdev_webpack__ check from webpack parsing.
 if (typeof PDFJSDev !== 'undefined' &&
-    PDFJSDev.test('GENERIC && !SINGLE_FILE')) {
+    PDFJSDev.test('GENERIC && !SINGLE_FILE') &&
+    typeof __pdfjsdev_webpack__ === 'undefined') {
   // For GENERIC build we need add support of different fake file loaders
   // for different  frameworks.
   if (typeof window === 'undefined') {
@@ -84,8 +90,8 @@ if (typeof PDFJSDev !== 'undefined' &&
       require.ensure = require('node-ensure');
     }
     useRequireEnsure = true;
-  }
-  if (typeof __webpack_require__ !== 'undefined') {
+  } else if (typeof require !== 'undefined' &&
+             typeof require.ensure === 'function') {
     useRequireEnsure = true;
   }
   if (typeof requirejs !== 'undefined' && requirejs.toUrl) {
@@ -132,6 +138,10 @@ if (typeof PDFJSDev !== 'undefined' &&
  * @property {string} docBaseUrl - (optional) The base URL of the document,
  *   used when attempting to recover valid absolute URLs for annotations, and
  *   outline items, that (incorrectly) only specify relative URLs.
+ * @property {boolean} disableNativeImageDecoder - (optional) Disable decoding
+ *   of certain (simple) JPEG images in the browser. This is useful for
+ *   environments without DOM image support, such as e.g. Node.js.
+ *   The default value is `false`.
  */
 
 /**
@@ -245,6 +255,7 @@ function getDocument(src, pdfDataRangeTransport,
   }
 
   params.rangeChunkSize = params.rangeChunkSize || DEFAULT_RANGE_CHUNK_SIZE;
+  params.disableNativeImageDecoder = params.disableNativeImageDecoder === true;
 
   if (!worker) {
     // Worker was not provided -- creating and owning our own.
@@ -305,6 +316,7 @@ function _fetchDocument(worker, source, pdfDataRangeTransport, docId) {
     postMessageTransfers: getDefaultSetting('postMessageTransfers') &&
                           !isPostMessageTransfersDisabled,
     docBaseUrl: source.docBaseUrl,
+    disableNativeImageDecoder: source.disableNativeImageDecoder,
   }).then(function (workerId) {
     if (worker.destroyed) {
       throw new Error('Worker was destroyed');
@@ -697,6 +709,9 @@ var PDFDocumentProxy = (function PDFDocumentProxyClosure() {
  *                      called each time the rendering is paused.  To continue
  *                      rendering call the function that is the first argument
  *                      to the callback.
+ * @property {Object} canvasFactory - (optional) The factory that will be used
+ *                    when creating canvases. The default value is
+ *                    {DOMCanvasFactory}.
  */
 
 /**
@@ -805,6 +820,7 @@ var PDFPageProxy = (function PDFPageProxyClosure() {
       var renderingIntent = (params.intent === 'print' ? 'print' : 'display');
       var renderInteractiveForms = (params.renderInteractiveForms === true ?
                                     true : /* Default */ false);
+      var canvasFactory = params.canvasFactory || new DOMCanvasFactory();
 
       if (!this.intentStates[renderingIntent]) {
         this.intentStates[renderingIntent] = Object.create(null);
@@ -834,7 +850,8 @@ var PDFPageProxy = (function PDFPageProxyClosure() {
                                                       this.objs,
                                                       this.commonObjs,
                                                       intentState.operatorList,
-                                                      this.pageNumber);
+                                                      this.pageNumber,
+                                                      canvasFactory);
       internalRenderTask.useRequestAnimationFrame = renderingIntent !== 'print';
       if (!intentState.renderTasks) {
         intentState.renderTasks = [];
@@ -1104,7 +1121,9 @@ var PDFWorker = (function PDFWorkerClosure() {
         throw new Error('AMD or CommonJS must be used to load fake worker.');
       }
     } else if (PDFJSDev.test('SINGLE_FILE')) {
-      WorkerMessageHandler = pdfjsLibs.pdfjsCoreWorker.WorkerMessageHandler;
+      var pdfjsCoreWorker = require('../core/worker.js');
+      require('../core/network.js');
+      WorkerMessageHandler = pdfjsCoreWorker.WorkerMessageHandler;
       fakeWorkerFilesLoadedCapability.resolve(WorkerMessageHandler);
     } else {
       var loader = fakeWorkerFilesLoader || function (callback) {
@@ -1727,6 +1746,12 @@ var WorkerTransport = (function WorkerTransportClosure() {
           return Promise.reject(new Error('Worker was destroyed'));
         }
 
+        if (typeof document === 'undefined') {
+          // Make sure that this code is not executing in node.js, as
+          // it's using DOM image, and there is no library to support that.
+          return Promise.reject(new Error('"document" is not defined.'));
+        }
+
         var imageUrl = data[0];
         var components = data[1];
         if (components !== 3 && components !== 1) {
@@ -1742,7 +1767,9 @@ var WorkerTransport = (function WorkerTransportClosure() {
             var size = width * height;
             var rgbaLength = size * 4;
             var buf = new Uint8Array(size * components);
-            var tmpCanvas = createScratchCanvas(width, height);
+            var tmpCanvas = document.createElement('canvas');
+            tmpCanvas.width = width;
+            tmpCanvas.height = height;
             var tmpCtx = tmpCanvas.getContext('2d');
             tmpCtx.drawImage(img, 0, 0);
             var data = tmpCtx.getImageData(0, 0, width, height).data;
@@ -2030,7 +2057,7 @@ var RenderTask = (function RenderTaskClosure() {
 var InternalRenderTask = (function InternalRenderTaskClosure() {
 
   function InternalRenderTask(callback, params, objs, commonObjs, operatorList,
-                              pageNumber) {
+                              pageNumber, canvasFactory) {
     this.callback = callback;
     this.params = params;
     this.objs = objs;
@@ -2038,6 +2065,7 @@ var InternalRenderTask = (function InternalRenderTaskClosure() {
     this.operatorListIdx = null;
     this.operatorList = operatorList;
     this.pageNumber = pageNumber;
+    this.canvasFactory = canvasFactory;
     this.running = false;
     this.graphicsReadyCallback = null;
     this.graphicsReady = false;
@@ -2068,7 +2096,8 @@ var InternalRenderTask = (function InternalRenderTaskClosure() {
 
       var params = this.params;
       this.gfx = new CanvasGraphics(params.canvasContext, this.commonObjs,
-                                    this.objs, params.imageLayer);
+                                    this.objs, this.canvasFactory,
+                                    params.imageLayer);
 
       this.gfx.beginDrawing(params.transform, params.viewport, transparency);
       this.operatorListIdx = 0;
@@ -2108,7 +2137,7 @@ var InternalRenderTask = (function InternalRenderTaskClosure() {
         return;
       }
       if (this.task.onContinue) {
-        this.task.onContinue.call(this.task, this._scheduleNextBound);
+        this.task.onContinue(this._scheduleNextBound);
       } else {
         this._scheduleNext();
       }
@@ -2164,11 +2193,9 @@ var _UnsupportedManager = (function UnsupportedManagerClosure() {
   };
 })();
 
-if (typeof pdfjsVersion !== 'undefined') {
-  exports.version = pdfjsVersion;
-}
-if (typeof pdfjsBuild !== 'undefined') {
-  exports.build = pdfjsBuild;
+if (typeof PDFJSDev !== 'undefined') {
+  exports.version = PDFJSDev.eval('BUNDLE_VERSION');
+  exports.build = PDFJSDev.eval('BUNDLE_BUILD');
 }
 
 exports.getDocument = getDocument;

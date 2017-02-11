@@ -12,7 +12,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/* globals pdfjsVersion, pdfjsBuild */
 
 'use strict';
 
@@ -41,6 +40,7 @@
   var deprecated = sharedUtil.deprecated;
   var warn = sharedUtil.warn;
   var LinkTarget = displayDOMUtils.LinkTarget;
+  var DEFAULT_LINK_REL = displayDOMUtils.DEFAULT_LINK_REL;
 
   var isWorker = (typeof window === 'undefined');
 
@@ -53,11 +53,9 @@
   }
   var PDFJS = globalScope.PDFJS;
 
-  if (typeof pdfjsVersion !== 'undefined') {
-    PDFJS.version = pdfjsVersion;
-  }
-  if (typeof pdfjsBuild !== 'undefined') {
-    PDFJS.build = pdfjsBuild;
+  if (typeof PDFJSDev !== 'undefined') {
+    PDFJS.version = PDFJSDev.eval('BUNDLE_VERSION');
+    PDFJS.build = PDFJSDev.eval('BUNDLE_BUILD');
   }
 
   PDFJS.pdfBug = false;
@@ -67,8 +65,12 @@
   }
   delete PDFJS.verbosity;
   Object.defineProperty(PDFJS, 'verbosity', {
-    get: function () { return sharedUtil.getVerbosityLevel(); },
-    set: function (level) { sharedUtil.setVerbosityLevel(level); },
+    get: function () {
+      return sharedUtil.getVerbosityLevel();
+    },
+    set: function (level) {
+      sharedUtil.setVerbosityLevel(level);
+    },
     enumerable: true,
     configurable: true
   });
@@ -233,7 +235,7 @@
    * @var {string}
    */
   PDFJS.externalLinkRel = (PDFJS.externalLinkRel === undefined ?
-                           'noreferrer' : PDFJS.externalLinkRel);
+                           DEFAULT_LINK_REL : PDFJS.externalLinkRel);
 
   /**
     * Determines if we can eval strings as JS. Primarily used to improve

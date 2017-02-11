@@ -65,6 +65,7 @@ var getLookupTableFactory = sharedUtil.getLookupTableFactory;
 var warn = sharedUtil.warn;
 var Dict = corePrimitives.Dict;
 var Name = corePrimitives.Name;
+var isEOF = corePrimitives.isEOF;
 var isCmd = corePrimitives.isCmd;
 var isDict = corePrimitives.isDict;
 var isName = corePrimitives.isName;
@@ -75,7 +76,6 @@ var JpegStream = coreStream.JpegStream;
 var Stream = coreStream.Stream;
 var Lexer = coreParser.Lexer;
 var Parser = coreParser.Parser;
-var isEOF = coreParser.isEOF;
 var PDFImage = coreImage.PDFImage;
 var ColorSpace = coreColorSpace.ColorSpace;
 var MurmurHash3_64 = coreMurmurHash3.MurmurHash3_64;
@@ -112,7 +112,8 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
     forceDataSchema: false,
     maxImageSize: -1,
     disableFontFace: false,
-    cMapOptions: { url: null, packed: false }
+    cMapOptions: { url: null, packed: false },
+    disableNativeImageDecoder: false,
   };
 
   function NativeImageDecoder(xref, resources, handler, forceDataSchema) {
@@ -388,13 +389,15 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         return;
       }
 
+      var useNativeImageDecoder = !this.options.disableNativeImageDecoder;
       // If there is no imageMask, create the PDFImage and a lot
       // of image processing can be done here.
       var objId = 'img_' + this.idFactory.createObjId();
       operatorList.addDependency(objId);
       args = [objId, w, h];
 
-      if (!softMask && !mask && image instanceof JpegStream &&
+      if (useNativeImageDecoder &&
+          !softMask && !mask && image instanceof JpegStream &&
           NativeImageDecoder.isSupported(image, this.xref, resources)) {
         // These JPEGs don't need any more processing so we can just send it.
         operatorList.addOp(OPS.paintJpegXObject, args);
@@ -406,8 +409,9 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
 
       // Creates native image decoder only if a JPEG image or mask is present.
       var nativeImageDecoder = null;
-      if (image instanceof JpegStream || mask instanceof JpegStream ||
-          softMask instanceof JpegStream) {
+      if (useNativeImageDecoder &&
+          (image instanceof JpegStream || mask instanceof JpegStream ||
+           softMask instanceof JpegStream)) {
         nativeImageDecoder = new NativeImageDecoder(self.xref, resources,
           self.handler, self.options.forceDataSchema);
       }
@@ -1296,22 +1300,11 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         var width = 0;
         var height = 0;
         var glyphs = font.charsToGlyphs(chars);
-        var defaultVMetrics = font.defaultVMetrics;
         for (var i = 0; i < glyphs.length; i++) {
           var glyph = glyphs[i];
-          var vMetricX = null;
-          var vMetricY = null;
           var glyphWidth = null;
-          if (font.vertical) {
-            if (glyph.vmetric) {
-              glyphWidth = glyph.vmetric[0];
-              vMetricX = glyph.vmetric[1];
-              vMetricY = glyph.vmetric[2];
-            } else {
-              glyphWidth = glyph.width;
-              vMetricX = glyph.width * 0.5;
-              vMetricY = defaultVMetrics[2];
-            }
+          if (font.vertical && glyph.vmetric) {
+            glyphWidth = glyph.vmetric[0];
           } else {
             glyphWidth = glyph.width;
           }
@@ -1322,18 +1315,6 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
             glyphUnicode = NormalizedUnicodes[glyphUnicode];
           }
           glyphUnicode = reverseIfRtl(glyphUnicode);
-
-          // The following will calculate the x and y of the individual glyphs.
-          // if (font.vertical) {
-          //   tsm[4] -= vMetricX * Math.abs(textState.fontSize) *
-          //             textState.fontMatrix[0];
-          //   tsm[5] -= vMetricY * textState.fontSize *
-          //             textState.fontMatrix[0];
-          // }
-          // var trm = Util.transform(textState.textMatrix, tsm);
-          // var pt = Util.applyTransform([trm[4], trm[5]], textState.ctm);
-          // var x = pt[0];
-          // var y = pt[1];
 
           var charSpacing = textState.charSpacing;
           if (glyph.isSpace) {

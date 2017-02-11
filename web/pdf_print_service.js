@@ -60,7 +60,7 @@
       var renderContext = {
         canvasContext: ctx,
         transform: [PRINT_UNITS, 0, 0, PRINT_UNITS, 0, 0],
-        viewport: pdfPage.getViewport(1),
+        viewport: pdfPage.getViewport(1, size.rotation),
         intent: 'print'
       };
       return pdfPage.render(renderContext).promise;
@@ -85,7 +85,6 @@
     layout: function () {
       this.throwIfInactive();
 
-      var pdfDocument = this.pdfDocument;
       var body = document.querySelector('body');
       body.setAttribute('data-pdfjsprinting', true);
 
@@ -237,7 +236,7 @@
         if (OverlayManager.active === 'printServiceOverlay') {
           OverlayManager.close('printServiceOverlay');
         }
-        return;
+        return; // eslint-disable-line no-unsafe-finally
       }
       var activeServiceOnEntry = activeService;
       activeService.renderPages().then(function () {
@@ -285,7 +284,7 @@
   window.addEventListener('keydown', function(event) {
     // Intercept Cmd/Ctrl + P in all browsers.
     // Also intercept Cmd/Ctrl + Shift + P in Chrome and Opera
-    if (event.keyCode === 80/*P*/ && (event.ctrlKey || event.metaKey) &&
+    if (event.keyCode === /* P= */ 80 && (event.ctrlKey || event.metaKey) &&
         !event.altKey && (!event.shiftKey || window.chrome || window.opera)) {
       window.print();
       if (hasAttachEvent) {
@@ -305,7 +304,7 @@
   if (hasAttachEvent) {
     document.attachEvent('onkeydown', function(event) {
       event = event || window.event;
-      if (event.keyCode === 80/*P*/ && event.ctrlKey) {
+      if (event.keyCode === /* P= */ 80 && event.ctrlKey) {
         event.keyCode = 0;
         return false;
       }
@@ -320,8 +319,8 @@
         event.stopImmediatePropagation();
       }
     };
-    window.addEventListener('beforeprint', stopPropagationIfNeeded, false);
-    window.addEventListener('afterprint', stopPropagationIfNeeded, false);
+    window.addEventListener('beforeprint', stopPropagationIfNeeded);
+    window.addEventListener('afterprint', stopPropagationIfNeeded);
   }
 
   var overlayPromise;

@@ -38,7 +38,6 @@ var AnnotationFlag = sharedUtil.AnnotationFlag;
 var AnnotationType = sharedUtil.AnnotationType;
 var OPS = sharedUtil.OPS;
 var Util = sharedUtil.Util;
-var isString = sharedUtil.isString;
 var isArray = sharedUtil.isArray;
 var isInt = sharedUtil.isInt;
 var stringToBytes = sharedUtil.stringToBytes;
@@ -787,14 +786,12 @@ var ButtonWidgetAnnotation = (function ButtonWidgetAnnotationClosure() {
       // The parent field's `V` entry holds a `Name` object with the appearance
       // state of whichever child field is currently in the "on" state.
       var fieldParent = params.dict.get('Parent');
-      if (!isDict(fieldParent) || !fieldParent.has('V')) {
-        return;
+      if (isDict(fieldParent) && fieldParent.has('V')) {
+        var fieldParentValue = fieldParent.get('V');
+        if (isName(fieldParentValue)) {
+          this.data.fieldValue = fieldParentValue.name;
+        }
       }
-      var fieldParentValue = fieldParent.get('V');
-      if (!isName(fieldParentValue)) {
-        return;
-      }
-      this.data.fieldValue = fieldParentValue.name;
 
       // The button's value corresponds to its appearance state.
       var appearanceStates = params.dict.get('AP');

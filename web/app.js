@@ -12,7 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/* globals DEFAULT_URL, PDFBug, Stats */
+/* globals PDFBug, Stats */
 
 'use strict';
 
@@ -190,6 +190,7 @@ var PDFViewerApplication = {
     renderer: 'canvas',
     enhanceTextSelection: false,
     renderInteractiveForms: false,
+    enablePrintAutoRotate: false,
   },
   isViewerEmbedded: (window.parent !== window),
   url: '',
@@ -304,6 +305,9 @@ var PDFViewerApplication = {
       Preferences.get('disablePageLabels').then(function resolved(value) {
         self.viewerPrefs['disablePageLabels'] = value;
       }),
+      Preferences.get('enablePrintAutoRotate').then(function resolved(value) {
+        self.viewerPrefs['enablePrintAutoRotate'] = value;
+      }),
     ]).catch(function (reason) { });
   },
 
@@ -342,6 +346,7 @@ var PDFViewerApplication = {
         renderer: self.viewerPrefs['renderer'],
         enhanceTextSelection: self.viewerPrefs['enhanceTextSelection'],
         renderInteractiveForms: self.viewerPrefs['renderInteractiveForms'],
+        enablePrintAutoRotate: self.viewerPrefs['enablePrintAutoRotate'],
       });
       pdfRenderingQueue.setViewer(self.pdfViewer);
       pdfLinkService.setViewer(self.pdfViewer);
@@ -1391,20 +1396,20 @@ function loadAndEnablePDFBug(enabledTabs) {
 }
 
 function webViewerInitialized() {
+  var appConfig = PDFViewerApplication.appConfig;
   var file;
   if (typeof PDFJSDev === 'undefined' || PDFJSDev.test('GENERIC')) {
     var queryString = document.location.search.substring(1);
     var params = parseQueryString(queryString);
-    file = 'file' in params ? params.file : DEFAULT_URL;
+    file = 'file' in params ? params.file : appConfig.defaultUrl;
     validateFileURL(file);
   } else if (PDFJSDev.test('FIREFOX || MOZCENTRAL')) {
     file = window.location.href.split('#')[0];
   } else if (PDFJSDev.test('CHROME')) {
-    file = DEFAULT_URL;
+    file = appConfig.defaultUrl;
   }
 
   var waitForBeforeOpening = [];
-  var appConfig = PDFViewerApplication.appConfig;
   if (typeof PDFJSDev === 'undefined' || PDFJSDev.test('GENERIC')) {
     var fileInput = document.createElement('input');
     fileInput.id = appConfig.openFileInputName;
