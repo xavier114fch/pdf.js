@@ -61,10 +61,8 @@ var PDFAttachmentViewer = (function PDFAttachmentViewerClosure() {
     reset: function PDFAttachmentViewer_reset(keepRenderedCapability) {
       this.attachments = null;
 
-      var container = this.container;
-      while (container.firstChild) {
-        container.removeChild(container.firstChild);
-      }
+      // Remove the attachments from the DOM.
+      this.container.textContent = '';
 
       if (!keepRenderedCapability) {
         // NOTE: The *only* situation in which the `_renderedCapability` should
@@ -84,6 +82,38 @@ var PDFAttachmentViewer = (function PDFAttachmentViewerClosure() {
       });
 
       this._renderedCapability.resolve();
+    },
+
+    /**
+     * @private
+     */
+    _bindPdfLink:
+        function PDFAttachmentViewer_bindPdfLink(button, content, filename) {
+      var blobUrl;
+      button.onclick = function() {
+        if (!blobUrl) {
+          blobUrl = pdfjsLib.createObjectURL(
+            content, 'application/pdf', pdfjsLib.PDFJS.disableCreateObjectURL);
+        }
+        var viewerUrl;
+        if (typeof PDFJSDev === 'undefined' || PDFJSDev.test('GENERIC')) {
+          // The current URL is the viewer, let's use it and append the file.
+          viewerUrl = '?file=' + encodeURIComponent(blobUrl + '#' + filename);
+        } else if (PDFJSDev.test('CHROME')) {
+          // In the Chrome extension, the URL is rewritten using the history API
+          // in viewer.js, so an absolute URL must be generated.
+          // eslint-disable-next-line no-undef
+          viewerUrl = chrome.runtime.getURL('/content/web/viewer.html') +
+            '?file=' + encodeURIComponent(blobUrl + '#' + filename);
+        } else {
+          // Let Firefox's content handler catch the URL and display the PDF.
+          // In Firefox PDFJS.disableCreateObjectURL is always false, so
+          // blobUrl is always a blob:-URL and never a data:-URL.
+          viewerUrl = blobUrl + '?' + encodeURIComponent(filename);
+        }
+        window.open(viewerUrl);
+        return false;
+      };
     },
 
     /**
@@ -124,11 +154,18 @@ var PDFAttachmentViewer = (function PDFAttachmentViewerClosure() {
       for (var i = 0; i < attachmentsCount; i++) {
         var item = attachments[names[i]];
         var filename = pdfjsLib.getFilenameFromUrl(item.filename);
+        filename = pdfjsLib.removeNullCharacters(filename);
+
         var div = document.createElement('div');
         div.className = 'attachmentsItem';
         var button = document.createElement('button');
-        this._bindLink(button, item.content, filename);
-        button.textContent = pdfjsLib.removeNullCharacters(filename);
+        button.textContent = filename;
+        if (/\.pdf$/i.test(filename)) {
+          this._bindPdfLink(button, item.content, filename);
+        } else {
+          this._bindLink(button, item.content, filename);
+        }
+
         div.appendChild(button);
         this.container.appendChild(div);
       }

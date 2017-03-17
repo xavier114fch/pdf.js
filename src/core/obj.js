@@ -71,8 +71,8 @@ var Catalog = (function CatalogClosure() {
     this.xref = xref;
     this.catDict = xref.getCatalogObj();
     this.fontCache = new RefSetCache();
-    assert(isDict(this.catDict),
-      'catalog object is not a dictionary');
+    this.builtInCMapCache = Object.create(null);
+    assert(isDict(this.catDict), 'catalog object is not a dictionary');
 
     // TODO refactor to move getPage() to the PDFDocument.
     this.pageFactory = pageFactory;
@@ -428,6 +428,7 @@ var Catalog = (function CatalogClosure() {
           delete font.translated;
         }
         this.fontCache.clear();
+        this.builtInCMapCache = Object.create(null);
       }.bind(this));
     },
 
@@ -438,7 +439,8 @@ var Catalog = (function CatalogClosure() {
             var dict = a[0];
             var ref = a[1];
             return this.pageFactory.createPage(pageIndex, dict, ref,
-                                               this.fontCache);
+                                               this.fontCache,
+                                               this.builtInCMapCache);
           }.bind(this)
         );
       }
@@ -450,7 +452,6 @@ var Catalog = (function CatalogClosure() {
       var nodesToVisit = [this.catDict.getRaw('Pages')];
       var currentPageIndex = 0;
       var xref = this.xref;
-      var checkAllKids = false;
 
       function next() {
         while (nodesToVisit.length) {
@@ -474,16 +475,10 @@ var Catalog = (function CatalogClosure() {
           }
 
           // Must be a child page dictionary.
-          assert(
-            isDict(currentNode),
-            'page dictionary kid reference points to wrong type of object'
-          );
+          assert(isDict(currentNode),
+            'page dictionary kid reference points to wrong type of object');
+
           var count = currentNode.get('Count');
-          // If the current node doesn't have any children, avoid getting stuck
-          // in an empty node further down in the tree (see issue5644.pdf).
-          if (count === 0) {
-            checkAllKids = true;
-          }
           // Skip nodes where the page can't be.
           if (currentPageIndex + count <= pageIndex) {
             currentPageIndex += count;
@@ -492,21 +487,12 @@ var Catalog = (function CatalogClosure() {
 
           var kids = currentNode.get('Kids');
           assert(isArray(kids), 'page dictionary kids object is not an array');
-          if (!checkAllKids && count === kids.length) {
-            // Nodes that don't have the page have been skipped and this is the
-            // bottom of the tree which means the page requested must be a
-            // descendant of this pages node. Ideally we would just resolve the
-            // promise with the page ref here, but there is the case where more
-            // pages nodes could link to single a page (see issue 3666 pdf). To
-            // handle this push it back on the queue so if it is a pages node it
-            // will be descended into.
-            nodesToVisit = [kids[pageIndex - currentPageIndex]];
-            currentPageIndex = pageIndex;
-            continue;
-          } else {
-            for (var last = kids.length - 1; last >= 0; last--) {
-              nodesToVisit.push(kids[last]);
-            }
+
+          // Always check all `Kids` nodes, to avoid getting stuck in an empty
+          // node further down in the tree (see issue5644.pdf, issue8088.pdf),
+          // and to ensure that we actually find the correct `Page` dict.
+          for (var last = kids.length - 1; last >= 0; last--) {
+            nodesToVisit.push(kids[last]);
           }
         }
         capability.reject('Page index ' + pageIndex + ' not found.');
@@ -717,12 +703,17 @@ var Catalog = (function CatalogClosure() {
               'app.launchURL',
               'window.open'
             ];
-            var regex = new RegExp('^(?:' + URL_OPEN_METHODS.join('|') + ')' +
-                                   '\\((?:\'|\")(\\S+)(?:\'|\")(?:,|\\))');
+            var regex = new RegExp(
+              '^\\s*(' + URL_OPEN_METHODS.join('|').split('.').join('\\.') +
+              ')\\((?:\'|\")([^\'\"]*)(?:\'|\")(?:,\\s*(\\w+)\\)|\\))', 'i');
 
-            var jsUrl = regex.exec(stringToPDFString(js), 'i');
-            if (jsUrl && jsUrl[1]) {
-              url = jsUrl[1];
+            var jsUrl = regex.exec(stringToPDFString(js));
+            if (jsUrl && jsUrl[2]) {
+              url = jsUrl[2];
+
+              if (jsUrl[3] === 'true' && jsUrl[1] === 'app.launchURL') {
+                resultObj.newWindow = true;
+              }
               break;
             }
           }
@@ -1255,6 +1246,11 @@ var XRef = (function XRefClosure() {
       var num = ref.num;
       if (num in this.cache) {
         var cacheEntry = this.cache[num];
+        // In documents with Object Streams, it's possible that cached `Dict`s
+        // have not been assigned an `objId` yet (see e.g. issue3115r.pdf).
+        if (isDict(cacheEntry) && !cacheEntry.objId) {
+          cacheEntry.objId = ref.toString();
+        }
         return cacheEntry;
       }
 

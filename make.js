@@ -42,6 +42,7 @@ var ROOT_DIR = __dirname + '/', // absolute path to project's root
     DIST_DIR = BUILD_DIR + 'dist/',
     SINGLE_FILE_DIR = BUILD_DIR + 'singlefile/',
     COMPONENTS_DIR = BUILD_DIR + 'components/',
+    LIB_DIR = BUILD_DIR + 'lib/',
     REPO = 'git@github.com:mozilla/pdf.js.git';
 
 function getCurrentVersion() {
@@ -186,6 +187,8 @@ target.dist = function() {
     COMPONENTS_DIR + '*',
   ], DIST_DIR + 'web/');
 
+  cp('-R', LIB_DIR, DIST_DIR + 'lib/');
+
   echo();
   echo('### Rebuilding manifests');
 
@@ -205,7 +208,8 @@ target.dist = function() {
     bugs: DIST_BUGS_URL,
     license: DIST_LICENSE,
     dependencies: {
-      'node-ensure': '^0.0.0' // shim for node for require.ensure
+      'node-ensure': '^0.0.0', // shim for node for require.ensure
+      'worker-loader': '^0.7.1', // used in external/dist/webpack.json
     },
     browser: {
       'node-ensure': false
@@ -298,7 +302,6 @@ target.minified = function() {
 
 target.minifiedpost = function () {
   var viewerFiles = [
-    'web/compatibility.js',
     'external/webL10n/l10n.js',
     MINIFIED_DIR + BUILD_DIR + 'pdf.js',
     MINIFIED_DIR + '/web/viewer.js'
@@ -498,31 +501,7 @@ target.botmakeref = function() {
 // Baseline operation
 //
 target.baseline = function() {
-  cd(ROOT_DIR);
-
-  echo();
-  echo('### Creating baseline environment');
-
-  var baselineCommit = env['BASELINE'];
-  if (!baselineCommit) {
-    echo('Baseline commit is not provided. Please specify BASELINE variable');
-    exit(1);
-  }
-
-  if (!test('-d', BUILD_DIR)) {
-    mkdir(BUILD_DIR);
-  }
-
-  var BASELINE_DIR = BUILD_DIR + 'baseline';
-  if (test('-d', BASELINE_DIR)) {
-    cd(BASELINE_DIR);
-    exec('git fetch origin');
-  } else {
-    cd(BUILD_DIR);
-    exec('git clone .. baseline');
-    cd(ROOT_DIR + BASELINE_DIR);
-  }
-  exec('git checkout ' + baselineCommit);
+  execGulp('baseline');
 };
 
 target.mozcentralbaseline = function() {

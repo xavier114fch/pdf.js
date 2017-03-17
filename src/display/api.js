@@ -62,6 +62,7 @@ var CanvasGraphics = displayCanvas.CanvasGraphics;
 var Metadata = displayMetadata.Metadata;
 var getDefaultSetting = displayDOMUtils.getDefaultSetting;
 var DOMCanvasFactory = displayDOMUtils.DOMCanvasFactory;
+var DOMCMapReaderFactory = displayDOMUtils.DOMCMapReaderFactory;
 
 var DEFAULT_RANGE_CHUNK_SIZE = 65536; // 2^16 = 65536
 
@@ -142,6 +143,10 @@ if (typeof PDFJSDev !== 'undefined' &&
  *   of certain (simple) JPEG images in the browser. This is useful for
  *   environments without DOM image support, such as e.g. Node.js.
  *   The default value is `false`.
+ * @property {Object} CMapReaderFactory - (optional) The factory that will be
+ *   used when reading built-in CMap files. Providing a custom factory is useful
+ *   for environments without `XMLHttpRequest` support, such as e.g. Node.js.
+ *   The default value is {DOMCMapReaderFactory}.
  */
 
 /**
@@ -256,10 +261,13 @@ function getDocument(src, pdfDataRangeTransport,
 
   params.rangeChunkSize = params.rangeChunkSize || DEFAULT_RANGE_CHUNK_SIZE;
   params.disableNativeImageDecoder = params.disableNativeImageDecoder === true;
+  var CMapReaderFactory = params.CMapReaderFactory || DOMCMapReaderFactory;
 
   if (!worker) {
-    // Worker was not provided -- creating and owning our own.
-    worker = new PDFWorker();
+    // Worker was not provided -- creating and owning our own. If message port
+    // is specified in global settings, using it.
+    var workerPort = getDefaultSetting('workerPort');
+    worker = workerPort ? new PDFWorker(null, workerPort) : new PDFWorker();
     task._worker = worker;
   }
   var docId = task.docId;
@@ -273,7 +281,8 @@ function getDocument(src, pdfDataRangeTransport,
         throw new Error('Loading aborted');
       }
       var messageHandler = new MessageHandler(docId, workerId, worker.port);
-      var transport = new WorkerTransport(messageHandler, task, rangeTransport);
+      var transport = new WorkerTransport(messageHandler, task, rangeTransport,
+                                          CMapReaderFactory);
       task._transport = transport;
       messageHandler.send('Ready', null);
     });
@@ -309,8 +318,6 @@ function _fetchDocument(worker, source, pdfDataRangeTransport, docId) {
     source: source,
     disableRange: getDefaultSetting('disableRange'),
     maxImageSize: getDefaultSetting('maxImageSize'),
-    cMapUrl: getDefaultSetting('cMapUrl'),
-    cMapPacked: getDefaultSetting('cMapPacked'),
     disableFontFace: getDefaultSetting('disableFontFace'),
     disableCreateObjectURL: getDefaultSetting('disableCreateObjectURL'),
     postMessageTransfers: getDefaultSetting('postMessageTransfers') &&
@@ -1222,7 +1229,7 @@ var PDFWorker = (function PDFWorkerClosure() {
     return URL.createObjectURL(new Blob([wrapper]));
   }
 
-  function PDFWorker(name) {
+  function PDFWorker(name, port) {
     this.name = name;
     this.destroyed = false;
 
@@ -1230,6 +1237,12 @@ var PDFWorker = (function PDFWorkerClosure() {
     this._port = null;
     this._webWorker = null;
     this._messageHandler = null;
+
+    if (port) {
+      this._initializeFromPort(port);
+      return;
+    }
+
     this._initialize();
   }
 
@@ -1244,6 +1257,16 @@ var PDFWorker = (function PDFWorkerClosure() {
 
     get messageHandler() {
       return this._messageHandler;
+    },
+
+    _initializeFromPort: function PDFWorker_initializeFromPort(port) {
+      this._port = port;
+      this._messageHandler = new MessageHandler('main', 'worker', port);
+      this._messageHandler.on('ready', function () {
+        // Ignoring 'ready' event -- MessageHandler shall be already initialized
+        // and ready to accept the messages.
+      });
+      this._readyCapability.resolve();
     },
 
     _initialize: function PDFWorker_initialize() {
@@ -1429,12 +1452,17 @@ var PDFWorker = (function PDFWorkerClosure() {
  * @ignore
  */
 var WorkerTransport = (function WorkerTransportClosure() {
-  function WorkerTransport(messageHandler, loadingTask, pdfDataRangeTransport) {
+  function WorkerTransport(messageHandler, loadingTask, pdfDataRangeTransport,
+                           CMapReaderFactory) {
     this.messageHandler = messageHandler;
     this.loadingTask = loadingTask;
     this.pdfDataRangeTransport = pdfDataRangeTransport;
     this.commonObjs = new PDFObjects();
     this.fontLoader = new FontLoader(loadingTask.docId);
+    this.CMapReaderFactory = new CMapReaderFactory({
+      baseUrl: getDefaultSetting('cMapUrl'),
+      isCompressed: getDefaultSetting('cMapPacked'),
+    });
 
     this.destroyed = false;
     this.destroyCapability = null;
@@ -1792,6 +1820,15 @@ var WorkerTransport = (function WorkerTransportClosure() {
             reject(new Error('JpegDecode failed to load image'));
           };
           img.src = imageUrl;
+        });
+      }, this);
+
+      messageHandler.on('FetchBuiltInCMap', function (data) {
+        if (this.destroyed) {
+          return Promise.reject(new Error('Worker was destroyed'));
+        }
+        return this.CMapReaderFactory.fetch({
+          name: data.name,
         });
       }, this);
     },

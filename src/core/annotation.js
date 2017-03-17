@@ -47,6 +47,7 @@ var Dict = corePrimitives.Dict;
 var isDict = corePrimitives.isDict;
 var isName = corePrimitives.isName;
 var isRef = corePrimitives.isRef;
+var isStream = corePrimitives.isStream;
 var Stream = coreStream.Stream;
 var ColorSpace = coreColorSpace.ColorSpace;
 var Catalog = coreObj.Catalog;
@@ -168,25 +169,6 @@ var Annotation = (function AnnotationClosure() {
     ];
   }
 
-  function getDefaultAppearance(dict) {
-    var appearanceState = dict.get('AP');
-    if (!isDict(appearanceState)) {
-      return;
-    }
-
-    var appearance;
-    var appearances = appearanceState.get('N');
-    if (isDict(appearances)) {
-      var as = dict.get('AS');
-      if (as && appearances.has(as.name)) {
-        appearance = appearances.get(as.name);
-      }
-    } else {
-      appearance = appearances;
-    }
-    return appearance;
-  }
-
   function Annotation(params) {
     var dict = params.dict;
 
@@ -194,7 +176,7 @@ var Annotation = (function AnnotationClosure() {
     this.setRectangle(dict.getArray('Rect'));
     this.setColor(dict.getArray('C'));
     this.setBorderStyle(dict);
-    this.appearance = getDefaultAppearance(dict);
+    this.setAppearance(dict);
 
     // Expose public properties using a data object.
     this.data = {};
@@ -380,6 +362,40 @@ var Annotation = (function AnnotationClosure() {
     },
 
     /**
+     * Set the (normal) appearance.
+     *
+     * @public
+     * @memberof Annotation
+     * @param {Dict} dict - The annotation's data dictionary
+     */
+    setAppearance: function Annotation_setAppearance(dict) {
+      this.appearance = null;
+
+      var appearanceStates = dict.get('AP');
+      if (!isDict(appearanceStates)) {
+        return;
+      }
+
+      // In case the normal appearance is a stream, then it is used directly.
+      var normalAppearanceState = appearanceStates.get('N');
+      if (isStream(normalAppearanceState)) {
+        this.appearance = normalAppearanceState;
+        return;
+      }
+      if (!isDict(normalAppearanceState)) {
+        return;
+      }
+
+      // In case the normal appearance is a dictionary, the `AS` entry provides
+      // the key of the stream in this dictionary.
+      var as = dict.get('AS');
+      if (!isName(as) || !normalAppearanceState.has(as.name)) {
+        return;
+      }
+      this.appearance = normalAppearanceState.get(as.name);
+    },
+
+    /**
      * Prepare the annotation for working with a popup in the display layer.
      *
      * @private
@@ -449,25 +465,6 @@ var Annotation = (function AnnotationClosure() {
             });
         });
     }
-  };
-
-  Annotation.appendToOperatorList = function Annotation_appendToOperatorList(
-      annotations, opList, partialEvaluator, task, intent, renderForms) {
-    var annotationPromises = [];
-    for (var i = 0, n = annotations.length; i < n; ++i) {
-      if ((intent === 'display' && annotations[i].viewable) ||
-          (intent === 'print' && annotations[i].printable)) {
-        annotationPromises.push(
-          annotations[i].getOperatorList(partialEvaluator, task, renderForms));
-      }
-    }
-    return Promise.all(annotationPromises).then(function(operatorLists) {
-      opList.addOp(OPS.beginAnnotations, []);
-      for (var i = 0, n = operatorLists.length; i < n; ++i) {
-        opList.addOpList(operatorLists[i]);
-      }
-      opList.addOp(OPS.endAnnotations, []);
-    });
   };
 
   return Annotation;
@@ -674,6 +671,12 @@ var WidgetAnnotation = (function WidgetAnnotationClosure() {
       var loopDict = dict;
       while (loopDict.has('Parent')) {
         loopDict = loopDict.get('Parent');
+        if (!isDict(loopDict)) {
+          // Even though it is not allowed according to the PDF specification,
+          // bad PDF generators may provide a `Parent` entry that is not a
+          // dictionary, but `null` for example (issue 8143).
+          break;
+        }
 
         if (loopDict.has('T')) {
           fieldName.unshift(stringToPDFString(loopDict.get('T')));
@@ -845,9 +848,12 @@ var ChoiceWidgetAnnotation = (function ChoiceWidgetAnnotationClosure() {
     // the display value. If the array consists of strings, then these
     // represent both the export and display value. In this case, we convert
     // it to an array of arrays as well for convenience in the display layer.
+    // Note that the specification does not state that the `Opt` field is
+    // inheritable, but in practice PDF generators do make annotations
+    // inherit the options from a parent annotation (issue 8094).
     this.data.options = [];
 
-    var options = params.dict.get('Opt');
+    var options = Util.getInheritableProperty(params.dict, 'Opt');
     if (isArray(options)) {
       var xref = params.xref;
       for (var i = 0, ii = options.length; i < ii; i++) {
