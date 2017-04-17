@@ -13,43 +13,12 @@
  * limitations under the License.
  */
 
-'use strict';
-
-(function (root, factory) {
-  if (typeof define === 'function' && define.amd) {
-    define('pdfjs/display/canvas', ['exports', 'pdfjs/shared/util',
-      'pdfjs/display/dom_utils', 'pdfjs/display/pattern_helper',
-      'pdfjs/display/webgl'], factory);
-  } else if (typeof exports !== 'undefined') {
-    factory(exports, require('../shared/util.js'), require('./dom_utils.js'),
-      require('./pattern_helper.js'), require('./webgl.js'));
-  } else {
-    factory((root.pdfjsDisplayCanvas = {}), root.pdfjsSharedUtil,
-      root.pdfjsDisplayDOMUtils, root.pdfjsDisplayPatternHelper,
-      root.pdfjsDisplayWebGL);
-  }
-}(this, function (exports, sharedUtil, displayDOMUtils, displayPatternHelper,
-                  displayWebGL) {
-
-var FONT_IDENTITY_MATRIX = sharedUtil.FONT_IDENTITY_MATRIX;
-var IDENTITY_MATRIX = sharedUtil.IDENTITY_MATRIX;
-var ImageKind = sharedUtil.ImageKind;
-var OPS = sharedUtil.OPS;
-var TextRenderingMode = sharedUtil.TextRenderingMode;
-var Uint32ArrayView = sharedUtil.Uint32ArrayView;
-var Util = sharedUtil.Util;
-var assert = sharedUtil.assert;
-var info = sharedUtil.info;
-var isNum = sharedUtil.isNum;
-var isArray = sharedUtil.isArray;
-var isLittleEndian = sharedUtil.isLittleEndian;
-var error = sharedUtil.error;
-var shadow = sharedUtil.shadow;
-var warn = sharedUtil.warn;
-var TilingPattern = displayPatternHelper.TilingPattern;
-var getShadingPatternFromIR = displayPatternHelper.getShadingPatternFromIR;
-var WebGLUtils = displayWebGL.WebGLUtils;
-var hasCanvasTypedArrays = displayDOMUtils.hasCanvasTypedArrays;
+import {
+  assert, error, FONT_IDENTITY_MATRIX, IDENTITY_MATRIX, ImageKind, info,
+  isArray, isLittleEndian, isNum, OPS, shadow, TextRenderingMode, Util, warn
+} from '../shared/util';
+import { getShadingPatternFromIR, TilingPattern } from './pattern_helper';
+import { WebGLUtils } from './webgl';
 
 // <canvas> contexts store most of the state we need natively.
 // However, PDF needs a bit more state, which we store here.
@@ -67,12 +36,6 @@ var COMPILE_TYPE3_GLYPHS = true;
 var MAX_SIZE_TO_COMPILE = 1000;
 
 var FULL_CHUNK_HEIGHT = 16;
-
-var HasCanvasTypedArraysCached = {
-  get value() {
-    return shadow(HasCanvasTypedArraysCached, 'value', hasCanvasTypedArrays());
-  }
-};
 
 var IsLittleEndianCached = {
   get value() {
@@ -510,13 +473,11 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
     if (imgData.kind === ImageKind.GRAYSCALE_1BPP) {
       // Grayscale, 1 bit per pixel (i.e. black-and-white).
       var srcLength = src.byteLength;
-      var dest32 = HasCanvasTypedArraysCached.value ?
-        new Uint32Array(dest.buffer) : new Uint32ArrayView(dest);
+      var dest32 = new Uint32Array(dest.buffer, 0, dest.byteLength >> 2);
       var dest32DataLength = dest32.length;
       var fullSrcDiff = (width + 7) >> 3;
       var white = 0xFFFFFFFF;
-      var black = (IsLittleEndianCached.value ||
-                   !HasCanvasTypedArraysCached.value) ? 0xFF000000 : 0x000000FF;
+      var black = IsLittleEndianCached.value ? 0xFF000000 : 0x000000FF;
       for (i = 0; i < totalChunks; i++) {
         thisChunkHeight =
           (i < fullChunks) ? FULL_CHUNK_HEIGHT : partialChunkHeight;
@@ -950,20 +911,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
             this.ctx.globalAlpha = state[1];
             break;
           case 'BM':
-            if (value && value.name && (value.name !== 'Normal')) {
-              var mode = value.name.replace(/([A-Z])/g,
-                function(c) {
-                  return '-' + c.toLowerCase();
-                }
-              ).substring(1);
-              this.ctx.globalCompositeOperation = mode;
-              if (this.ctx.globalCompositeOperation !== mode) {
-                warn('globalCompositeOperation "' + mode +
-                     '" is not supported');
-              }
-            } else {
-              this.ctx.globalCompositeOperation = 'source-over';
-            }
+            this.ctx.globalCompositeOperation = value;
             break;
           case 'SMask':
             if (this.current.activeSMask) {
@@ -1010,7 +958,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
       copyCtxState(currentCtx, groupCtx);
       this.ctx = groupCtx;
       this.setGState([
-        ['BM', 'Normal'],
+        ['BM', 'source-over'],
         ['ca', 1],
         ['CA', 1]
       ]);
@@ -1885,7 +1833,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
       copyCtxState(currentCtx, groupCtx);
       this.ctx = groupCtx;
       this.setGState([
-        ['BM', 'Normal'],
+        ['BM', 'source-over'],
         ['ca', 1],
         ['CA', 1]
       ]);
@@ -2299,5 +2247,6 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
   return CanvasGraphics;
 })();
 
-exports.CanvasGraphics = CanvasGraphics;
-}));
+export {
+  CanvasGraphics,
+};

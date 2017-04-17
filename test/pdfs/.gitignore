@@ -21,6 +21,8 @@
 !issue5874.pdf
 !issue5808.pdf
 !issue6204.pdf
+!issue6342.pdf
+!issue6652.pdf
 !issue6782.pdf
 !issue6901.pdf
 !issue6961.pdf
@@ -268,6 +270,7 @@
 !annotation-strikeout.pdf
 !annotation-squiggly.pdf
 !annotation-highlight.pdf
+!annotation-line.pdf
 !annotation-fileattachment.pdf
 !annotation-text-widget.pdf
 !annotation-choice-widget.pdf

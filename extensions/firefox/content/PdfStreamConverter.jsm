@@ -33,7 +33,9 @@ const MAX_STRING_PREF_LENGTH = 128;
 
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/NetUtil.jsm");
+
+XPCOMUtils.defineLazyModuleGetter(this, "NetUtil",
+  "resource://gre/modules/NetUtil.jsm");
 
 XPCOMUtils.defineLazyModuleGetter(this, "NetworkManager",
   "resource://pdf.js/PdfJsNetwork.jsm");
@@ -93,7 +95,12 @@ function getIntPref(pref, def) {
 
 function getStringPref(pref, def) {
   try {
-    return Services.prefs.getComplexValue(pref, Ci.nsISupportsString).data;
+//#if !MOZCENTRAL
+    if (!Services.prefs.getStringPref) {
+      return Services.prefs.getComplexValue(pref, Ci.nsISupportsString).data;
+    }
+//#endif
+    return Services.prefs.getStringPref(pref);
   } catch (ex) {
     return def;
   }

@@ -13,20 +13,7 @@
  * limitations under the License.
  */
 
-'use strict';
-
-(function (root, factory) {
-  if (typeof define === 'function' && define.amd) {
-    define('pdfjs-web/pdf_find_controller', ['exports', 'pdfjs-web/ui_utils'],
-      factory);
-  } else if (typeof exports !== 'undefined') {
-    factory(exports, require('./ui_utils.js'));
-  } else {
-    factory((root.pdfjsWebPDFFindController = {}), root.pdfjsWebUIUtils);
-  }
-}(this, function (exports, uiUtils) {
-
-var scrollIntoView = uiUtils.scrollIntoView;
+import { scrollIntoView } from './ui_utils';
 
 var FindStates = {
   FIND_FOUND: 0,
@@ -94,9 +81,9 @@ var PDFFindController = (function PDFFindControllerClosure() {
       this.dirtyMatch = false;
       this.findTimeout = null;
 
-      this.firstPagePromise = new Promise(function (resolve) {
+      this._firstPagePromise = new Promise((resolve) => {
         this.resolveFirstPage = resolve;
-      }.bind(this));
+      });
     },
 
     normalize: function PDFFindController_normalize(text) {
@@ -290,7 +277,7 @@ var PDFFindController = (function PDFFindControllerClosure() {
       this.state = state;
       this.updateUIState(FindStates.FIND_PENDING);
 
-      this.firstPagePromise.then(function() {
+      this._firstPagePromise.then(function() {
         this.extractText();
 
         clearTimeout(this.findTimeout);
@@ -505,6 +492,7 @@ var PDFFindController = (function PDFFindControllerClosure() {
   return PDFFindController;
 })();
 
-exports.FindStates = FindStates;
-exports.PDFFindController = PDFFindController;
-}));
+export {
+  FindStates,
+  PDFFindController,
+};

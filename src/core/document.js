@@ -310,14 +310,9 @@ var Page = (function PageClosure() {
       });
     },
 
-    extractTextContent: function Page_extractTextContent(task,
+    extractTextContent: function Page_extractTextContent(handler, task,
                                                          normalizeWhitespace,
                                                          combineTextItems) {
-      var handler = {
-        on: function nullHandlerOn() {},
-        send: function nullHandlerSend() {}
-      };
-
       var self = this;
 
       var pdfManager = this.pdfManager;
@@ -467,6 +462,9 @@ var PDFDocument = (function PDFDocumentClosure() {
           }
         }
       } catch (ex) {
+        if (ex instanceof MissingDataException) {
+          throw ex;
+        }
         info('Something wrong with AcroForm entry');
         this.acroForm = null;
       }
@@ -595,6 +593,9 @@ var PDFDocument = (function PDFDocumentClosure() {
       try {
         infoDict = this.xref.trailer.get('Info');
       } catch (err) {
+        if (err instanceof MissingDataException) {
+          throw err;
+        }
         info('The document information dictionary is invalid.');
       }
       if (infoDict) {

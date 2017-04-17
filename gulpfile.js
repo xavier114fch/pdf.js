@@ -30,14 +30,15 @@ var runSequence = require('run-sequence');
 var stream = require('stream');
 var exec = require('child_process').exec;
 var spawn = require('child_process').spawn;
+var spawnSync = require('child_process').spawnSync;
 var streamqueue = require('streamqueue');
 var merge = require('merge-stream');
 var zip = require('gulp-zip');
 var webpack2 = require('webpack');
 var webpackStream = require('webpack-stream');
+var vinyl = require('vinyl-fs');
 
 var BUILD_DIR = 'build/';
-var JSDOC_DIR = 'jsdoc/';
 var L10N_DIR = 'l10n/';
 var TEST_DIR = 'test/';
 var EXTENSION_SRC_DIR = 'extensions/';
@@ -48,10 +49,15 @@ var COMPONENTS_DIR = BUILD_DIR + 'components/';
 var SINGLE_FILE_DIR = BUILD_DIR + 'singlefile/';
 var MINIFIED_DIR = BUILD_DIR + 'minified/';
 var FIREFOX_BUILD_DIR = BUILD_DIR + 'firefox/';
+var CHROME_BUILD_DIR = BUILD_DIR + 'chromium/';
+var JSDOC_BUILD_DIR = BUILD_DIR + 'jsdoc/';
+var GH_PAGES_DIR = BUILD_DIR + 'gh-pages/';
 var COMMON_WEB_FILES = [
   'web/images/*.{png,svg,gif,cur}',
   'web/debugger.js'
 ];
+
+var REPO = 'git@github.com:mozilla/pdf.js.git';
 
 var builder = require('./external/builder/builder.js');
 
@@ -67,7 +73,8 @@ var DEFINES = {
   CHROME: false,
   MINIFIED: false,
   SINGLE_FILE: false,
-  COMPONENTS: false
+  COMPONENTS: false,
+  PDFJS_NEXT: false,
 };
 
 function createStringSource(filename, content) {
@@ -110,13 +117,21 @@ function createWebpackConfig(defines, output) {
     module: {
       loaders: [
         {
+          loader: 'babel-loader',
+          exclude: /src\/core\/(glyphlist|unicode)/, // babel is too slow
+          options: {
+            presets: bundleDefines.PDFJS_NEXT ? undefined : ['es2015'],
+            plugins: ['transform-es2015-modules-commonjs']
+          }
+        },
+        {
           loader: path.join(__dirname, 'external/webpack/pdfjsdev-loader.js'),
           options: {
             rootPath: __dirname,
             saveComments: false,
             defines: bundleDefines
           }
-        }
+        },
       ]
     }
   };
@@ -276,6 +291,12 @@ function checkDir(path) {
   } catch (e) {
     return false;
   }
+}
+
+function replaceInFile(path, find, replacement) {
+  var content = fs.readFileSync(path).toString();
+  content = content.replace(find, replacement);
+  fs.writeFileSync(path, content);
 }
 
 function getTempFile(prefix, suffix) {
@@ -669,7 +690,7 @@ gulp.task('minified', ['minified-pre'], function (done) {
 gulp.task('firefox-pre', ['buildnumber', 'locale'], function () {
   console.log();
   console.log('### Building Firefox extension');
-  var defines = builder.merge(DEFINES, {FIREFOX: true});
+  var defines = builder.merge(DEFINES, { FIREFOX: true, PDFJS_NEXT: true, });
 
   var FIREFOX_BUILD_CONTENT_DIR = FIREFOX_BUILD_DIR + '/content/',
       FIREFOX_EXTENSION_DIR = 'extensions/firefox/',
@@ -707,7 +728,7 @@ gulp.task('firefox-pre', ['buildnumber', 'locale'], function () {
     gulp.src(FIREFOX_CONTENT_DIR + 'PdfJs-stub.jsm')
         .pipe(rename('PdfJs.jsm'))
         .pipe(gulp.dest(FIREFOX_BUILD_CONTENT_DIR)),
-    gulp.src(FIREFOX_CONTENT_DIR + 'PdfJsTelemetry-addon.jsm')
+    gulp.src(FIREFOX_CONTENT_DIR + 'PdfJsTelemetry-stub.jsm')
         .pipe(rename('PdfJsTelemetry.jsm'))
         .pipe(gulp.dest(FIREFOX_BUILD_CONTENT_DIR)),
     gulp.src(FIREFOX_EXTENSION_DIR + '*.png')
@@ -780,7 +801,7 @@ gulp.task('firefox', ['firefox-pre'], function (done) {
 gulp.task('mozcentral-pre', ['buildnumber', 'locale'], function () {
   console.log();
   console.log('### Building mozilla-central extension');
-  var defines = builder.merge(DEFINES, {MOZCENTRAL: true});
+  var defines = builder.merge(DEFINES, { MOZCENTRAL: true, PDFJS_NEXT: true, });
 
   var MOZCENTRAL_DIR = BUILD_DIR + 'mozcentral/',
       MOZCENTRAL_EXTENSION_DIR = MOZCENTRAL_DIR + 'browser/extensions/pdfjs/',
@@ -814,6 +835,8 @@ gulp.task('mozcentral-pre', ['buildnumber', 'locale'], function () {
     gulp.src(FIREFOX_CONTENT_DIR + 'PdfJsTelemetry.jsm')
         .pipe(gulp.dest(MOZCENTRAL_CONTENT_DIR)),
     gulp.src(FIREFOX_CONTENT_DIR + 'pdfjschildbootstrap.js')
+        .pipe(gulp.dest(MOZCENTRAL_CONTENT_DIR)),
+    gulp.src(FIREFOX_CONTENT_DIR + 'pdfjschildbootstrap-enabled.js')
         .pipe(gulp.dest(MOZCENTRAL_CONTENT_DIR)),
     gulp.src(FIREFOX_EXTENSION_DIR + 'chrome-mozcentral.manifest')
         .pipe(rename('chrome.manifest'))
@@ -851,7 +874,7 @@ gulp.task('mozcentral', ['mozcentral-pre']);
 gulp.task('chromium-pre', ['buildnumber', 'locale'], function () {
   console.log();
   console.log('### Building Chromium extension');
-  var defines = builder.merge(DEFINES, {CHROME: true});
+  var defines = builder.merge(DEFINES, { CHROME: true, PDFJS_NEXT: true, });
 
   var CHROME_BUILD_DIR = BUILD_DIR + '/chromium/',
       CHROME_BUILD_CONTENT_DIR = CHROME_BUILD_DIR + '/content/';
@@ -915,10 +938,9 @@ gulp.task('jsdoc', function (done) {
     'src/core/annotation.js'
   ];
 
-  var directory = BUILD_DIR + JSDOC_DIR;
-  rimraf(directory, function () {
-    mkdirp(directory, function () {
-      var command = '"node_modules/.bin/jsdoc" -d ' + directory + ' ' +
+  rimraf(JSDOC_BUILD_DIR, function () {
+    mkdirp(JSDOC_BUILD_DIR, function () {
+      var command = '"node_modules/.bin/jsdoc" -d ' + JSDOC_BUILD_DIR + ' ' +
                     JSDOC_FILES.join(' ');
       exec(command, done);
     });
@@ -927,7 +949,13 @@ gulp.task('jsdoc', function (done) {
 
 gulp.task('lib', ['buildnumber'], function () {
   function preprocess(content) {
+    var noPreset = /\/\*\s*no-babel-preset\s*\*\//.test(content);
     content = preprocessor2.preprocessPDFJSCode(ctx, content);
+    content = babel.transform(content, {
+      sourceType: 'module',
+      presets: noPreset ? undefined : ['es2015'],
+      plugins: ['transform-es2015-modules-commonjs'],
+    }).code;
     var removeCjsSrc =
       /^(var\s+\w+\s*=\s*require\('.*?)(?:\/src)(\/[^']*'\);)$/gm;
     content = content.replace(removeCjsSrc, function (all, prefix, suffix) {
@@ -935,6 +963,7 @@ gulp.task('lib', ['buildnumber'], function () {
     });
     return licenseHeader + content;
   }
+  var babel = require('babel-core');
   var versionInfo = getVersionJSON();
   var ctx = {
     rootPath: __dirname,
@@ -1088,19 +1117,6 @@ gulp.task('lint', function (done) {
     }
 
     console.log();
-    console.log('### Checking UMD dependencies');
-    var umd = require('./external/umdutils/verifier.js');
-    var paths = {
-      'pdfjs': './src',
-      'pdfjs-web': './web',
-      'pdfjs-test': './test'
-    };
-    if (!umd.validateFiles(paths)) {
-      done(new Error('UMD check failed.'));
-      return;
-    }
-
-    console.log();
     console.log('### Checking supplemental files');
 
     if (!checkChromePreferencesFile(
@@ -1155,6 +1171,63 @@ gulp.task('importl10n', function(done) {
   }
   locales.downloadL10n(L10N_DIR, done);
 });
+
+gulp.task('gh-pages-prepare', ['web-pre'], function () {
+  console.log();
+  console.log('### Creating web site');
+
+  rimraf.sync(GH_PAGES_DIR);
+
+  // 'vinyl' because web/viewer.html needs its BOM.
+  return merge([
+    vinyl.src(GENERIC_DIR + '**/*', {base: GENERIC_DIR, stripBOM: false})
+         .pipe(gulp.dest(GH_PAGES_DIR)),
+    gulp.src([FIREFOX_BUILD_DIR + '*.xpi',
+              FIREFOX_BUILD_DIR + '*.rdf'])
+        .pipe(gulp.dest(GH_PAGES_DIR + EXTENSION_SRC_DIR + 'firefox/')),
+    gulp.src(CHROME_BUILD_DIR + '*.crx')
+        .pipe(gulp.dest(GH_PAGES_DIR + EXTENSION_SRC_DIR + 'chromium/')),
+    gulp.src('test/features/**/*', {base: 'test/'})
+        .pipe(gulp.dest(GH_PAGES_DIR)),
+    gulp.src(JSDOC_BUILD_DIR + '**/*', {base: JSDOC_BUILD_DIR})
+        .pipe(gulp.dest(GH_PAGES_DIR + 'api/draft/')),
+  ]);
+});
+
+gulp.task('wintersmith', ['gh-pages-prepare'], function (done) {
+  var wintersmith = require('wintersmith');
+  var env = wintersmith('docs/config.json');
+  env.build(GH_PAGES_DIR, function (error) {
+    if (error) {
+      return done(error);
+    }
+    replaceInFile(GH_PAGES_DIR + '/getting_started/index.html',
+                  /STABLE_VERSION/g, config.stableVersion);
+    replaceInFile(GH_PAGES_DIR + '/getting_started/index.html',
+                  /BETA_VERSION/g, config.betaVersion);
+    console.log('Done building with wintersmith.');
+    done();
+  });
+});
+
+gulp.task('gh-pages-git', ['gh-pages-prepare', 'wintersmith'], function () {
+  var VERSION = getVersionJSON().version;
+  var reason = process.env['PDFJS_UPDATE_REASON'];
+
+  spawnSync('git', ['init'], {cwd: GH_PAGES_DIR});
+  spawnSync('git', ['remote', 'add', 'origin', REPO], {cwd: GH_PAGES_DIR});
+  spawnSync('git', ['add', '-A'], {cwd: GH_PAGES_DIR});
+  spawnSync('git', [
+    'commit', '-am', 'gh-pages site created via gulpfile.js script',
+    '-m', 'PDF.js version ' + VERSION + (reason ? ' - ' + reason : '')
+  ], {cwd: GH_PAGES_DIR});
+  spawnSync('git', ['branch', '-m', 'gh-pages'], {cwd: GH_PAGES_DIR});
+
+  console.log();
+  console.log('Website built in ' + GH_PAGES_DIR);
+});
+
+gulp.task('web', ['gh-pages-prepare', 'wintersmith', 'gh-pages-git']);
 
 // Getting all shelljs registered tasks and register them with gulp
 require('./make.js');

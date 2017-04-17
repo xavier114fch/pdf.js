@@ -13,26 +13,10 @@
  * limitations under the License.
  */
 
-'use strict';
-
-(function (root, factory) {
-  if (typeof define === 'function' && define.amd) {
-    define('pdfjs/display/dom_utils', ['exports', 'pdfjs/shared/util'],
-      factory);
-  } else if (typeof exports !== 'undefined') {
-    factory(exports, require('../shared/util.js'));
-  } else {
-    factory((root.pdfjsDisplayDOMUtils = {}), root.pdfjsSharedUtil);
-  }
-}(this, function (exports, sharedUtil) {
-
-var assert = sharedUtil.assert;
-var removeNullCharacters = sharedUtil.removeNullCharacters;
-var warn = sharedUtil.warn;
-var deprecated = sharedUtil.deprecated;
-var createValidAbsoluteUrl = sharedUtil.createValidAbsoluteUrl;
-var stringToBytes = sharedUtil.stringToBytes;
-var CMapCompressionType = sharedUtil.CMapCompressionType;
+import {
+  assert, CMapCompressionType, createValidAbsoluteUrl, deprecated, globalScope,
+  removeNullCharacters, stringToBytes, warn
+} from '../shared/util';
 
 var DEFAULT_LINK_REL = 'noopener noreferrer nofollow';
 
@@ -76,20 +60,24 @@ var DOMCMapReaderFactory = (function DOMCMapReaderFactoryClosure() {
 
   DOMCMapReaderFactory.prototype = {
     fetch: function(params) {
-      if (!params.name) {
+      var name = params.name;
+      if (!name) {
         return Promise.reject(new Error('CMap name must be specified.'));
       }
       return new Promise(function (resolve, reject) {
-        var url = this.baseUrl + params.name;
+        var url = this.baseUrl + name + (this.isCompressed ? '.bcmap' : '');
 
         var request = new XMLHttpRequest();
+        request.open('GET', url, true);
+
         if (this.isCompressed) {
-          url += '.bcmap';
           request.responseType = 'arraybuffer';
         }
         request.onreadystatechange = function () {
-          if (request.readyState === XMLHttpRequest.DONE &&
-              (request.status === 200 || request.status === 0)) {
+          if (request.readyState !== XMLHttpRequest.DONE) {
+            return;
+          }
+          if (request.status === 200 || request.status === 0) {
             var data;
             if (this.isCompressed && request.response) {
               data = new Uint8Array(request.response);
@@ -104,13 +92,12 @@ var DOMCMapReaderFactory = (function DOMCMapReaderFactoryClosure() {
               });
               return;
             }
-            reject(new Error('Unable to load ' +
-                             (this.isCompressed ? 'binary' : '') +
-                             ' CMap at: ' + url));
           }
+          reject(new Error('Unable to load ' +
+                           (this.isCompressed ? 'binary ' : '') +
+                           'CMap at: ' + url));
         }.bind(this);
 
-        request.open('GET', url, true);
         request.send(null);
       }.bind(this));
     },
@@ -173,21 +160,18 @@ var CustomStyle = (function CustomStyleClosure() {
   return CustomStyle;
 })();
 
-var hasCanvasTypedArrays;
-if (typeof PDFJSDev === 'undefined' ||
-    !PDFJSDev.test('FIREFOX || MOZCENTRAL || CHROME')) {
-  hasCanvasTypedArrays = function hasCanvasTypedArrays() {
-    var canvas = document.createElement('canvas');
-    canvas.width = canvas.height = 1;
-    var ctx = canvas.getContext('2d');
-    var imageData = ctx.createImageData(1, 1);
-    return (typeof imageData.data.buffer !== 'undefined');
-  };
-} else {
-  hasCanvasTypedArrays = function () {
-    return true;
-  };
-}
+var RenderingCancelledException = (function RenderingCancelledException() {
+  function RenderingCancelledException(msg, type) {
+    this.message = msg;
+    this.type = type;
+  }
+
+  RenderingCancelledException.prototype = new Error();
+  RenderingCancelledException.prototype.name = 'RenderingCancelledException';
+  RenderingCancelledException.constructor = RenderingCancelledException;
+
+  return RenderingCancelledException;
+})();
 
 var LinkTarget = {
   NONE: 0, // Default value.
@@ -250,7 +234,7 @@ function getFilenameFromUrl(url) {
 function getDefaultSetting(id) {
   // The list of the settings and their default is maintained for backward
   // compatibility and shall not be extended or modified. See also global.js.
-  var globalSettings = sharedUtil.globalScope.PDFJS;
+  var globalSettings = globalScope.PDFJS;
   switch (id) {
     case 'pdfBug':
       return globalSettings ? globalSettings.pdfBug : false;
@@ -305,6 +289,8 @@ function getDefaultSetting(id) {
       return globalSettings ? globalSettings.externalLinkRel : DEFAULT_LINK_REL;
     case 'enableStats':
       return !!(globalSettings && globalSettings.enableStats);
+    case 'pdfjsNext':
+      return !!(globalSettings && globalSettings.pdfjsNext);
     default:
       throw new Error('Unknown default setting: ' + id);
   }
@@ -329,15 +315,16 @@ function isValidUrl(url, allowRelative) {
   return createValidAbsoluteUrl(url, baseUrl) !== null;
 }
 
-exports.CustomStyle = CustomStyle;
-exports.addLinkAttributes = addLinkAttributes;
-exports.isExternalLinkTargetSet = isExternalLinkTargetSet;
-exports.isValidUrl = isValidUrl;
-exports.getFilenameFromUrl = getFilenameFromUrl;
-exports.LinkTarget = LinkTarget;
-exports.hasCanvasTypedArrays = hasCanvasTypedArrays;
-exports.getDefaultSetting = getDefaultSetting;
-exports.DEFAULT_LINK_REL = DEFAULT_LINK_REL;
-exports.DOMCanvasFactory = DOMCanvasFactory;
-exports.DOMCMapReaderFactory = DOMCMapReaderFactory;
-}));
+export {
+  CustomStyle,
+  RenderingCancelledException,
+  addLinkAttributes,
+  isExternalLinkTargetSet,
+  isValidUrl,
+  getFilenameFromUrl,
+  LinkTarget,
+  getDefaultSetting,
+  DEFAULT_LINK_REL,
+  DOMCanvasFactory,
+  DOMCMapReaderFactory,
+};

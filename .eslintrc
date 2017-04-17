@@ -1,6 +1,7 @@
 {
   "parserOptions": {
-    "ecmaVersion": 5,
+    "ecmaVersion": 6,
+    "sourceType": "module",
   },
 
   "env": {
@@ -68,21 +69,26 @@
     "no-redeclare": "error",
     "no-self-assign": "error",
     "no-self-compare": "error",
+    "no-throw-literal": "error",
     "no-unused-expressions": "error",
     "no-unused-labels": "error",
     "no-useless-call": "error",
     "no-useless-concat": "error",
+    "prefer-promise-reject-errors": "error",
     "wrap-iife": ["error", "any"],
-    "yoda": ["error", "never", { "onlyEquality": true, }],
+    "yoda": ["error", "never", {
+      "exceptRange": true,
+    }],
 
     // Strict Mode
-    "strict": ["error", "global"],
+    "strict": ["off", "global"],
 
     // Variables
     "no-catch-shadow": "error",
     "no-delete-var": "error",
     "no-label-var": "error",
     "no-shadow-restricted-names": "error",
+    "no-shadow": "off",
     "no-undef-init": "error",
     "no-undef": ["error", { "typeof": true, }],
     "no-unused-vars": ["error", {
@@ -132,5 +138,29 @@
     }],
 
     // ECMAScript 6
+    "arrow-body-style": ["error", "always"],
+    "arrow-parens": ["error", "always"],
+    "arrow-spacing": ["error", {
+      "before": true,
+      "after": true,
+    }],
+    "constructor-super": "error",
+    "no-class-assign": "error",
+    "no-confusing-arrow": "error",
+    "no-const-assign": "error",
+    "no-dupe-class-members": "error",
+    "no-duplicate-imports": "error",
+    "no-this-before-super": "error",
+    "no-useless-computed-key": "error",
+    "no-useless-constructor": "error",
+    "no-useless-rename": "error",
+    "object-shorthand": ["off", "always", {
+      "avoidQuotes": true,
+    }],
+    "rest-spread-spacing": ["error", "never"],
+    "sort-imports": ["error", {
+      "ignoreCase": true,
+    }],
+    "template-curly-spacing": ["error", "never"],
   },
 }

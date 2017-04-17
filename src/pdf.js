@@ -13,7 +13,6 @@
  * limitations under the License.
  */
 /* eslint-disable no-unused-vars */
-/* umdutils ignore */
 
 'use strict';
 
@@ -52,5 +51,7 @@ exports.createObjectURL = pdfjsSharedUtil.createObjectURL;
 exports.removeNullCharacters = pdfjsSharedUtil.removeNullCharacters;
 exports.shadow = pdfjsSharedUtil.shadow;
 exports.createBlob = pdfjsSharedUtil.createBlob;
+exports.RenderingCancelledException =
+  pdfjsDisplayDOMUtils.RenderingCancelledException;
 exports.getFilenameFromUrl = pdfjsDisplayDOMUtils.getFilenameFromUrl;
 exports.addLinkAttributes = pdfjsDisplayDOMUtils.addLinkAttributes;
