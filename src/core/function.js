@@ -13,29 +13,9 @@
  * limitations under the License.
  */
 
-'use strict';
-
-(function (root, factory) {
-  if (typeof define === 'function' && define.amd) {
-    define('pdfjs/core/function', ['exports', 'pdfjs/shared/util',
-      'pdfjs/core/primitives', 'pdfjs/core/ps_parser'], factory);
-  } else if (typeof exports !== 'undefined') {
-    factory(exports, require('../shared/util.js'), require('./primitives.js'),
-      require('./ps_parser.js'));
-  } else {
-    factory((root.pdfjsCoreFunction = {}), root.pdfjsSharedUtil,
-      root.pdfjsCorePrimitives, root.pdfjsCorePsParser);
-  }
-}(this, function (exports, sharedUtil, corePrimitives, corePsParser) {
-
-var error = sharedUtil.error;
-var info = sharedUtil.info;
-var isArray = sharedUtil.isArray;
-var isBool = sharedUtil.isBool;
-var isDict = corePrimitives.isDict;
-var isStream = corePrimitives.isStream;
-var PostScriptLexer = corePsParser.PostScriptLexer;
-var PostScriptParser = corePsParser.PostScriptParser;
+import { error, info, isArray, isBool } from '../shared/util';
+import { isDict, isStream } from './primitives';
+import { PostScriptLexer, PostScriptParser } from './ps_parser';
 
 var PDFFunction = (function PDFFunctionClosure() {
   var CONSTRUCT_SAMPLED = 0;
@@ -870,36 +850,36 @@ var PostScriptCompiler = (function PostScriptCompilerClosure() {
     this.parts = [];
   }
   ExpressionBuilderVisitor.prototype = {
-    visitArgument: function (arg) {
+    visitArgument(arg) {
       this.parts.push('Math.max(', arg.min, ', Math.min(',
                       arg.max, ', src[srcOffset + ', arg.index, ']))');
     },
-    visitVariable: function (variable) {
+    visitVariable(variable) {
       this.parts.push('v', variable.index);
     },
-    visitLiteral: function (literal) {
+    visitLiteral(literal) {
       this.parts.push(literal.number);
     },
-    visitBinaryOperation: function (operation) {
+    visitBinaryOperation(operation) {
       this.parts.push('(');
       operation.arg1.visit(this);
       this.parts.push(' ', operation.op, ' ');
       operation.arg2.visit(this);
       this.parts.push(')');
     },
-    visitVariableDefinition: function (definition) {
+    visitVariableDefinition(definition) {
       this.parts.push('var ');
       definition.variable.visit(this);
       this.parts.push(' = ');
       definition.arg.visit(this);
       this.parts.push(';');
     },
-    visitMin: function (max) {
+    visitMin(max) {
       this.parts.push('Math.min(');
       max.arg.visit(this);
       this.parts.push(', ', max.max, ')');
     },
-    toString: function () {
+    toString() {
       return this.parts.join('');
     }
   };
@@ -1152,8 +1132,9 @@ var PostScriptCompiler = (function PostScriptCompilerClosure() {
   return PostScriptCompiler;
 })();
 
-exports.isPDFFunction = isPDFFunction;
-exports.PDFFunction = PDFFunction;
-exports.PostScriptEvaluator = PostScriptEvaluator;
-exports.PostScriptCompiler = PostScriptCompiler;
-}));
+export {
+  isPDFFunction,
+  PDFFunction,
+  PostScriptEvaluator,
+  PostScriptCompiler,
+};

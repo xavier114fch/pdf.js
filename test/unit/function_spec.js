@@ -12,38 +12,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-'use strict';
 
-(function (root, factory) {
-  if (typeof define === 'function' && define.amd) {
-    define('pdfjs-test/unit/function_spec', ['exports',
-           'pdfjs/core/function', 'pdfjs/core/ps_parser',
-           'pdfjs/core/stream', 'pdfjs/shared/util'], factory);
-  } else if (typeof exports !== 'undefined') {
-    factory(exports, require('../../src/core/function.js'),
-            require('../../src/core/ps_parser.js'),
-            require('../../src/core/stream.js'),
-            require('../../src/shared/util.js'));
-  } else {
-    factory((root.pdfjsTestUnitFunctionSpec = {}),
-             root.pdfjsCoreFunction, root.pdfjsCorePsParser,
-             root.pdfjsCoreStream, root.pdfjsSharedUtil);
-  }
-}(this, function (exports, coreFunction, corePsParser, coreStream, sharedUtil) {
-
-var PostScriptEvaluator = coreFunction.PostScriptEvaluator;
-var PostScriptCompiler = coreFunction.PostScriptCompiler;
-var PostScriptParser = corePsParser.PostScriptParser;
-var PostScriptLexer = corePsParser.PostScriptLexer;
-var StringStream = coreStream.StringStream;
-var isArray = sharedUtil.isArray;
+import {
+  PostScriptCompiler, PostScriptEvaluator
+} from '../../src/core/function';
+import { PostScriptLexer, PostScriptParser } from '../../src/core/ps_parser';
+import { isArray } from '../../src/shared/util';
+import { StringStream } from '../../src/core/stream';
 
 describe('function', function() {
   beforeEach(function() {
     jasmine.addMatchers({
-      toMatchArray: function(util, customEqualityTesters) {
+      toMatchArray(util, customEqualityTesters) {
         return {
-          compare: function (actual, expected) {
+          compare(actual, expected) {
             var result = {};
             if (actual.length !== expected.length) {
               result.pass = false;
@@ -564,4 +546,3 @@ describe('function', function() {
     });
   });
 });
-}));

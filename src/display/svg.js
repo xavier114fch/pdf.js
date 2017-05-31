@@ -403,7 +403,6 @@ SVGGraphics = (function SVGGraphicsClosure() {
       var fnArrayLen = fnArray.length;
       var argsArray = operatorList.argsArray;
 
-      var self = this;
       for (var i = 0; i < fnArrayLen; i++) {
         if (OPS.dependency === fnArray[i]) {
           var deps = argsArray[i];
@@ -412,12 +411,12 @@ SVGGraphics = (function SVGGraphicsClosure() {
             var common = obj.substring(0, 2) === 'g_';
             var promise;
             if (common) {
-              promise = new Promise(function(resolve) {
-                self.commonObjs.get(obj, resolve);
+              promise = new Promise((resolve) => {
+                this.commonObjs.get(obj, resolve);
               });
             } else {
-              promise = new Promise(function(resolve) {
-                self.objs.get(obj, resolve);
+              promise = new Promise((resolve) => {
+                this.objs.get(obj, resolve);
               });
             }
             this.current.dependencies.push(promise);
@@ -438,12 +437,12 @@ SVGGraphics = (function SVGGraphicsClosure() {
       this.viewport = viewport;
 
       var svgElement = this._initialize(viewport);
-      return this.loadDependencies(operatorList).then(function () {
+      return this.loadDependencies(operatorList).then(() => {
         this.transformMatrix = IDENTITY_MATRIX;
         var opTree = this.convertOpList(operatorList);
         this.executeOpTree(opTree);
         return svgElement;
-      }.bind(this));
+      });
     },
 
     convertOpList: function SVGGraphics_convertOpList(operatorList) {
@@ -693,7 +692,8 @@ SVGGraphics = (function SVGGraphicsClosure() {
 
         var width = glyph.width;
         var character = glyph.fontChar;
-        var charWidth = width * widthAdvanceScale + charSpacing * fontDirection;
+        var spacing = (glyph.isSpace ? wordSpacing : 0) + charSpacing;
+        var charWidth = width * widthAdvanceScale + spacing * fontDirection;
         x += charWidth;
 
         current.tspan.textContent += character;
@@ -1029,8 +1029,8 @@ SVGGraphics = (function SVGGraphicsClosure() {
       var imgObj = this.objs.get(objId);
       var imgEl = document.createElementNS(NS, 'svg:image');
       imgEl.setAttributeNS(XLINK_NS, 'xlink:href', imgObj.src);
-      imgEl.setAttributeNS(null, 'width', imgObj.width + 'px');
-      imgEl.setAttributeNS(null, 'height', imgObj.height + 'px');
+      imgEl.setAttributeNS(null, 'width', pf(w));
+      imgEl.setAttributeNS(null, 'height', pf(h));
       imgEl.setAttributeNS(null, 'x', '0');
       imgEl.setAttributeNS(null, 'y', pf(-h));
       imgEl.setAttributeNS(null, 'transform',

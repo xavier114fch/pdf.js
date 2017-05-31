@@ -13,25 +13,9 @@
  * limitations under the License.
  */
 
-'use strict';
-
-(function (root, factory) {
-  if (typeof define === 'function' && define.amd) {
-    define('pdfjs/core/type1_parser', ['exports', 'pdfjs/shared/util',
-      'pdfjs/core/stream', 'pdfjs/core/encodings'], factory);
-  } else if (typeof exports !== 'undefined') {
-    factory(exports, require('../shared/util.js'), require('./stream.js'),
-      require('./encodings.js'));
-  } else {
-    factory((root.pdfjsCoreType1Parser = {}), root.pdfjsSharedUtil,
-      root.pdfjsCoreStream, root.pdfjsCoreEncodings);
-  }
-}(this, function (exports, sharedUtil, coreStream, coreEncodings) {
-
-var warn = sharedUtil.warn;
-var isSpace = sharedUtil.isSpace;
-var Stream = coreStream.Stream;
-var getEncoding = coreEncodings.getEncoding;
+import { isSpace, warn } from '../shared/util';
+import { getEncoding } from './encodings';
+import { Stream } from './stream';
 
 // Hinting is currently disabled due to unknown problems on windows
 // in tracemonkey and various other pdfs with type1 fonts.
@@ -332,7 +316,7 @@ var Type1CharString = (function Type1CharStringClosure() {
       return error;
     },
 
-    executeCommand: function(howManyArgs, command, keepStack) {
+    executeCommand(howManyArgs, command, keepStack) {
       var stackLength = this.stack.length;
       if (howManyArgs > stackLength) {
         return true;
@@ -573,8 +557,8 @@ var Type1Parser = (function Type1ParserClosure() {
                 this.getToken(); // read in 'def'
               }
               charstrings.push({
-                glyph: glyph,
-                encoded: encoded
+                glyph,
+                encoded,
               });
             }
             break;
@@ -717,5 +701,6 @@ var Type1Parser = (function Type1ParserClosure() {
   return Type1Parser;
 })();
 
-exports.Type1Parser = Type1Parser;
-}));
+export {
+  Type1Parser,
+};

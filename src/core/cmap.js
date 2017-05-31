@@ -13,36 +13,13 @@
  * limitations under the License.
  */
 
-'use strict';
-
-(function (root, factory) {
-  if (typeof define === 'function' && define.amd) {
-    define('pdfjs/core/cmap', ['exports', 'pdfjs/shared/util',
-      'pdfjs/core/primitives', 'pdfjs/core/stream', 'pdfjs/core/parser'],
-      factory);
-  } else if (typeof exports !== 'undefined') {
-    factory(exports, require('../shared/util.js'), require('./primitives.js'),
-      require('./stream.js'), require('./parser.js'));
-  } else {
-    factory((root.pdfjsCoreCMap = {}), root.pdfjsSharedUtil,
-      root.pdfjsCorePrimitives, root.pdfjsCoreStream, root.pdfjsCoreParser);
-  }
-}(this, function (exports, sharedUtil, corePrimitives, coreStream, coreParser) {
-
-var Util = sharedUtil.Util;
-var assert = sharedUtil.assert;
-var warn = sharedUtil.warn;
-var error = sharedUtil.error;
-var isInt = sharedUtil.isInt;
-var isString = sharedUtil.isString;
-var MissingDataException = sharedUtil.MissingDataException;
-var CMapCompressionType = sharedUtil.CMapCompressionType;
-var isEOF = corePrimitives.isEOF;
-var isName = corePrimitives.isName;
-var isCmd = corePrimitives.isCmd;
-var isStream = corePrimitives.isStream;
-var Stream = coreStream.Stream;
-var Lexer = coreParser.Lexer;
+import {
+  assert, CMapCompressionType, error, isInt, isString, MissingDataException,
+  Util, warn
+} from '../shared/util';
+import { isCmd, isEOF, isName, isStream } from './primitives';
+import { Lexer } from './parser';
+import { Stream } from './stream';
 
 var BUILT_IN_CMAPS = [
 // << Start unicode maps.
@@ -235,18 +212,18 @@ var CMap = (function CMapClosure() {
     this.builtInCMap = builtInCMap;
   }
   CMap.prototype = {
-    addCodespaceRange: function(n, low, high) {
+    addCodespaceRange(n, low, high) {
       this.codespaceRanges[n - 1].push(low, high);
       this.numCodespaceRanges++;
     },
 
-    mapCidRange: function(low, high, dstLow) {
+    mapCidRange(low, high, dstLow) {
       while (low <= high) {
         this._map[low++] = dstLow++;
       }
     },
 
-    mapBfRange: function(low, high, dstLow) {
+    mapBfRange(low, high, dstLow) {
       var lastByte = dstLow.length - 1;
       while (low <= high) {
         this._map[low++] = dstLow;
@@ -256,7 +233,7 @@ var CMap = (function CMapClosure() {
       }
     },
 
-    mapBfRangeToArray: function(low, high, array) {
+    mapBfRangeToArray(low, high, array) {
       var i = 0, ii = array.length;
       while (low <= high && i < ii) {
         this._map[low] = array[i++];
@@ -265,49 +242,59 @@ var CMap = (function CMapClosure() {
     },
 
     // This is used for both bf and cid chars.
-    mapOne: function(src, dst) {
+    mapOne(src, dst) {
       this._map[src] = dst;
     },
 
-    lookup: function(code) {
+    lookup(code) {
       return this._map[code];
     },
 
-    contains: function(code) {
+    contains(code) {
       return this._map[code] !== undefined;
     },
 
-    forEach: function(callback) {
+    forEach(callback) {
       // Most maps have fewer than 65536 entries, and for those we use normal
       // array iteration. But really sparse tables are possible -- e.g. with
       // indices in the *billions*. For such tables we use for..in, which isn't
       // ideal because it stringifies the indices for all present elements, but
       // it does avoid iterating over every undefined entry.
-      var map = this._map;
-      var length = map.length;
-      var i;
+      let map = this._map;
+      let length = map.length;
       if (length <= 0x10000) {
-        for (i = 0; i < length; i++) {
+        for (let i = 0; i < length; i++) {
           if (map[i] !== undefined) {
             callback(i, map[i]);
           }
         }
       } else {
-        for (i in this._map) {
+        for (let i in map) {
           callback(i, map[i]);
         }
       }
     },
 
-    charCodeOf: function(value) {
-      return this._map.indexOf(value);
+    charCodeOf(value) {
+      // `Array.prototype.indexOf` is *extremely* inefficient for arrays which
+      // are both very sparse and very large (see issue8372.pdf).
+      let map = this._map;
+      if (map.length <= 0x10000) {
+        return map.indexOf(value);
+      }
+      for (let charCode in map) {
+        if (map[charCode] === value) {
+          return (charCode | 0);
+        }
+      }
+      return -1;
     },
 
-    getMap: function() {
+    getMap() {
       return this._map;
     },
 
-    readCharCode: function(str, offset, out) {
+    readCharCode(str, offset, out) {
       var c = 0;
       var codespaceRanges = this.codespaceRanges;
       var codespaceRangesLen = this.codespaceRanges.length;
@@ -366,41 +353,41 @@ var IdentityCMap = (function IdentityCMapClosure() {
   IdentityCMap.prototype = {
     addCodespaceRange: CMap.prototype.addCodespaceRange,
 
-    mapCidRange: function(low, high, dstLow) {
+    mapCidRange(low, high, dstLow) {
       error('should not call mapCidRange');
     },
 
-    mapBfRange: function(low, high, dstLow) {
+    mapBfRange(low, high, dstLow) {
       error('should not call mapBfRange');
     },
 
-    mapBfRangeToArray: function(low, high, array) {
+    mapBfRangeToArray(low, high, array) {
       error('should not call mapBfRangeToArray');
     },
 
-    mapOne: function(src, dst) {
+    mapOne(src, dst) {
       error('should not call mapCidOne');
     },
 
-    lookup: function(code) {
+    lookup(code) {
       return (isInt(code) && code <= 0xffff) ? code : undefined;
     },
 
-    contains: function(code) {
+    contains(code) {
       return isInt(code) && code <= 0xffff;
     },
 
-    forEach: function(callback) {
+    forEach(callback) {
       for (var i = 0; i <= 0xffff; i++) {
         callback(i, i);
       }
     },
 
-    charCodeOf: function(value) {
+    charCodeOf(value) {
       return (isInt(value) && value <= 0xffff) ? value : -1;
     },
 
-    getMap: function() {
+    getMap() {
       // Sometimes identity maps must be instantiated, but it's rare.
       var map = new Array(0x10000);
       for (var i = 0; i <= 0xffff; i++) {
@@ -473,13 +460,13 @@ var BinaryCMapReader = (function BinaryCMapReaderClosure() {
   }
 
   BinaryCMapStream.prototype = {
-    readByte: function () {
+    readByte() {
       if (this.pos >= this.end) {
         return -1;
       }
       return this.buffer[this.pos++];
     },
-    readNumber: function () {
+    readNumber() {
       var n = 0;
       var last;
       do {
@@ -492,16 +479,16 @@ var BinaryCMapReader = (function BinaryCMapReaderClosure() {
       } while (!last);
       return n;
     },
-    readSigned: function () {
+    readSigned() {
       var n = this.readNumber();
       return (n & 1) ? ~(n >>> 1) : n >>> 1;
     },
-    readHex: function (num, size) {
+    readHex(num, size) {
       num.set(this.buffer.subarray(this.pos,
         this.pos + size + 1));
       this.pos += size + 1;
     },
-    readHexNumber: function (num, size) {
+    readHexNumber(num, size) {
       var last;
       var stack = this.tmpBuf, sp = 0;
       do {
@@ -524,7 +511,7 @@ var BinaryCMapReader = (function BinaryCMapReaderClosure() {
         bufferSize -= 8;
       }
     },
-    readHexSigned: function (num, size) {
+    readHexSigned(num, size) {
       this.readHexNumber(num, size);
       var sign = num[size] & 1 ? 255 : 0;
       var c = 0;
@@ -533,7 +520,7 @@ var BinaryCMapReader = (function BinaryCMapReaderClosure() {
         num[i] = (c >> 1) ^ sign;
       }
     },
-    readString: function () {
+    readString() {
       var len = this.readNumber();
       var s = '';
       for (var i = 0; i < len; i++) {
@@ -977,7 +964,7 @@ var CMapFactory = (function CMapFactoryClosure() {
   }
 
   return {
-    create: function (params) {
+    create(params) {
       var encoding = params.encoding;
       var fetchBuiltInCMap = params.fetchBuiltInCMap;
       var useCMap = params.useCMap;
@@ -1000,7 +987,8 @@ var CMapFactory = (function CMapFactoryClosure() {
   };
 })();
 
-exports.CMap = CMap;
-exports.CMapFactory = CMapFactory;
-exports.IdentityCMap = IdentityCMap;
-}));
+export {
+  CMap,
+  IdentityCMap,
+  CMapFactory,
+};

@@ -13,8 +13,8 @@
  * limitations under the License.
  */
 
-import { domEvents } from './dom_events';
-import { renderTextLayer } from './pdfjs';
+import { getGlobalEventBus } from './dom_events';
+import { renderTextLayer } from 'pdfjs-lib';
 
 var EXPAND_DIVS_TIMEOUT = 300; // ms
 
@@ -39,7 +39,7 @@ var EXPAND_DIVS_TIMEOUT = 300; // ms
 var TextLayerBuilder = (function TextLayerBuilderClosure() {
   function TextLayerBuilder(options) {
     this.textLayerDiv = options.textLayerDiv;
-    this.eventBus = options.eventBus || domEvents.getGlobalEventBus();
+    this.eventBus = options.eventBus || getGlobalEventBus();
     this.textContent = null;
     this.renderingDone = false;
     this.pageIdx = options.pageIndex;
@@ -91,14 +91,14 @@ var TextLayerBuilder = (function TextLayerBuilderClosure() {
         container: textLayerFrag,
         viewport: this.viewport,
         textDivs: this.textDivs,
-        timeout: timeout,
+        timeout,
         enhanceTextSelection: this.enhanceTextSelection,
       });
-      this.textLayerRenderTask.promise.then(function () {
+      this.textLayerRenderTask.promise.then(() => {
         this.textLayerDiv.appendChild(textLayerFrag);
         this._finishRendering();
         this.updateMatches();
-      }.bind(this), function (reason) {
+      }, function (reason) {
         // cancelled or failed to render text layer -- skipping errors
       });
     },
@@ -397,13 +397,13 @@ DefaultTextLayerFactory.prototype = {
    * @param {boolean} enhanceTextSelection
    * @returns {TextLayerBuilder}
    */
-  createTextLayerBuilder: function (textLayerDiv, pageIndex, viewport,
-                                    enhanceTextSelection) {
+  createTextLayerBuilder(textLayerDiv, pageIndex, viewport,
+                         enhanceTextSelection = false) {
     return new TextLayerBuilder({
-      textLayerDiv: textLayerDiv,
-      pageIndex: pageIndex,
-      viewport: viewport,
-      enhanceTextSelection: enhanceTextSelection
+      textLayerDiv,
+      pageIndex,
+      viewport,
+      enhanceTextSelection,
     });
   }
 };

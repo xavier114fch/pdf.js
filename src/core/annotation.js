@@ -13,47 +13,16 @@
  * limitations under the License.
  */
 
-'use strict';
-
-(function (root, factory) {
-  if (typeof define === 'function' && define.amd) {
-    define('pdfjs/core/annotation', ['exports', 'pdfjs/shared/util',
-      'pdfjs/core/primitives', 'pdfjs/core/stream', 'pdfjs/core/colorspace',
-      'pdfjs/core/obj', 'pdfjs/core/evaluator'], factory);
-  } else if (typeof exports !== 'undefined') {
-    factory(exports, require('../shared/util.js'), require('./primitives.js'),
-      require('./stream.js'), require('./colorspace.js'), require('./obj.js'),
-      require('./evaluator.js'));
-  } else {
-    factory((root.pdfjsCoreAnnotation = {}), root.pdfjsSharedUtil,
-      root.pdfjsCorePrimitives, root.pdfjsCoreStream, root.pdfjsCoreColorSpace,
-      root.pdfjsCoreObj, root.pdfjsCoreEvaluator);
-  }
-}(this, function (exports, sharedUtil, corePrimitives, coreStream,
-                  coreColorSpace, coreObj, coreEvaluator) {
-
-var AnnotationBorderStyleType = sharedUtil.AnnotationBorderStyleType;
-var AnnotationFieldFlag = sharedUtil.AnnotationFieldFlag;
-var AnnotationFlag = sharedUtil.AnnotationFlag;
-var AnnotationType = sharedUtil.AnnotationType;
-var OPS = sharedUtil.OPS;
-var Util = sharedUtil.Util;
-var isArray = sharedUtil.isArray;
-var isInt = sharedUtil.isInt;
-var stringToBytes = sharedUtil.stringToBytes;
-var stringToPDFString = sharedUtil.stringToPDFString;
-var warn = sharedUtil.warn;
-var Dict = corePrimitives.Dict;
-var isDict = corePrimitives.isDict;
-var isName = corePrimitives.isName;
-var isRef = corePrimitives.isRef;
-var isStream = corePrimitives.isStream;
-var Stream = coreStream.Stream;
-var ColorSpace = coreColorSpace.ColorSpace;
-var Catalog = coreObj.Catalog;
-var ObjectLoader = coreObj.ObjectLoader;
-var FileSpec = coreObj.FileSpec;
-var OperatorList = coreEvaluator.OperatorList;
+import {
+  AnnotationBorderStyleType, AnnotationFieldFlag, AnnotationFlag,
+  AnnotationType, isArray, isInt, OPS, stringToBytes, stringToPDFString, Util,
+  warn
+} from '../shared/util';
+import { Catalog, FileSpec, ObjectLoader } from './obj';
+import { Dict, isDict, isName, isRef, isStream } from './primitives';
+import { ColorSpace } from './colorspace';
+import { OperatorList } from './evaluator';
+import { Stream } from './stream';
 
 /**
  * @class
@@ -81,12 +50,12 @@ AnnotationFactory.prototype = /** @lends AnnotationFactory.prototype */ {
 
     // Return the right annotation object based on the subtype and field type.
     var parameters = {
-      xref: xref,
-      dict: dict,
+      xref,
+      dict,
       ref: isRef(ref) ? ref : null,
-      subtype: subtype,
-      id: id,
-      pdfManager: pdfManager,
+      subtype,
+      id,
+      pdfManager,
     };
 
     switch (subtype) {
@@ -417,20 +386,17 @@ var Annotation = (function AnnotationClosure() {
     },
 
     loadResources: function Annotation_loadResources(keys) {
-      return new Promise(function (resolve, reject) {
-        this.appearance.dict.getAsync('Resources').then(function (resources) {
-          if (!resources) {
-            resolve();
-            return;
-          }
-          var objectLoader = new ObjectLoader(resources.map,
-                                              keys,
-                                              resources.xref);
-          objectLoader.load().then(function() {
-            resolve(resources);
-          }, reject);
-        }, reject);
-      }.bind(this));
+      return this.appearance.dict.getAsync('Resources').then((resources) => {
+        if (!resources) {
+          return;
+        }
+        var objectLoader = new ObjectLoader(resources.map,
+                                            keys,
+                                            resources.xref);
+        return objectLoader.load().then(function() {
+          return resources;
+        });
+      });
     },
 
     getOperatorList: function Annotation_getOperatorList(evaluator, task,
@@ -454,15 +420,18 @@ var Annotation = (function AnnotationClosure() {
       var bbox = appearanceDict.getArray('BBox') || [0, 0, 1, 1];
       var matrix = appearanceDict.getArray('Matrix') || [1, 0, 0, 1, 0, 0];
       var transform = getTransformMatrix(data.rect, bbox, matrix);
-      var self = this;
 
-      return resourcesPromise.then(function(resources) {
+      return resourcesPromise.then((resources) => {
         var opList = new OperatorList();
         opList.addOp(OPS.beginAnnotation, [data.rect, transform, matrix]);
-        return evaluator.getOperatorList(self.appearance, task,
-                                         resources, opList).then(function () {
+        return evaluator.getOperatorList({
+          stream: this.appearance,
+          task,
+          resources,
+          operatorList: opList,
+        }).then(() => {
           opList.addOp(OPS.endAnnotation, []);
-          self.appearance.reset();
+          this.appearance.reset();
           return opList;
         });
       });
@@ -759,8 +728,12 @@ var TextWidgetAnnotation = (function TextWidgetAnnotationClosure() {
       }
 
       var stream = new Stream(stringToBytes(this.data.defaultAppearance));
-      return evaluator.getOperatorList(stream, task, this.fieldResources,
-                                       operatorList).then(function () {
+      return evaluator.getOperatorList({
+        stream,
+        task,
+        resources: this.fieldResources,
+        operatorList,
+      }).then(function () {
         return operatorList;
       });
     }
@@ -1070,7 +1043,8 @@ var FileAttachmentAnnotation = (function FileAttachmentAnnotationClosure() {
   return FileAttachmentAnnotation;
 })();
 
-exports.Annotation = Annotation;
-exports.AnnotationBorderStyle = AnnotationBorderStyle;
-exports.AnnotationFactory = AnnotationFactory;
-}));
+export {
+  Annotation,
+  AnnotationBorderStyle,
+  AnnotationFactory,
+};

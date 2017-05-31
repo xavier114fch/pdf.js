@@ -13,26 +13,10 @@
  * limitations under the License.
  */
 
-'use strict';
-
-(function (root, factory) {
-  if (typeof define === 'function' && define.amd) {
-    define('pdfjs/core/chunked_stream', ['exports', 'pdfjs/shared/util'],
-      factory);
-  } else if (typeof exports !== 'undefined') {
-    factory(exports, require('../shared/util.js'));
-  } else {
-    factory((root.pdfjsCoreChunkedStream = {}), root.pdfjsSharedUtil);
-  }
-}(this, function (exports, sharedUtil) {
-
-var MissingDataException = sharedUtil.MissingDataException;
-var arrayByteLength = sharedUtil.arrayByteLength;
-var arraysToBytes = sharedUtil.arraysToBytes;
-var assert = sharedUtil.assert;
-var createPromiseCapability = sharedUtil.createPromiseCapability;
-var isInt = sharedUtil.isInt;
-var isEmptyObj = sharedUtil.isEmptyObj;
+import {
+  arrayByteLength, arraysToBytes, assert, createPromiseCapability, isEmptyObj,
+  isInt, MissingDataException
+} from '../shared/util';
 
 var ChunkedStream = (function ChunkedStreamClosure() {
   function ChunkedStream(length, chunkSize, manager) {
@@ -320,7 +304,7 @@ var ChunkedStreamManager = (function ChunkedStreamManagerClosure() {
               chunks.push(data);
               loaded += arrayByteLength(data);
               if (rangeReader.isStreamingSupported) {
-                manager.onProgress({loaded: loaded});
+                manager.onProgress({ loaded, });
               }
               rangeReader.read().then(readChunk, reject);
               return;
@@ -334,12 +318,12 @@ var ChunkedStreamManager = (function ChunkedStreamManagerClosure() {
         };
         rangeReader.read().then(readChunk, reject);
       });
-      promise.then(function (data) {
+      promise.then((data) => {
         if (this.aborted) {
           return; // ignoring any data after abort
         }
-        this.onReceiveData({chunk: data, begin: begin});
-      }.bind(this));
+        this.onReceiveData({ chunk: data, begin, });
+      });
       // TODO check errors
     },
 
@@ -450,12 +434,12 @@ var ChunkedStreamManager = (function ChunkedStreamManagerClosure() {
         }
 
         if (prevChunk >= 0 && prevChunk + 1 !== chunk) {
-          groupedChunks.push({ beginChunk: beginChunk,
+          groupedChunks.push({ beginChunk,
                                endChunk: prevChunk + 1 });
           beginChunk = chunk;
         }
         if (i + 1 === chunks.length) {
-          groupedChunks.push({ beginChunk: beginChunk,
+          groupedChunks.push({ beginChunk,
                                endChunk: chunk + 1 });
         }
 
@@ -578,6 +562,7 @@ var ChunkedStreamManager = (function ChunkedStreamManagerClosure() {
   return ChunkedStreamManager;
 })();
 
-exports.ChunkedStream = ChunkedStream;
-exports.ChunkedStreamManager = ChunkedStreamManager;
-}));
+export {
+  ChunkedStream,
+  ChunkedStreamManager,
+};

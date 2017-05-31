@@ -13,58 +13,20 @@
  * limitations under the License.
  */
 
-'use strict';
-
-(function (root, factory) {
-  if (typeof define === 'function' && define.amd) {
-    define('pdfjs/core/obj', ['exports', 'pdfjs/shared/util',
-      'pdfjs/core/primitives', 'pdfjs/core/crypto', 'pdfjs/core/parser',
-      'pdfjs/core/chunked_stream', 'pdfjs/core/colorspace'], factory);
-  } else if (typeof exports !== 'undefined') {
-    factory(exports, require('../shared/util.js'), require('./primitives.js'),
-      require('./crypto.js'), require('./parser.js'),
-      require('./chunked_stream.js'), require('./colorspace.js'));
-  } else {
-    factory((root.pdfjsCoreObj = {}), root.pdfjsSharedUtil,
-      root.pdfjsCorePrimitives, root.pdfjsCoreCrypto, root.pdfjsCoreParser,
-      root.pdfjsCoreChunkedStream, root.pdfjsCoreColorSpace);
-  }
-}(this, function (exports, sharedUtil, corePrimitives, coreCrypto, coreParser,
-                  coreChunkedStream, coreColorSpace) {
-
-var InvalidPDFException = sharedUtil.InvalidPDFException;
-var MissingDataException = sharedUtil.MissingDataException;
-var XRefParseException = sharedUtil.XRefParseException;
-var assert = sharedUtil.assert;
-var bytesToString = sharedUtil.bytesToString;
-var createPromiseCapability = sharedUtil.createPromiseCapability;
-var error = sharedUtil.error;
-var info = sharedUtil.info;
-var isArray = sharedUtil.isArray;
-var isBool = sharedUtil.isBool;
-var isInt = sharedUtil.isInt;
-var isString = sharedUtil.isString;
-var shadow = sharedUtil.shadow;
-var stringToPDFString = sharedUtil.stringToPDFString;
-var stringToUTF8String = sharedUtil.stringToUTF8String;
-var warn = sharedUtil.warn;
-var createValidAbsoluteUrl = sharedUtil.createValidAbsoluteUrl;
-var Util = sharedUtil.Util;
-var Dict = corePrimitives.Dict;
-var Ref = corePrimitives.Ref;
-var RefSet = corePrimitives.RefSet;
-var RefSetCache = corePrimitives.RefSetCache;
-var isName = corePrimitives.isName;
-var isCmd = corePrimitives.isCmd;
-var isDict = corePrimitives.isDict;
-var isRef = corePrimitives.isRef;
-var isRefsEqual = corePrimitives.isRefsEqual;
-var isStream = corePrimitives.isStream;
-var CipherTransformFactory = coreCrypto.CipherTransformFactory;
-var Lexer = coreParser.Lexer;
-var Parser = coreParser.Parser;
-var ChunkedStream = coreChunkedStream.ChunkedStream;
-var ColorSpace = coreColorSpace.ColorSpace;
+import {
+  assert, bytesToString, createPromiseCapability, createValidAbsoluteUrl, error,
+  info, InvalidPDFException, isArray, isBool, isInt, isString,
+  MissingDataException, shadow, stringToPDFString, stringToUTF8String, Util,
+  warn, XRefParseException
+} from '../shared/util';
+import {
+  Dict, isCmd, isDict, isName, isRef, isRefsEqual, isStream, Ref, RefSet,
+  RefSetCache
+} from './primitives';
+import { Lexer, Parser } from './parser';
+import { ChunkedStream } from './chunked_stream';
+import { CipherTransformFactory } from './crypto';
+import { ColorSpace } from './colorspace';
 
 var Catalog = (function CatalogClosure() {
   function Catalog(pdfManager, xref, pageFactory) {
@@ -144,7 +106,7 @@ var Catalog = (function CatalogClosure() {
         return null;
       }
       var root = { items: [] };
-      var queue = [{obj: obj, parent: root}];
+      var queue = [{ obj, parent: root, }];
       // To avoid recursion, keep track of the already processed items.
       var processed = new RefSet();
       processed.put(obj);
@@ -188,12 +150,12 @@ var Catalog = (function CatalogClosure() {
         i.parent.items.push(outlineItem);
         obj = outlineDict.getRaw('First');
         if (isRef(obj) && !processed.has(obj)) {
-          queue.push({obj: obj, parent: outlineItem});
+          queue.push({ obj, parent: outlineItem, });
           processed.put(obj);
         }
         obj = outlineDict.getRaw('Next');
         if (isRef(obj) && !processed.has(obj)) {
-          queue.push({obj: obj, parent: i.parent});
+          queue.push({ obj, parent: i.parent, });
           processed.put(obj);
         }
       }
@@ -429,27 +391,24 @@ var Catalog = (function CatalogClosure() {
       this.fontCache.forEach(function (promise) {
         promises.push(promise);
       });
-      return Promise.all(promises).then(function (translatedFonts) {
+      return Promise.all(promises).then((translatedFonts) => {
         for (var i = 0, ii = translatedFonts.length; i < ii; i++) {
           var font = translatedFonts[i].dict;
           delete font.translated;
         }
         this.fontCache.clear();
         this.builtInCMapCache = Object.create(null);
-      }.bind(this));
+      });
     },
 
     getPage: function Catalog_getPage(pageIndex) {
       if (!(pageIndex in this.pagePromises)) {
         this.pagePromises[pageIndex] = this.getPageDict(pageIndex).then(
-          function (a) {
-            var dict = a[0];
-            var ref = a[1];
-            return this.pageFactory.createPage(pageIndex, dict, ref,
-                                               this.fontCache,
-                                               this.builtInCMapCache);
-          }.bind(this)
-        );
+            ([dict, ref]) => {
+          return this.pageFactory.createPage(pageIndex, dict, ref,
+                                             this.fontCache,
+                                             this.builtInCMapCache);
+        });
       }
       return this.pagePromises[pageIndex];
     },
@@ -686,13 +645,9 @@ var Catalog = (function CatalogClosure() {
               remoteDest = remoteDest.name;
             }
             if (isString(url)) {
-              var baseUrl = url.split('#')[0];
+              let baseUrl = url.split('#')[0];
               if (isString(remoteDest)) {
-                // In practice, a named destination may contain only a number.
-                // If that happens, use the '#nameddest=' form to avoid the link
-                // redirecting to a page, instead of the correct destination.
-                url = baseUrl + '#' +
-                  (/^\d+$/.test(remoteDest) ? 'nameddest=' : '') + remoteDest;
+                url = baseUrl + '#' + remoteDest;
               } else if (isArray(remoteDest)) {
                 url = baseUrl + '#' + JSON.stringify(remoteDest);
               }
@@ -962,7 +917,7 @@ var XRef = (function XRefClosure() {
 
         this.streamState = {
           entryRanges: range,
-          byteWidths: byteWidths,
+          byteWidths,
           entryNum: 0,
           streamPos: stream.pos
         };
@@ -1772,8 +1727,7 @@ var ObjectLoader = (function() {
       }
 
       if (pendingRequests.length) {
-        this.xref.stream.manager.requestRanges(pendingRequests).then(
-            function pendingRequestCallback() {
+        this.xref.stream.manager.requestRanges(pendingRequests).then(() => {
           nodesToVisit = nodesToRevisit;
           for (var i = 0; i < nodesToRevisit.length; i++) {
             var node = nodesToRevisit[i];
@@ -1784,7 +1738,7 @@ var ObjectLoader = (function() {
             }
           }
           this._walk(nodesToVisit);
-        }.bind(this), this.capability.reject);
+        }, this.capability.reject);
         return;
       }
       // Everything is loaded.
@@ -1796,8 +1750,9 @@ var ObjectLoader = (function() {
   return ObjectLoader;
 })();
 
-exports.Catalog = Catalog;
-exports.ObjectLoader = ObjectLoader;
-exports.XRef = XRef;
-exports.FileSpec = FileSpec;
-}));
+export {
+  Catalog,
+  ObjectLoader,
+  XRef,
+  FileSpec,
+};

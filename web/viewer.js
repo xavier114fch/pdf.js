@@ -41,16 +41,17 @@ if (typeof PDFJSDev !== 'undefined' && PDFJSDev.test('PRODUCTION')) {
 }
 
 if (typeof PDFJSDev !== 'undefined' && PDFJSDev.test('FIREFOX || MOZCENTRAL')) {
-  // FIXME the l10n.js file in the Firefox extension needs global FirefoxCom.
-  window.FirefoxCom = require('./firefoxcom.js').FirefoxCom;
+  require('./firefoxcom.js');
   require('./firefox_print_service.js');
+}
+if (typeof PDFJSDev !== 'undefined' && PDFJSDev.test('GENERIC')) {
+  require('./genericcom.js');
 }
 if (typeof PDFJSDev !== 'undefined' && PDFJSDev.test('CHROME')) {
   require('./chromecom.js');
 }
 if (typeof PDFJSDev !== 'undefined' && PDFJSDev.test('CHROME || GENERIC')) {
   require('./pdf_print_service.js');
-  require('./download_manager.js');
 }
 
 function getViewerConfiguration() {
@@ -92,7 +93,8 @@ function getViewerConfiguration() {
       lastPageButton: document.getElementById('lastPage'),
       pageRotateCwButton: document.getElementById('pageRotateCw'),
       pageRotateCcwButton: document.getElementById('pageRotateCcw'),
-      toggleHandToolButton: document.getElementById('toggleHandTool'),
+      cursorSelectToolButton: document.getElementById('cursorSelectTool'),
+      cursorHandToolButton: document.getElementById('cursorHandTool'),
       documentPropertiesButton: document.getElementById('documentProperties'),
     },
     fullscreen: {
@@ -172,10 +174,11 @@ function getViewerConfiguration() {
 function webViewerLoad() {
   var config = getViewerConfiguration();
   if (typeof PDFJSDev === 'undefined' || !PDFJSDev.test('PRODUCTION')) {
-    Promise.all([SystemJS.import('pdfjs-web/app'),
-                 SystemJS.import('pdfjs-web/pdf_print_service'),
-                 SystemJS.import('pdfjs-web/download_manager')])
-           .then(function (modules) {
+    Promise.all([
+      SystemJS.import('pdfjs-web/app'),
+      SystemJS.import('pdfjs-web/genericcom'),
+      SystemJS.import('pdfjs-web/pdf_print_service'),
+    ]).then(function (modules) {
       var app = modules[0];
       window.PDFViewerApplication = app.PDFViewerApplication;
       app.PDFViewerApplication.run(config);

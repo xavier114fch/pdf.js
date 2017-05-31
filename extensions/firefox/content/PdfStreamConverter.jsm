@@ -12,8 +12,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/* globals Components, Services, XPCOMUtils, NetUtil, PrivateBrowsingUtils,
-           dump, NetworkManager, PdfJsTelemetry, PdfjsContentUtils */
 
 "use strict";
 
@@ -319,7 +317,12 @@ class ChromeActions {
   }
 
   getLocale() {
-    return getStringPref("general.useragent.locale", "en-US");
+//#if !MOZCENTRAL
+    if (!Services.locale.getRequestedLocale) {
+      return getStringPref("general.useragent.locale", "en-US");
+    }
+//#endif
+    return Services.locale.getRequestedLocale() || "en-US";
   }
 
   getStrings(data) {
@@ -799,10 +802,10 @@ class FindEventManager {
   }
 
   bind() {
-    var unload = function(e) {
+    var unload = (evt) => {
       this.unbind();
-      this.contentWindow.removeEventListener(e.type, unload);
-    }.bind(this);
+      this.contentWindow.removeEventListener(evt.type, unload);
+    };
     this.contentWindow.addEventListener("unload", unload);
 
     // We cannot directly attach listeners to for the find events

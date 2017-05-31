@@ -182,7 +182,7 @@ var CachedCanvases = (function CachedCanvasesClosure() {
       }
       return canvasEntry;
     },
-    clear: function () {
+    clear() {
       for (var id in this.cache) {
         var canvasEntry = this.cache[id];
         this.canvasFactory.destroy(canvasEntry);
@@ -354,7 +354,7 @@ function compileType3Glyph(imgData) {
 }
 
 var CanvasExtraState = (function CanvasExtraStateClosure() {
-  function CanvasExtraState(old) {
+  function CanvasExtraState() {
     // Are soft masks and alpha values shapes or opacities?
     this.alphaIsShape = false;
     this.fontSize = 0;
@@ -385,8 +385,6 @@ var CanvasExtraState = (function CanvasExtraStateClosure() {
     this.lineWidth = 1;
     this.activeSMask = null;
     this.resumeSMaskCtx = null; // nonclonable field (see the save method below)
-
-    this.old = old;
   }
 
   CanvasExtraState.prototype = {
@@ -609,6 +607,23 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
     }
   }
 
+  function resetCtxToDefault(ctx) {
+    ctx.strokeStyle = '#000000';
+    ctx.fillStyle = '#000000';
+    ctx.fillRule = 'nonzero';
+    ctx.globalAlpha = 1;
+    ctx.lineWidth = 1;
+    ctx.lineCap = 'butt';
+    ctx.lineJoin = 'miter';
+    ctx.miterLimit = 10;
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.font = '10px sans-serif';
+    if (ctx.setLineDash !== undefined) {
+      ctx.setLineDash([]);
+      ctx.lineDashOffset = 0;
+    }
+  }
+
   function composeSMaskBackdrop(bytes, r0, g0, b0) {
     var length = bytes.length;
     for (var i = 3; i < length; i += 4) {
@@ -688,7 +703,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
     var backdrop = smask.backdrop || null;
     if (!smask.transferMap && WebGLUtils.isEnabled) {
       var composed = WebGLUtils.composeSMask(layerCtx.canvas, mask,
-        {subtype: smask.subtype, backdrop: backdrop});
+        { subtype: smask.subtype, backdrop, });
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.drawImage(composed, smask.offsetX, smask.offsetY);
       return;
@@ -705,8 +720,8 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
 
   CanvasGraphics.prototype = {
 
-    beginDrawing: function CanvasGraphics_beginDrawing(transform, viewport,
-                                                       transparency) {
+    beginDrawing({ transform, viewport, transparency,
+                   background = null, }) {
       // For pdfs that use blend modes we have to clear the canvas else certain
       // blend modes can look wrong since we'd be blending with a white
       // backdrop. The problem with a transparent backdrop though is we then
@@ -716,7 +731,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
       var height = this.ctx.canvas.height;
 
       this.ctx.save();
-      this.ctx.fillStyle = 'rgb(255, 255, 255)';
+      this.ctx.fillStyle = background || 'rgb(255, 255, 255)';
       this.ctx.fillRect(0, 0, width, height);
       this.ctx.restore();
 
@@ -734,6 +749,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
       }
 
       this.ctx.save();
+      resetCtxToDefault(this.ctx);
       if (transform) {
         this.ctx.transform.apply(this.ctx, transform);
       }
@@ -1376,10 +1392,10 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
         var paths = this.pendingTextPaths || (this.pendingTextPaths = []);
         paths.push({
           transform: ctx.mozCurrentTransform,
-          x: x,
-          y: y,
-          fontSize: fontSize,
-          addToPath: addToPath
+          x,
+          y,
+          fontSize,
+          addToPath,
         });
       }
     },
@@ -1584,8 +1600,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
         var spacing = (glyph.isSpace ? wordSpacing : 0) + charSpacing;
         var operatorList = font.charProcOperatorList[glyph.operatorListId];
         if (!operatorList) {
-          warn('Type3 character \"' + glyph.operatorListId +
-               '\" is not available');
+          warn(`Type3 character "${glyph.operatorListId}" is not available.`);
           continue;
         }
         this.processingType3 = glyph;
@@ -1630,11 +1645,10 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
         var color = IR[1];
         var baseTransform = this.baseTransform ||
                             this.ctx.mozCurrentTransform.slice();
-        var self = this;
         var canvasGraphicsFactory = {
-          createCanvasGraphics: function (ctx) {
-            return new CanvasGraphics(ctx, self.commonObjs, self.objs,
-                                      self.canvasFactory);
+          createCanvasGraphics: (ctx) => {
+            return new CanvasGraphics(ctx, this.commonObjs, this.objs,
+                                      this.canvasFactory);
           }
         };
         pattern = new TilingPattern(IR, color, this.ctx, canvasGraphicsFactory,
@@ -1812,10 +1826,10 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
         this.smaskStack.push({
           canvas: scratchCanvas.canvas,
           context: groupCtx,
-          offsetX: offsetX,
-          offsetY: offsetY,
-          scaleX: scaleX,
-          scaleY: scaleY,
+          offsetX,
+          offsetY,
+          scaleX,
+          scaleY,
           subtype: group.smask.subtype,
           backdrop: group.smask.backdrop,
           transferMap: group.smask.transferMap || null,
@@ -1865,8 +1879,6 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
 
     beginAnnotations: function CanvasGraphics_beginAnnotations() {
       this.save();
-      this.current = new CanvasExtraState();
-
       if (this.baseTransform) {
         this.ctx.setTransform.apply(this.ctx, this.baseTransform);
       }
@@ -1879,6 +1891,8 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
     beginAnnotation: function CanvasGraphics_beginAnnotation(rect, transform,
                                                              matrix) {
       this.save();
+      resetCtxToDefault(this.ctx);
+      this.current = new CanvasExtraState();
 
       if (isArray(rect) && rect.length === 4) {
         var width = rect[2] - rect[0];
@@ -1915,7 +1929,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
         var currentTransform = ctx.mozCurrentTransformInverse;
         var position = this.getCanvasPosition(0, 0);
         this.imageLayer.appendImage({
-          objId: objId,
+          objId,
           left: position[0],
           top: position[1],
           width: w / currentTransform[0],
@@ -1936,7 +1950,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
       if (COMPILE_TYPE3_GLYPHS && glyph && glyph.compiled === undefined) {
         if (width <= MAX_SIZE_TO_COMPILE && height <= MAX_SIZE_TO_COMPILE) {
           glyph.compiled =
-            compileType3Glyph({data: img.data, width: width, height: height});
+            compileType3Glyph({ data: img.data, width, height, });
         } else {
           glyph.compiled = null;
         }
@@ -2123,7 +2137,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
       if (this.imageLayer) {
         var position = this.getCanvasPosition(0, -height);
         this.imageLayer.appendImage({
-          imgData: imgData,
+          imgData,
           left: position[0],
           top: position[1],
           width: width / currentTransform[0],
@@ -2153,7 +2167,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
         if (this.imageLayer) {
           var position = this.getCanvasPosition(entry.x, entry.y);
           this.imageLayer.appendImage({
-            imgData: imgData,
+            imgData,
             left: position[0],
             top: position[1],
             width: w,

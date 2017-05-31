@@ -32,6 +32,12 @@
   var PluginBabelPath = 'node_modules/systemjs-plugin-babel/plugin-babel.js';
   var SystemJSPluginBabelPath =
     'node_modules/systemjs-plugin-babel/systemjs-babel-browser.js';
+  var PluginBabelCachePath = 'external/systemjs/plugin-babel-cached.js';
+
+  var isCachingPossible = typeof indexedDB !== 'undefined' &&
+                          typeof TextEncoder !== 'undefined' &&
+                          typeof crypto !== 'undefined' &&
+                          typeof crypto.subtle !== 'undefined';
 
   SystemJS.config({
     packages: {
@@ -43,6 +49,7 @@
       'pdfjs': new URL('src', baseLocation).href,
       'pdfjs-web': new URL('web', baseLocation).href,
       'pdfjs-test': new URL('test', baseLocation).href,
+      'pdfjs-lib': new URL('src/pdf', baseLocation).href,
     },
     meta: {
       '*': {
@@ -57,7 +64,8 @@
       'plugin-babel': new URL(PluginBabelPath, baseLocation).href,
       'systemjs-babel-build':
         new URL(SystemJSPluginBabelPath, baseLocation).href,
+      'plugin-babel-cached': new URL(PluginBabelCachePath, baseLocation).href,
     },
-    transpiler: 'plugin-babel'
+    transpiler: isCachingPossible ? 'plugin-babel-cached' : 'plugin-babel'
   });
 })();

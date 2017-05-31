@@ -12,7 +12,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/* globals Components, Services, XPCOMUtils */
 
 "use strict";
 
@@ -73,8 +72,19 @@ var PdfjsChromeUtils = {
       this._mmg.addMessageListener("PDFJS:Parent:removeEventListener", this);
       this._mmg.addMessageListener("PDFJS:Parent:updateControlState", this);
 
-      // observer to handle shutdown
-      Services.obs.addObserver(this, "quit-application", false);
+//#if !MOZCENTRAL
+      // The signature of `Services.obs.addObserver` changed in Firefox 55,
+      // see https://bugzilla.mozilla.org/show_bug.cgi?id=1355216.
+      // PLEASE NOTE: While the third parameter is now optional,
+      // omitting it in prior Firefox versions breaks the addon.
+      var ffVersion = parseInt(Services.appinfo.platformVersion);
+      if (ffVersion <= 55) {
+        Services.obs.addObserver(this, "quit-application", false);
+        return;
+      }
+//#endif
+      // Observer to handle shutdown.
+      Services.obs.addObserver(this, "quit-application");
     }
   },
 

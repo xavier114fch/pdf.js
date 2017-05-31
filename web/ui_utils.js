@@ -13,7 +13,7 @@
  * limitations under the License.
  */
 
-import { PDFJS } from './pdfjs';
+import { PDFJS } from 'pdfjs-lib';
 
 var CSS_UNITS = 96.0 / 72.0;
 var DEFAULT_SCALE_VALUE = 'auto';
@@ -30,7 +30,29 @@ var RendererType = {
   SVG: 'svg',
 };
 
-var mozL10n = document.mozL10n || document.webL10n;
+// Replaces {{arguments}} with their values.
+function formatL10nValue(text, args) {
+  if (!args) {
+    return text;
+  }
+  return text.replace(/\{\{\s*(\w+)\s*\}\}/g, (all, name) => {
+    return (name in args ? args[name] : '{{' + name + '}}');
+  });
+}
+
+/**
+ * No-op implemetation of the localization service.
+ * @implements {IL10n}
+ */
+var NullL10n = {
+  get(property, args, fallback) {
+    return Promise.resolve(formatL10nValue(fallback, args));
+  },
+
+  translate(element) {
+    return Promise.resolve();
+  }
+};
 
 /**
  * Disables fullscreen support, and by extension Presentation Mode,
@@ -81,8 +103,9 @@ if (typeof PDFJSDev === 'undefined' ||
    * Interface locale settings.
    * @var {string}
    */
-  PDFJS.locale = (PDFJS.locale === undefined ? navigator.language :
-                  PDFJS.locale);
+  PDFJS.locale =
+    (PDFJS.locale === undefined && typeof navigator !== 'undefined' ?
+     navigator.language : PDFJS.locale);
 }
 
 /**
@@ -326,7 +349,7 @@ function getVisibleElements(scrollEl, views, sortByVisibility) {
       id: view.id,
       x: currentWidth,
       y: currentHeight,
-      view: view,
+      view,
       percent: percentHeight
     });
   }
@@ -343,7 +366,7 @@ function getVisibleElements(scrollEl, views, sortByVisibility) {
       return a.id - b.id; // ensure stability
     });
   }
-  return {first: first, last: last, views: visible};
+  return { first, last, views: visible, };
 }
 
 /**
@@ -353,15 +376,26 @@ function noContextMenuHandler(e) {
   e.preventDefault();
 }
 
+function isDataSchema(url) {
+  var i = 0, ii = url.length;
+  while (i < ii && url[i].trim() === '') {
+    i++;
+  }
+  return url.substr(i, 5).toLowerCase() === 'data:';
+}
+
 /**
  * Returns the filename or guessed filename from the url (see issue 3455).
- * url {String} The original PDF location.
- * defaultFilename {string} The value to return if the file name is unknown.
- * @return {String} Guessed PDF file name.
+ * @param {string} url - The original PDF location.
+ * @param {string} defaultFilename - The value returned if the filename is
+ *   unknown, or the protocol is unsupported.
+ * @returns {string} Guessed PDF filename.
  */
-function getPDFFileNameFromURL(url, defaultFilename) {
-  if (typeof defaultFilename === 'undefined') {
-    defaultFilename = 'document.pdf';
+function getPDFFileNameFromURL(url, defaultFilename = 'document.pdf') {
+  if (isDataSchema(url)) {
+    console.warn('getPDFFileNameFromURL: ' +
+                 'ignoring "data:" URL for performance reasons.');
+    return defaultFilename;
   }
   var reURI = /^(?:(?:[^:]+:)?\/\/[^\/]+)?([^?#]*)(\?[^#]*)?(#.*)?$/;
   //            SCHEME        HOST         1.PATH  2.QUERY   3.REF
@@ -369,8 +403,8 @@ function getPDFFileNameFromURL(url, defaultFilename) {
   var reFilename = /[^\/?#=]+\.pdf\b(?!.*\.pdf\b)/i;
   var splitURI = reURI.exec(url);
   var suggestedFilename = reFilename.exec(splitURI[1]) ||
-                           reFilename.exec(splitURI[2]) ||
-                           reFilename.exec(splitURI[3]);
+                          reFilename.exec(splitURI[2]) ||
+                          reFilename.exec(splitURI[3]);
   if (suggestedFilename) {
     suggestedFilename = suggestedFilename[0];
     if (suggestedFilename.indexOf('%') !== -1) {
@@ -409,6 +443,16 @@ function normalizeWheelEventDelta(evt) {
   return delta;
 }
 
+function cloneObj(obj) {
+  var result = {};
+  for (var i in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, i)) {
+      result[i] = obj[i];
+    }
+  }
+  return result;
+}
+
 /**
  * Promise that is resolved when DOM window becomes visible.
  */
@@ -417,22 +461,14 @@ var animationStarted = new Promise(function (resolve) {
 });
 
 /**
- * Promise that is resolved when UI localization is finished.
+ * (deprecated) External localization service.
  */
-var localized = new Promise(function (resolve, reject) {
-  if (!mozL10n) {
-    // Resolve as localized even if mozL10n is not available.
-    resolve();
-    return;
-  }
-  if (mozL10n.getReadyState() !== 'loading') {
-    resolve();
-    return;
-  }
-  window.addEventListener('localized', function localized(evt) {
-    resolve();
-  });
-});
+var mozL10n;
+
+/**
+ * (deprecated) Promise that is resolved when UI localization is finished.
+ */
+var localized = Promise.resolve();
 
 /**
  * Simple event bus for an application. Listeners are attached using the
@@ -569,8 +605,10 @@ export {
   MAX_AUTO_SCALE,
   SCROLLBAR_PADDING,
   VERTICAL_PADDING,
+  cloneObj,
   RendererType,
   mozL10n,
+  NullL10n,
   EventBus,
   ProgressBar,
   getPDFFileNameFromURL,

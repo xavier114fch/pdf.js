@@ -14,24 +14,20 @@
  */
 /* globals global, process, __pdfjsdev_webpack__ */
 
-'use strict';
-
-(function (root, factory) {
-  if (typeof define === 'function' && define.amd) {
-    define('pdfjs/shared/util', ['exports', 'pdfjs/shared/compatibility'],
-      factory);
-  } else if (typeof exports !== 'undefined') {
-    factory(exports, require('./compatibility.js'));
-  } else {
-    factory((root.pdfjsSharedUtil = {}), root.pdfjsSharedCompatibility);
-  }
-}(this, function (exports, compatibility) {
+import './compatibility';
+import { ReadableStream } from '../../external/streams/streams-lib';
 
 var globalScope = (typeof window !== 'undefined') ? window :
                   (typeof global !== 'undefined') ? global :
                   (typeof self !== 'undefined') ? self : this;
 
 var FONT_IDENTITY_MATRIX = [0.001, 0, 0, 0.001, 0, 0];
+
+const NativeImageDecoding = {
+  NONE: 'none',
+  DECODE: 'decode',
+  DISPLAY: 'display'
+};
 
 var TextRenderingMode = {
   FILL: 0,
@@ -376,7 +372,7 @@ function createValidAbsoluteUrl(url, baseUrl) {
 }
 
 function shadow(obj, prop, value) {
-  Object.defineProperty(obj, prop, { value: value,
+  Object.defineProperty(obj, prop, { value,
                                      enumerable: true,
                                      configurable: true,
                                      writable: false });
@@ -1190,7 +1186,7 @@ var createBlob = function createBlob(data, contentType) {
   if (typeof Blob !== 'undefined') {
     return new Blob([data], { type: contentType });
   }
-  warn('The "Blob" constructor is not supported.');
+  throw new Error('The "Blob" constructor is not supported.');
 };
 
 var createObjectURL = (function createObjectURLClosure() {
@@ -1198,9 +1194,8 @@ var createObjectURL = (function createObjectURLClosure() {
   var digits =
     'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
 
-  return function createObjectURL(data, contentType, forceDataSchema) {
-    if (!forceDataSchema &&
-        typeof URL !== 'undefined' && URL.createObjectURL) {
+  return function createObjectURL(data, contentType, forceDataSchema = false) {
+    if (!forceDataSchema && URL.createObjectURL) {
       var blob = createBlob(data, contentType);
       return URL.createObjectURL(blob);
     }
@@ -1228,7 +1223,7 @@ function MessageHandler(sourceName, targetName, comObj) {
   var callbacksCapabilities = this.callbacksCapabilities = Object.create(null);
   var ah = this.actionHandler = Object.create(null);
 
-  this._onComObjOnMessage = function messageHandlerComObjOnMessage(event) {
+  this._onComObjOnMessage = (event) => {
     var data = event.data;
     if (data.targetName !== this.sourceName) {
       return;
@@ -1255,8 +1250,8 @@ function MessageHandler(sourceName, targetName, comObj) {
           return action[0].call(action[1], data.data);
         }).then(function (result) {
           comObj.postMessage({
-            sourceName: sourceName,
-            targetName: targetName,
+            sourceName,
+            targetName,
             isReply: true,
             callbackId: data.callbackId,
             data: result
@@ -1267,8 +1262,8 @@ function MessageHandler(sourceName, targetName, comObj) {
             reason = reason + '';
           }
           comObj.postMessage({
-            sourceName: sourceName,
-            targetName: targetName,
+            sourceName,
+            targetName,
             isReply: true,
             callbackId: data.callbackId,
             error: reason
@@ -1280,12 +1275,12 @@ function MessageHandler(sourceName, targetName, comObj) {
     } else {
       error('Unknown action from worker: ' + data.action);
     }
-  }.bind(this);
+  };
   comObj.addEventListener('message', this._onComObjOnMessage);
 }
 
 MessageHandler.prototype = {
-  on: function messageHandlerOn(actionName, handler, scope) {
+  on(actionName, handler, scope) {
     var ah = this.actionHandler;
     if (ah[actionName]) {
       error('There is already an actionName called "' + actionName + '"');
@@ -1298,12 +1293,12 @@ MessageHandler.prototype = {
    * @param {JSON} data JSON data to send.
    * @param {Array} [transfers] Optional list of transfers/ArrayBuffers
    */
-  send: function messageHandlerSend(actionName, data, transfers) {
+  send(actionName, data, transfers) {
     var message = {
       sourceName: this.sourceName,
       targetName: this.targetName,
       action: actionName,
-      data: data
+      data,
     };
     this.postMessage(message, transfers);
   },
@@ -1315,15 +1310,14 @@ MessageHandler.prototype = {
    * @param {Array} [transfers] Optional list of transfers/ArrayBuffers.
    * @returns {Promise} Promise to be resolved with response data.
    */
-  sendWithPromise:
-    function messageHandlerSendWithPromise(actionName, data, transfers) {
+  sendWithPromise(actionName, data, transfers) {
     var callbackId = this.callbackIndex++;
     var message = {
       sourceName: this.sourceName,
       targetName: this.targetName,
       action: actionName,
-      data: data,
-      callbackId: callbackId
+      data,
+      callbackId,
     };
     var capability = createPromiseCapability();
     this.callbacksCapabilities[callbackId] = capability;
@@ -1340,7 +1334,7 @@ MessageHandler.prototype = {
    * @param message {Object} Raw message.
    * @param transfers List of transfers/ArrayBuffers, or undefined.
    */
-  postMessage: function (message, transfers) {
+  postMessage(message, transfers) {
     if (transfers && this.postMessageTransfers) {
       this.comObj.postMessage(message, transfers);
     } else {
@@ -1348,7 +1342,7 @@ MessageHandler.prototype = {
     }
   },
 
-  destroy: function () {
+  destroy() {
     this.comObj.removeEventListener('message', this._onComObjOnMessage);
   }
 };
@@ -1365,71 +1359,74 @@ function loadJpegStream(id, imageUrl, objs) {
   img.src = imageUrl;
 }
 
-exports.FONT_IDENTITY_MATRIX = FONT_IDENTITY_MATRIX;
-exports.IDENTITY_MATRIX = IDENTITY_MATRIX;
-exports.OPS = OPS;
-exports.VERBOSITY_LEVELS = VERBOSITY_LEVELS;
-exports.UNSUPPORTED_FEATURES = UNSUPPORTED_FEATURES;
-exports.AnnotationBorderStyleType = AnnotationBorderStyleType;
-exports.AnnotationFieldFlag = AnnotationFieldFlag;
-exports.AnnotationFlag = AnnotationFlag;
-exports.AnnotationType = AnnotationType;
-exports.FontType = FontType;
-exports.ImageKind = ImageKind;
-exports.CMapCompressionType = CMapCompressionType;
-exports.InvalidPDFException = InvalidPDFException;
-exports.MessageHandler = MessageHandler;
-exports.MissingDataException = MissingDataException;
-exports.MissingPDFException = MissingPDFException;
-exports.NotImplementedException = NotImplementedException;
-exports.PageViewport = PageViewport;
-exports.PasswordException = PasswordException;
-exports.PasswordResponses = PasswordResponses;
-exports.StatTimer = StatTimer;
-exports.StreamType = StreamType;
-exports.TextRenderingMode = TextRenderingMode;
-exports.UnexpectedResponseException = UnexpectedResponseException;
-exports.UnknownErrorException = UnknownErrorException;
-exports.Util = Util;
-exports.XRefParseException = XRefParseException;
-exports.arrayByteLength = arrayByteLength;
-exports.arraysToBytes = arraysToBytes;
-exports.assert = assert;
-exports.bytesToString = bytesToString;
-exports.createBlob = createBlob;
-exports.createPromiseCapability = createPromiseCapability;
-exports.createObjectURL = createObjectURL;
-exports.deprecated = deprecated;
-exports.error = error;
-exports.getLookupTableFactory = getLookupTableFactory;
-exports.getVerbosityLevel = getVerbosityLevel;
-exports.globalScope = globalScope;
-exports.info = info;
-exports.isArray = isArray;
-exports.isArrayBuffer = isArrayBuffer;
-exports.isBool = isBool;
-exports.isEmptyObj = isEmptyObj;
-exports.isInt = isInt;
-exports.isNum = isNum;
-exports.isString = isString;
-exports.isSpace = isSpace;
-exports.isNodeJS = isNodeJS;
-exports.isSameOrigin = isSameOrigin;
-exports.createValidAbsoluteUrl = createValidAbsoluteUrl;
-exports.isLittleEndian = isLittleEndian;
-exports.isEvalSupported = isEvalSupported;
-exports.loadJpegStream = loadJpegStream;
-exports.log2 = log2;
-exports.readInt8 = readInt8;
-exports.readUint16 = readUint16;
-exports.readUint32 = readUint32;
-exports.removeNullCharacters = removeNullCharacters;
-exports.setVerbosityLevel = setVerbosityLevel;
-exports.shadow = shadow;
-exports.string32 = string32;
-exports.stringToBytes = stringToBytes;
-exports.stringToPDFString = stringToPDFString;
-exports.stringToUTF8String = stringToUTF8String;
-exports.utf8StringToString = utf8StringToString;
-exports.warn = warn;
-}));
+export {
+  FONT_IDENTITY_MATRIX,
+  IDENTITY_MATRIX,
+  OPS,
+  VERBOSITY_LEVELS,
+  UNSUPPORTED_FEATURES,
+  AnnotationBorderStyleType,
+  AnnotationFieldFlag,
+  AnnotationFlag,
+  AnnotationType,
+  FontType,
+  ImageKind,
+  CMapCompressionType,
+  InvalidPDFException,
+  MessageHandler,
+  MissingDataException,
+  MissingPDFException,
+  NativeImageDecoding,
+  NotImplementedException,
+  PageViewport,
+  PasswordException,
+  PasswordResponses,
+  StatTimer,
+  StreamType,
+  TextRenderingMode,
+  UnexpectedResponseException,
+  UnknownErrorException,
+  Util,
+  XRefParseException,
+  arrayByteLength,
+  arraysToBytes,
+  assert,
+  bytesToString,
+  createBlob,
+  createPromiseCapability,
+  createObjectURL,
+  deprecated,
+  error,
+  getLookupTableFactory,
+  getVerbosityLevel,
+  globalScope,
+  info,
+  isArray,
+  isArrayBuffer,
+  isBool,
+  isEmptyObj,
+  isInt,
+  isNum,
+  isString,
+  isSpace,
+  isNodeJS,
+  isSameOrigin,
+  createValidAbsoluteUrl,
+  isLittleEndian,
+  isEvalSupported,
+  loadJpegStream,
+  log2,
+  readInt8,
+  readUint16,
+  readUint32,
+  removeNullCharacters,
+  ReadableStream,
+  setVerbosityLevel,
+  shadow,
+  string32,
+  stringToBytes,
+  stringToPDFString,
+  stringToUTF8String,
+  utf8StringToString,
+  warn,
+};

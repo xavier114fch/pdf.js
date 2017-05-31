@@ -13,58 +13,18 @@
  * limitations under the License.
  */
 
-'use strict';
-
-(function (root, factory) {
-  if (typeof define === 'function' && define.amd) {
-    define('pdfjs/core/document', ['exports', 'pdfjs/shared/util',
-      'pdfjs/core/primitives', 'pdfjs/core/stream', 'pdfjs/core/obj',
-      'pdfjs/core/parser', 'pdfjs/core/crypto', 'pdfjs/core/evaluator',
-      'pdfjs/core/annotation'], factory);
-  } else if (typeof exports !== 'undefined') {
-    factory(exports, require('../shared/util.js'), require('./primitives.js'),
-      require('./stream.js'), require('./obj.js'), require('./parser.js'),
-      require('./crypto.js'), require('./evaluator.js'),
-      require('./annotation.js'));
-  } else {
-    factory((root.pdfjsCoreDocument = {}), root.pdfjsSharedUtil,
-      root.pdfjsCorePrimitives, root.pdfjsCoreStream,
-      root.pdfjsCoreObj, root.pdfjsCoreParser, root.pdfjsCoreCrypto,
-      root.pdfjsCoreEvaluator, root.pdfjsCoreAnnotation);
-  }
-}(this, function (exports, sharedUtil, corePrimitives, coreStream, coreObj,
-                  coreParser, coreCrypto, coreEvaluator, coreAnnotation) {
-
-var OPS = sharedUtil.OPS;
-var MissingDataException = sharedUtil.MissingDataException;
-var Util = sharedUtil.Util;
-var assert = sharedUtil.assert;
-var error = sharedUtil.error;
-var info = sharedUtil.info;
-var isArray = sharedUtil.isArray;
-var isArrayBuffer = sharedUtil.isArrayBuffer;
-var isNum = sharedUtil.isNum;
-var isString = sharedUtil.isString;
-var shadow = sharedUtil.shadow;
-var stringToBytes = sharedUtil.stringToBytes;
-var stringToPDFString = sharedUtil.stringToPDFString;
-var warn = sharedUtil.warn;
-var isSpace = sharedUtil.isSpace;
-var Dict = corePrimitives.Dict;
-var isDict = corePrimitives.isDict;
-var isName = corePrimitives.isName;
-var isStream = corePrimitives.isStream;
-var NullStream = coreStream.NullStream;
-var Stream = coreStream.Stream;
-var StreamsSequenceStream = coreStream.StreamsSequenceStream;
-var Catalog = coreObj.Catalog;
-var ObjectLoader = coreObj.ObjectLoader;
-var XRef = coreObj.XRef;
-var Linearization = coreParser.Linearization;
-var calculateMD5 = coreCrypto.calculateMD5;
-var OperatorList = coreEvaluator.OperatorList;
-var PartialEvaluator = coreEvaluator.PartialEvaluator;
-var AnnotationFactory = coreAnnotation.AnnotationFactory;
+import {
+  assert, error, info, isArray, isArrayBuffer, isNum, isSpace, isString,
+  MissingDataException, OPS, shadow, stringToBytes, stringToPDFString, Util,
+  warn
+} from '../shared/util';
+import { Catalog, ObjectLoader, XRef } from './obj';
+import { Dict, isDict, isName, isStream } from './primitives';
+import { NullStream, Stream, StreamsSequenceStream } from './stream';
+import { OperatorList, PartialEvaluator } from './evaluator';
+import { AnnotationFactory } from './annotation';
+import { calculateMD5 } from './crypto';
+import { Linearization } from './parser';
 
 var Page = (function PageClosure() {
 
@@ -93,7 +53,7 @@ var Page = (function PageClosure() {
       obj: 0,
     };
     this.idFactory = {
-      createObjId: function () {
+      createObjId() {
         return uniquePrefix + (++idCounters.obj);
       },
     };
@@ -225,21 +185,17 @@ var Page = (function PageClosure() {
         // TODO: add async getInheritedPageProp and remove this.
         this.resourcesPromise = this.pdfManager.ensure(this, 'resources');
       }
-      return this.resourcesPromise.then(function resourceSuccess() {
+      return this.resourcesPromise.then(() => {
         var objectLoader = new ObjectLoader(this.resources.map,
                                             keys,
                                             this.xref);
         return objectLoader.load();
-      }.bind(this));
+      });
     },
 
-    getOperatorList: function Page_getOperatorList(handler, task, intent,
-                                                   renderInteractiveForms) {
-      var self = this;
-
-      var pdfManager = this.pdfManager;
-      var contentStreamPromise = pdfManager.ensure(this, 'getContentStream',
-                                                   []);
+    getOperatorList({ handler, task, intent, renderInteractiveForms, }) {
+      var contentStreamPromise = this.pdfManager.ensure(this,
+                                                        'getContentStream');
       var resourcesPromise = this.loadResources([
         'ExtGState',
         'ColorSpace',
@@ -251,37 +207,41 @@ var Page = (function PageClosure() {
         // Properties
       ]);
 
-      var partialEvaluator = new PartialEvaluator(pdfManager, this.xref,
-                                                  handler, this.pageIndex,
-                                                  this.idFactory,
-                                                  this.fontCache,
-                                                  this.builtInCMapCache,
-                                                  this.evaluatorOptions);
+      var partialEvaluator = new PartialEvaluator({
+        pdfManager: this.pdfManager,
+        xref: this.xref,
+        handler,
+        pageIndex: this.pageIndex,
+        idFactory: this.idFactory,
+        fontCache: this.fontCache,
+        builtInCMapCache: this.builtInCMapCache,
+        options: this.evaluatorOptions,
+      });
 
       var dataPromises = Promise.all([contentStreamPromise, resourcesPromise]);
-      var pageListPromise = dataPromises.then(function(data) {
-        var contentStream = data[0];
-        var opList = new OperatorList(intent, handler, self.pageIndex);
+      var pageListPromise = dataPromises.then(([contentStream]) => {
+        var opList = new OperatorList(intent, handler, this.pageIndex);
 
         handler.send('StartRenderPage', {
-          transparency: partialEvaluator.hasBlendModes(self.resources),
-          pageIndex: self.pageIndex,
-          intent: intent
+          transparency: partialEvaluator.hasBlendModes(this.resources),
+          pageIndex: this.pageIndex,
+          intent,
         });
-        return partialEvaluator.getOperatorList(contentStream, task,
-          self.resources, opList).then(function () {
-            return opList;
-          });
+        return partialEvaluator.getOperatorList({
+          stream: contentStream,
+          task,
+          resources: this.resources,
+          operatorList: opList,
+        }).then(function () {
+          return opList;
+        });
       });
 
       // Fetch the page's annotations and add their operator lists to the
       // page's operator list to render them.
-      var annotationsPromise = pdfManager.ensure(this, 'annotations');
+      var annotationsPromise = this.pdfManager.ensure(this, 'annotations');
       return Promise.all([pageListPromise, annotationsPromise]).then(
-          function(datas) {
-        var pageOpList = datas[0];
-        var annotations = datas[1];
-
+          function ([pageOpList, annotations]) {
         if (annotations.length === 0) {
           pageOpList.flush(true);
           return pageOpList;
@@ -310,38 +270,36 @@ var Page = (function PageClosure() {
       });
     },
 
-    extractTextContent: function Page_extractTextContent(handler, task,
-                                                         normalizeWhitespace,
-                                                         combineTextItems) {
-      var self = this;
-
-      var pdfManager = this.pdfManager;
-      var contentStreamPromise = pdfManager.ensure(this, 'getContentStream',
-                                                   []);
-
+    extractTextContent({ handler, task, normalizeWhitespace,
+                         combineTextItems, }) {
+      var contentStreamPromise = this.pdfManager.ensure(this,
+                                                        'getContentStream');
       var resourcesPromise = this.loadResources([
         'ExtGState',
         'XObject',
         'Font'
       ]);
 
-      var dataPromises = Promise.all([contentStreamPromise,
-                                      resourcesPromise]);
-      return dataPromises.then(function(data) {
-        var contentStream = data[0];
-        var partialEvaluator = new PartialEvaluator(pdfManager, self.xref,
-                                                    handler, self.pageIndex,
-                                                    self.idFactory,
-                                                    self.fontCache,
-                                                    self.builtInCMapCache,
-                                                    self.evaluatorOptions);
+      var dataPromises = Promise.all([contentStreamPromise, resourcesPromise]);
+      return dataPromises.then(([contentStream]) => {
+        var partialEvaluator = new PartialEvaluator({
+          pdfManager: this.pdfManager,
+          xref: this.xref,
+          handler,
+          pageIndex: this.pageIndex,
+          idFactory: this.idFactory,
+          fontCache: this.fontCache,
+          builtInCMapCache: this.builtInCMapCache,
+          options: this.evaluatorOptions,
+        });
 
-        return partialEvaluator.getTextContent(contentStream,
-                                               task,
-                                               self.resources,
-                                               /* stateManager = */ null,
-                                               normalizeWhitespace,
-                                               combineTextItems);
+        return partialEvaluator.getTextContent({
+          stream: contentStream,
+          task,
+          resources: this.resources,
+          normalizeWhitespace,
+          combineTextItems,
+        });
       });
     },
 
@@ -567,11 +525,9 @@ var PDFDocument = (function PDFDocumentClosure() {
     },
     setup: function PDFDocument_setup(recoveryMode) {
       this.xref.parse(recoveryMode);
-      var self = this;
       var pageFactory = {
-        createPage: function (pageIndex, dict, ref, fontCache,
-                              builtInCMapCache) {
-          return new Page(self.pdfManager, self.xref, pageIndex, dict, ref,
+        createPage: (pageIndex, dict, ref, fontCache, builtInCMapCache) => {
+          return new Page(this.pdfManager, this.xref, pageIndex, dict, ref,
                           fontCache, builtInCMapCache);
         }
       };
@@ -652,6 +608,7 @@ var PDFDocument = (function PDFDocumentClosure() {
   return PDFDocument;
 })();
 
-exports.Page = Page;
-exports.PDFDocument = PDFDocument;
-}));
+export {
+  Page,
+  PDFDocument,
+};

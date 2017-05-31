@@ -14,7 +14,7 @@
  */
 
 import {
-  getVisibleElements, scrollIntoView, watchScroll
+  getVisibleElements, NullL10n, scrollIntoView, watchScroll
 } from './ui_utils';
 import { PDFThumbnailView } from './pdf_thumbnail_view';
 
@@ -26,6 +26,7 @@ var THUMBNAIL_SCROLL_MARGIN = -19;
  *   elements.
  * @property {IPDFLinkService} linkService - The navigation/linking service.
  * @property {PDFRenderingQueue} renderingQueue - The rendering queue object.
+ * @property {IL10n} l10n - Localization service.
  */
 
 /**
@@ -42,6 +43,7 @@ var PDFThumbnailViewer = (function PDFThumbnailViewerClosure() {
     this.container = options.container;
     this.renderingQueue = options.renderingQueue;
     this.linkService = options.linkService;
+    this.l10n = options.l10n || NullL10n;
 
     this.scroll = watchScroll(this.container, this._scrollUpdated.bind(this));
     this._resetView();
@@ -104,14 +106,7 @@ var PDFThumbnailViewer = (function PDFThumbnailViewerClosure() {
     },
 
     cleanup: function PDFThumbnailViewer_cleanup() {
-      var tempCanvas = PDFThumbnailView.tempImageCache;
-      if (tempCanvas) {
-        // Zeroing the width and height causes Firefox to release graphics
-        // resources immediately, which can greatly reduce memory consumption.
-        tempCanvas.width = 0;
-        tempCanvas.height = 0;
-      }
-      PDFThumbnailView.tempImageCache = null;
+      PDFThumbnailView.cleanup();
     },
 
     /**
@@ -138,10 +133,10 @@ var PDFThumbnailViewer = (function PDFThumbnailViewerClosure() {
         return Promise.resolve();
       }
 
-      return pdfDocument.getPage(1).then(function (firstPage) {
+      return pdfDocument.getPage(1).then((firstPage) => {
         var pagesCount = pdfDocument.numPages;
         var viewport = firstPage.getViewport(1.0);
-        for (var pageNum = 1; pageNum <= pagesCount; ++pageNum) {
+        for (let pageNum = 1; pageNum <= pagesCount; ++pageNum) {
           var thumbnail = new PDFThumbnailView({
             container: this.container,
             id: pageNum,
@@ -149,10 +144,11 @@ var PDFThumbnailViewer = (function PDFThumbnailViewerClosure() {
             linkService: this.linkService,
             renderingQueue: this.renderingQueue,
             disableCanvasToImageConversion: false,
+            l10n: this.l10n,
           });
           this.thumbnails.push(thumbnail);
         }
-      }.bind(this));
+      });
     },
 
     /**
@@ -195,8 +191,7 @@ var PDFThumbnailViewer = (function PDFThumbnailViewerClosure() {
      * @returns {PDFPage}
      * @private
      */
-    _ensurePdfPageLoaded:
-        function PDFThumbnailViewer_ensurePdfPageLoaded(thumbView) {
+    _ensurePdfPageLoaded(thumbView) {
       if (thumbView.pdfPage) {
         return Promise.resolve(thumbView.pdfPage);
       }
@@ -204,25 +199,24 @@ var PDFThumbnailViewer = (function PDFThumbnailViewerClosure() {
       if (this._pagesRequests[pageNumber]) {
         return this._pagesRequests[pageNumber];
       }
-      var promise = this.pdfDocument.getPage(pageNumber).then(
-        function (pdfPage) {
-          thumbView.setPdfPage(pdfPage);
-          this._pagesRequests[pageNumber] = null;
-          return pdfPage;
-        }.bind(this));
+      var promise = this.pdfDocument.getPage(pageNumber).then((pdfPage) => {
+        thumbView.setPdfPage(pdfPage);
+        this._pagesRequests[pageNumber] = null;
+        return pdfPage;
+      });
       this._pagesRequests[pageNumber] = promise;
       return promise;
     },
 
-    forceRendering: function () {
+    forceRendering() {
       var visibleThumbs = this._getVisibleThumbs();
       var thumbView = this.renderingQueue.getHighestPriority(visibleThumbs,
                                                              this.thumbnails,
                                                              this.scroll.down);
       if (thumbView) {
-        this._ensurePdfPageLoaded(thumbView).then(function () {
+        this._ensurePdfPageLoaded(thumbView).then(() => {
           this.renderingQueue.renderView(thumbView);
-        }.bind(this));
+        });
         return true;
       }
       return false;

@@ -15,9 +15,10 @@
 /* globals chrome */
 
 import { DefaultExternalServices, PDFViewerApplication } from './app';
-import { OverlayManager } from './overlay_manager';
-import { PDFJS } from './pdfjs';
-import { Preferences } from './preferences';
+import { BasePreferences } from './preferences';
+import { DownloadManager } from './download_manager';
+import { GenericL10n } from './genericl10n';
+import { PDFJS } from 'pdfjs-lib';
 
 if (typeof PDFJSDev === 'undefined' || !PDFJSDev.test('CHROME')) {
   throw new Error('Module "pdfjs-web/chromecom" shall not be used outside ' +
@@ -37,8 +38,8 @@ var ChromeCom = {};
  */
 ChromeCom.request = function ChromeCom_request(action, data, callback) {
   var message = {
-    action: action,
-    data: data
+    action,
+    data,
   };
   if (!chrome.runtime) {
     console.error('chrome.runtime is undefined.');
@@ -55,10 +56,11 @@ ChromeCom.request = function ChromeCom_request(action, data, callback) {
 /**
  * Resolves a PDF file path and attempts to detects length.
  *
- * @param {String} file Absolute URL of PDF file.
- * @param {Function} callback A callback with resolved URL and file length.
+ * @param {String} file - Absolute URL of PDF file.
+ * @param {OverlayManager} overlayManager - Manager for the viewer overlays.
+ * @param {Function} callback - A callback with resolved URL and file length.
  */
-ChromeCom.resolvePDFFile = function ChromeCom_resolvePDFFile(file, callback) {
+ChromeCom.resolvePDFFile = function(file, overlayManager, callback) {
   // Expand drive:-URLs to filesystem URLs (Chrome OS)
   file = file.replace(/^drive:/i,
       'filesystem:' + location.origin + '/external/');
@@ -109,7 +111,7 @@ ChromeCom.resolvePDFFile = function ChromeCom_resolvePDFFile(file, callback) {
         if (isAllowedAccess) {
           callback(file);
         } else {
-          requestAccessToLocalFile(file);
+          requestAccessToLocalFile(file, overlayManager);
         }
       });
     });
@@ -154,7 +156,7 @@ function reloadIfRuntimeIsUnavailable() {
 }
 
 var chromeFileAccessOverlayPromise;
-function requestAccessToLocalFile(fileUrl) {
+function requestAccessToLocalFile(fileUrl, overlayManager) {
   var onCloseOverlay = null;
   if (top !== window) {
     // When the extension reloads after receiving new permissions, the pages
@@ -168,11 +170,11 @@ function requestAccessToLocalFile(fileUrl) {
     onCloseOverlay = function() {
       window.removeEventListener('focus', reloadIfRuntimeIsUnavailable);
       reloadIfRuntimeIsUnavailable();
-      OverlayManager.close('chromeFileAccessOverlay');
+      overlayManager.close('chromeFileAccessOverlay');
     };
   }
   if (!chromeFileAccessOverlayPromise) {
-    chromeFileAccessOverlayPromise = OverlayManager.register(
+    chromeFileAccessOverlayPromise = overlayManager.register(
       'chromeFileAccessOverlay',
       document.getElementById('chromeFileAccessOverlay'),
       onCloseOverlay, true);
@@ -214,7 +216,7 @@ function requestAccessToLocalFile(fileUrl) {
     // why this permission request is shown.
     document.getElementById('chrome-url-of-local-file').textContent = fileUrl;
 
-    OverlayManager.open('chromeFileAccessOverlay');
+    overlayManager.open('chromeFileAccessOverlay');
   });
 }
 
@@ -292,54 +294,65 @@ function setReferer(url, callback) {
 // chrome.storage.local to chrome.storage.sync when needed.
 var storageArea = chrome.storage.sync || chrome.storage.local;
 
-Preferences._writeToStorage = function (prefObj) {
-  return new Promise(function (resolve) {
-    if (prefObj === Preferences.defaults) {
-      var keysToRemove = Object.keys(Preferences.defaults);
-      // If the storage is reset, remove the keys so that the values from
-      // managed storage are applied again.
-      storageArea.remove(keysToRemove, function() {
-        resolve();
-      });
-    } else {
-      storageArea.set(prefObj, function() {
-        resolve();
-      });
-    }
-  });
-};
-
-Preferences._readFromStorage = function (prefObj) {
-  return new Promise(function (resolve) {
-    if (chrome.storage.managed) {
-      // Get preferences as set by the system administrator.
-      // See extensions/chromium/preferences_schema.json for more information.
-      // These preferences can be overridden by the user.
-      chrome.storage.managed.get(Preferences.defaults, getPreferences);
-    } else {
-      // Managed storage not supported, e.g. in old Chromium versions.
-      getPreferences(Preferences.defaults);
-    }
-
-    function getPreferences(defaultPrefs) {
-      if (chrome.runtime.lastError) {
-        // Managed storage not supported, e.g. in Opera.
-        defaultPrefs = Preferences.defaults;
+class ChromePreferences extends BasePreferences {
+  _writeToStorage(prefObj) {
+    return new Promise((resolve) => {
+      if (prefObj === this.defaults) {
+        var keysToRemove = Object.keys(this.defaults);
+        // If the storage is reset, remove the keys so that the values from
+        // managed storage are applied again.
+        storageArea.remove(keysToRemove, function() {
+          resolve();
+        });
+      } else {
+        storageArea.set(prefObj, function() {
+          resolve();
+        });
       }
-      storageArea.get(defaultPrefs, function(readPrefs) {
-        resolve(readPrefs);
-      });
-    }
-  });
-};
+    });
+  }
+
+  _readFromStorage(prefObj) {
+    return new Promise((resolve) => {
+      var getPreferences = (defaultPrefs) => {
+        if (chrome.runtime.lastError) {
+          // Managed storage not supported, e.g. in Opera.
+          defaultPrefs = this.defaults;
+        }
+        storageArea.get(defaultPrefs, function(readPrefs) {
+          resolve(readPrefs);
+        });
+      };
+
+      if (chrome.storage.managed) {
+        // Get preferences as set by the system administrator.
+        // See extensions/chromium/preferences_schema.json for more information.
+        // These preferences can be overridden by the user.
+        chrome.storage.managed.get(this.defaults, getPreferences);
+      } else {
+        // Managed storage not supported, e.g. in old Chromium versions.
+        getPreferences(this.defaults);
+      }
+    });
+  }
+}
 
 var ChromeExternalServices = Object.create(DefaultExternalServices);
 ChromeExternalServices.initPassiveLoading = function (callbacks) {
-  var appConfig = PDFViewerApplication.appConfig;
-  ChromeCom.resolvePDFFile(appConfig.defaultUrl,
+  let { appConfig, overlayManager, } = PDFViewerApplication;
+  ChromeCom.resolvePDFFile(appConfig.defaultUrl, overlayManager,
       function (url, length, originalURL) {
     callbacks.onOpenWithURL(url, length, originalURL);
   });
+};
+ChromeExternalServices.createDownloadManager = function() {
+  return new DownloadManager();
+};
+ChromeExternalServices.createPreferences = function() {
+  return new ChromePreferences();
+};
+ChromeExternalServices.createL10n = function () {
+  return new GenericL10n(navigator.language);
 };
 PDFViewerApplication.externalServices = ChromeExternalServices;
 

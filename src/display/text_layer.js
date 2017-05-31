@@ -148,7 +148,7 @@ var renderTextLayer = (function renderTextLayerClosure() {
         bottom: b[3],
         div: textDiv,
         size: [divWidth, divHeight],
-        m: m
+        m,
       });
     }
   }
@@ -537,10 +537,9 @@ var renderTextLayer = (function renderTextLayerClosure() {
       if (!timeout) { // Render right away
         render(this);
       } else { // Schedule
-        var self = this;
-        this._renderTimer = setTimeout(function() {
-          render(self);
-          self._renderTimer = null;
+        this._renderTimer = setTimeout(() => {
+          render(this);
+          this._renderTimer = null;
         }, timeout);
       }
     },

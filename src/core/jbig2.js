@@ -13,35 +13,17 @@
  * limitations under the License.
  */
 
-'use strict';
-
-(function (root, factory) {
-  if (typeof define === 'function' && define.amd) {
-    define('pdfjs/core/jbig2', ['exports', 'pdfjs/shared/util',
-      'pdfjs/core/arithmetic_decoder'], factory);
-  } else if (typeof exports !== 'undefined') {
-    factory(exports, require('../shared/util.js'),
-      require('./arithmetic_decoder.js'));
-  } else {
-    factory((root.pdfjsCoreJbig2 = {}), root.pdfjsSharedUtil,
-      root.pdfjsCoreArithmeticDecoder);
-  }
-}(this, function (exports, sharedUtil, coreArithmeticDecoder) {
-
-var error = sharedUtil.error;
-var log2 = sharedUtil.log2;
-var readInt8 = sharedUtil.readInt8;
-var readUint16 = sharedUtil.readUint16;
-var readUint32 = sharedUtil.readUint32;
-var shadow = sharedUtil.shadow;
-var ArithmeticDecoder = coreArithmeticDecoder.ArithmeticDecoder;
+import {
+  error, log2, readInt8, readUint16, readUint32, shadow
+} from '../shared/util';
+import { ArithmeticDecoder } from './arithmetic_decoder';
 
 var Jbig2Image = (function Jbig2ImageClosure() {
   // Utility data structures
   function ContextCache() {}
 
   ContextCache.prototype = {
-    getContexts: function(id) {
+    getContexts(id) {
       if (id in this) {
         return this[id];
       }
@@ -394,8 +376,8 @@ var Jbig2Image = (function Jbig2ImageClosure() {
           }
         }
         for (k = 0; k < referenceTemplateLength; k++) {
-          i0 = i + referenceTemplateY[k] + offsetY;
-          j0 = j + referenceTemplateX[k] + offsetX;
+          i0 = i + referenceTemplateY[k] - offsetY;
+          j0 = j + referenceTemplateX[k] - offsetX;
           if (i0 < 0 || i0 >= referenceHeight || j0 < 0 ||
               j0 >= referenceWidth) {
             contextLabel <<= 1; // out of bound pixel
@@ -720,7 +702,7 @@ var Jbig2Image = (function Jbig2ImageClosure() {
       position = segmentHeader.headerEnd;
       var segment = {
         header: segmentHeader,
-        data: data
+        data,
       };
       if (!header.randomAccess) {
         segment.start = position;
@@ -1102,5 +1084,6 @@ var Jbig2Image = (function Jbig2ImageClosure() {
   return Jbig2Image;
 })();
 
-exports.Jbig2Image = Jbig2Image;
-}));
+export {
+  Jbig2Image,
+};

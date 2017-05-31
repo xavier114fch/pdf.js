@@ -13,41 +13,14 @@
  * limitations under the License.
  */
 
-'use strict';
-
-(function (root, factory) {
-  if (typeof define === 'function' && define.amd) {
-    define('pdfjs/core/worker', ['exports', 'pdfjs/shared/util',
-      'pdfjs/core/primitives', 'pdfjs/core/pdf_manager'],
-      factory);
-  } else if (typeof exports !== 'undefined') {
-    factory(exports, require('../shared/util.js'), require('./primitives.js'),
-      require('./pdf_manager.js'));
-  } else {
-    factory((root.pdfjsCoreWorker = {}), root.pdfjsSharedUtil,
-      root.pdfjsCorePrimitives, root.pdfjsCorePdfManager);
-  }
-}(this, function (exports, sharedUtil, corePrimitives, corePdfManager) {
-
-var UNSUPPORTED_FEATURES = sharedUtil.UNSUPPORTED_FEATURES;
-var InvalidPDFException = sharedUtil.InvalidPDFException;
-var MessageHandler = sharedUtil.MessageHandler;
-var MissingPDFException = sharedUtil.MissingPDFException;
-var UnexpectedResponseException = sharedUtil.UnexpectedResponseException;
-var PasswordException = sharedUtil.PasswordException;
-var UnknownErrorException = sharedUtil.UnknownErrorException;
-var XRefParseException = sharedUtil.XRefParseException;
-var arrayByteLength = sharedUtil.arrayByteLength;
-var arraysToBytes = sharedUtil.arraysToBytes;
-var assert = sharedUtil.assert;
-var createPromiseCapability = sharedUtil.createPromiseCapability;
-var info = sharedUtil.info;
-var warn = sharedUtil.warn;
-var setVerbosityLevel = sharedUtil.setVerbosityLevel;
-var isNodeJS = sharedUtil.isNodeJS;
-var Ref = corePrimitives.Ref;
-var LocalPdfManager = corePdfManager.LocalPdfManager;
-var NetworkPdfManager = corePdfManager.NetworkPdfManager;
+import {
+  arrayByteLength, arraysToBytes, assert, createPromiseCapability, info,
+  InvalidPDFException, isNodeJS, MessageHandler, MissingPDFException,
+  PasswordException, setVerbosityLevel, UnexpectedResponseException,
+  UnknownErrorException, UNSUPPORTED_FEATURES, warn, XRefParseException
+} from '../shared/util';
+import { LocalPdfManager, NetworkPdfManager } from './pdf_manager';
+import { Ref } from './primitives';
 
 var WorkerTask = (function WorkerTaskClosure() {
   function WorkerTask(name) {
@@ -61,15 +34,15 @@ var WorkerTask = (function WorkerTaskClosure() {
       return this._capability.promise;
     },
 
-    finish: function () {
+    finish() {
       this._capability.resolve();
     },
 
-    terminate: function () {
+    terminate() {
       this.terminated = true;
     },
 
-    ensureNotTerminated: function () {
+    ensureNotTerminated() {
       if (this.terminated) {
         throw new Error('Worker task was terminated');
       }
@@ -92,7 +65,7 @@ IPDFStream.prototype = {
    * Gets a reader for the entire PDF data.
    * @returns {IPDFStreamReader}
    */
-  getFullReader: function () {
+  getFullReader() {
     return null;
   },
 
@@ -102,7 +75,7 @@ IPDFStream.prototype = {
    * @param {number} end - the end offset of the data.
    * @returns {IPDFStreamRangeReader}
    */
-  getRangeReader: function (begin, end) {
+  getRangeReader(begin, end) {
     return null;
   },
 
@@ -110,7 +83,7 @@ IPDFStream.prototype = {
    * Cancels all opened reader and closes all their opened requests.
    * @param {Object} reason - the reason for cancelling
    */
-  cancelAllRequests: function (reason) {},
+  cancelAllRequests(reason) {},
 };
 
 /**
@@ -165,13 +138,13 @@ IPDFStreamReader.prototype = {
    * set to true.
    * @returns {Promise}
    */
-  read: function () {},
+  read() {},
 
   /**
    * Cancels all pending read requests and closes the stream.
    * @param {Object} reason
    */
-  cancel: function (reason) {},
+  cancel(reason) {},
 
   /**
    * Sets or gets the progress callback. The callback can be useful when the
@@ -205,13 +178,13 @@ IPDFStreamRangeReader.prototype = {
    * set to true.
    * @returns {Promise}
    */
-  read: function () {},
+  read() {},
 
   /**
    * Cancels all pending read requests and closes the stream.
    * @param {Object} reason
    */
-  cancel: function (reason) {},
+  cancel(reason) {},
 
   /**
    * Sets or gets the progress callback. The callback can be useful when the
@@ -289,7 +262,7 @@ var PDFWorkerStream = (function PDFWorkerStreamClosure() {
 
     getRangeReader: function PDFWorkerStream_getRangeReader(begin, end) {
       var reader = new PDFWorkerStreamRangeReader(this, begin, end);
-      this._msgHandler.send('RequestDataRange', { begin: begin, end: end });
+      this._msgHandler.send('RequestDataRange', { begin, end, });
       this._rangeReaders.push(reader);
       return reader;
     },
@@ -438,7 +411,7 @@ function setPDFNetworkStreamClass(cls) {
 }
 
 var WorkerMessageHandler = {
-  setup: function wphSetup(handler, port) {
+  setup(handler, port) {
     var testMessageProcessed = false;
     handler.on('test', function wphSetupTest(data) {
       if (testMessageProcessed) {
@@ -469,7 +442,7 @@ var WorkerMessageHandler = {
       }
       handler.send('test', {
         supportTypedArray: true,
-        supportTransfers: supportTransfers
+        supportTransfers,
       });
     });
 
@@ -481,7 +454,7 @@ var WorkerMessageHandler = {
       return WorkerMessageHandler.createDocumentHandler(data, port);
     });
   },
-  createDocumentHandler: function wphCreateDocumentHandler(docParams, port) {
+  createDocumentHandler(docParams, port) {
     // This context is actually holds references on pdfManager and handler,
     // until the latter is destroyed.
     var pdfManager;
@@ -568,7 +541,7 @@ var WorkerMessageHandler = {
         if (source.chunkedViewerLoading) {
           pdfStream = new PDFWorkerStream(source, handler);
         } else {
-          assert(PDFNetworkStream, 'pdfjs/core/network module is not loaded');
+          assert(PDFNetworkStream, './network module is not loaded');
           pdfStream = new PDFNetworkStream(data);
         }
       } catch (ex) {
@@ -602,7 +575,7 @@ var WorkerMessageHandler = {
           url: source.url,
           password: source.password,
           length: fullRequest.contentLength,
-          disableAutoFetch: disableAutoFetch,
+          disableAutoFetch,
           rangeChunkSize: source.rangeChunkSize
         }, evaluatorOptions, docBaseUrl);
         pdfManagerCapability.resolve(pdfManager);
@@ -644,7 +617,7 @@ var WorkerMessageHandler = {
             loaded += arrayByteLength(data);
             if (!fullRequest.isStreamingSupported) {
               handler.send('DocProgress', {
-                loaded: loaded,
+                loaded,
                 total: Math.max(loaded, fullRequest.contentLength || 0)
               });
             }
@@ -731,7 +704,7 @@ var WorkerMessageHandler = {
         forceDataSchema: data.disableCreateObjectURL,
         maxImageSize: data.maxImageSize === undefined ? -1 : data.maxImageSize,
         disableFontFace: data.disableFontFace,
-        disableNativeImageDecoder: data.disableNativeImageDecoder,
+        nativeImageDecoderSupport: data.nativeImageDecoderSupport,
         ignoreErrors: data.ignoreErrors,
       };
 
@@ -848,9 +821,12 @@ var WorkerMessageHandler = {
         var pageNum = pageIndex + 1;
         var start = Date.now();
         // Pre compile the pdf page and fetch the fonts/images.
-        page.getOperatorList(handler, task, data.intent,
-                             data.renderInteractiveForms).then(
-            function(operatorList) {
+        page.getOperatorList({
+          handler,
+          task,
+          intent: data.intent,
+          renderInteractiveForms: data.renderInteractiveForms,
+        }).then(function(operatorList) {
           finishWorkerTask(task);
 
           info('page=' + pageNum + ' - getOperatorList: time=' +
@@ -890,7 +866,7 @@ var WorkerMessageHandler = {
           }
 
           handler.send('PageError', {
-            pageNum: pageNum,
+            pageNum,
             error: wrappedException,
             intent: data.intent
           });
@@ -906,10 +882,14 @@ var WorkerMessageHandler = {
 
         var pageNum = pageIndex + 1;
         var start = Date.now();
-        return page.extractTextContent(handler, task, data.normalizeWhitespace,
-                                       data.combineTextItems).then(
-            function(textContent) {
+        return page.extractTextContent({
+          handler,
+          task,
+          normalizeWhitespace: data.normalizeWhitespace,
+          combineTextItems: data.combineTextItems,
+        }).then(function(textContent) {
           finishWorkerTask(task);
+
           info('text indexing: page=' + pageNum + ' - time=' +
                (Date.now() - start) + 'ms');
           return textContent;
@@ -956,21 +936,27 @@ var WorkerMessageHandler = {
       docParams = null; // we don't need docParams anymore -- saving memory.
     });
     return workerHandlerName;
-  }
+  },
+  initializeFromPort(port) {
+    var handler = new MessageHandler('worker', 'main', port);
+    WorkerMessageHandler.setup(handler, port);
+    handler.send('ready', null);
+  },
 };
 
-function initializeWorker() {
-  var handler = new MessageHandler('worker', 'main', self);
-  WorkerMessageHandler.setup(handler, self);
-  handler.send('ready', null);
+function isMessagePort(maybePort) {
+  return typeof maybePort.postMessage === 'function' &&
+         ('onmessage' in maybePort);
 }
 
 // Worker thread (and not node.js)?
-if (typeof window === 'undefined' && !isNodeJS()) {
-  initializeWorker();
+if (typeof window === 'undefined' && !isNodeJS() &&
+    typeof self !== 'undefined' && isMessagePort(self)) {
+  WorkerMessageHandler.initializeFromPort(self);
 }
 
-exports.setPDFNetworkStreamClass = setPDFNetworkStreamClass;
-exports.WorkerTask = WorkerTask;
-exports.WorkerMessageHandler = WorkerMessageHandler;
-}));
+export {
+  setPDFNetworkStreamClass,
+  WorkerTask,
+  WorkerMessageHandler,
+};

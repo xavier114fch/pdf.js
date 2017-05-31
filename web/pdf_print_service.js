@@ -13,12 +13,12 @@
  * limitations under the License.
  */
 
-import { CSS_UNITS, mozL10n } from './ui_utils';
-import { OverlayManager } from './overlay_manager';
-import { PDFJS } from './pdfjs';
-import { PDFPrintServiceFactory } from './app';
+import { CSS_UNITS, NullL10n } from './ui_utils';
+import { PDFPrintServiceFactory, PDFViewerApplication } from './app';
+import { PDFJS } from 'pdfjs-lib';
 
-var activeService = null;
+let activeService = null;
+let overlayManager = null;
 
 // Renders the page to the canvas of the given print service, and returns
 // the suggested dimensions of the output page.
@@ -51,23 +51,24 @@ function renderPage(activeServiceOnEntry, pdfDocument, pageNumber, size) {
     return pdfPage.render(renderContext).promise;
   }).then(function () {
     return {
-      width: width,
-      height: height,
+      width,
+      height,
     };
   });
 }
 
-function PDFPrintService(pdfDocument, pagesOverview, printContainer) {
+function PDFPrintService(pdfDocument, pagesOverview, printContainer, l10n) {
   this.pdfDocument = pdfDocument;
   this.pagesOverview = pagesOverview;
   this.printContainer = printContainer;
+  this.l10n = l10n || NullL10n;
   this.currentPage = -1;
   // The temporary canvas where renderPage paints one page at a time.
   this.scratchCanvas = document.createElement('canvas');
 }
 
 PDFPrintService.prototype = {
-  layout: function () {
+  layout() {
     this.throwIfInactive();
 
     var body = document.querySelector('body');
@@ -102,7 +103,7 @@ PDFPrintService.prototype = {
     body.appendChild(this.pageStyleSheet);
   },
 
-  destroy: function () {
+  destroy() {
     if (activeService !== this) {
       // |activeService| cannot be replaced without calling destroy() first,
       // so if it differs then an external consumer has a stale reference to
@@ -118,34 +119,34 @@ PDFPrintService.prototype = {
     this.scratchCanvas = null;
     activeService = null;
     ensureOverlay().then(function () {
-      if (OverlayManager.active !== 'printServiceOverlay') {
+      if (overlayManager.active !== 'printServiceOverlay') {
         return; // overlay was already closed
       }
-      OverlayManager.close('printServiceOverlay');
+      overlayManager.close('printServiceOverlay');
     });
   },
 
-  renderPages: function () {
+  renderPages() {
     var pageCount = this.pagesOverview.length;
-    var renderNextPage = function (resolve, reject) {
+    var renderNextPage = (resolve, reject) => {
       this.throwIfInactive();
       if (++this.currentPage >= pageCount) {
-        renderProgress(pageCount, pageCount);
+        renderProgress(pageCount, pageCount, this.l10n);
         resolve();
         return;
       }
       var index = this.currentPage;
-      renderProgress(index, pageCount);
+      renderProgress(index, pageCount, this.l10n);
       renderPage(this, this.pdfDocument, index + 1, this.pagesOverview[index])
         .then(this.useRenderedPage.bind(this))
         .then(function () {
           renderNextPage(resolve, reject);
         }, reject);
-    }.bind(this);
+    };
     return new Promise(renderNextPage);
   },
 
-  useRenderedPage: function (printItem) {
+  useRenderedPage(printItem) {
     this.throwIfInactive();
     var img = document.createElement('img');
     img.style.width = printItem.width;
@@ -170,13 +171,13 @@ PDFPrintService.prototype = {
     });
   },
 
-  performPrint: function () {
+  performPrint() {
     this.throwIfInactive();
-    return new Promise(function (resolve) {
+    return new Promise((resolve) => {
       // Push window.print in the macrotask queue to avoid being affected by
       // the deprecation of running print() code in a microtask, see
       // https://github.com/mozilla/pdf.js/issues/7547.
-      setTimeout(function () {
+      setTimeout(() => {
         if (!this.active) {
           resolve();
           return;
@@ -184,15 +185,15 @@ PDFPrintService.prototype = {
         print.call(window);
         // Delay promise resolution in case print() was not synchronous.
         setTimeout(resolve, 20);  // Tidy-up.
-      }.bind(this), 0);
-    }.bind(this));
+      }, 0);
+    });
   },
 
   get active() {
     return this === activeService;
   },
 
-  throwIfInactive: function () {
+  throwIfInactive() {
     if (!this.active) {
       throw new Error('This print request was cancelled or completed.');
     }
@@ -208,7 +209,7 @@ window.print = function print() {
   }
   ensureOverlay().then(function () {
     if (activeService) {
-      OverlayManager.open('printServiceOverlay');
+      overlayManager.open('printServiceOverlay');
     }
   });
 
@@ -217,9 +218,11 @@ window.print = function print() {
   } finally {
     if (!activeService) {
       console.error('Expected print service to be initialized.');
-      if (OverlayManager.active === 'printServiceOverlay') {
-        OverlayManager.close('printServiceOverlay');
-      }
+      ensureOverlay().then(function () {
+        if (overlayManager.active === 'printServiceOverlay') {
+          overlayManager.close('printServiceOverlay');
+        }
+      });
       return; // eslint-disable-line no-unsafe-finally
     }
     var activeServiceOnEntry = activeService;
@@ -253,14 +256,16 @@ function abort() {
   }
 }
 
-function renderProgress(index, total) {
+function renderProgress(index, total, l10n) {
   var progressContainer = document.getElementById('printServiceOverlay');
   var progress = Math.round(100 * index / total);
   var progressBar = progressContainer.querySelector('progress');
   var progressPerc = progressContainer.querySelector('.relative-progress');
   progressBar.value = progress;
-  progressPerc.textContent = mozL10n.get('print_progress_percent',
-    {progress: progress}, progress + '%');
+  l10n.get('print_progress_percent', { progress, }, progress + '%').
+      then((msg) => {
+    progressPerc.textContent = msg;
+  });
 }
 
 var hasAttachEvent = !!document.attachEvent;
@@ -310,7 +315,12 @@ if ('onbeforeprint' in window) {
 var overlayPromise;
 function ensureOverlay() {
   if (!overlayPromise) {
-    overlayPromise = OverlayManager.register('printServiceOverlay',
+    overlayManager = PDFViewerApplication.overlayManager;
+    if (!overlayManager) {
+      throw new Error('The overlay manager has not yet been initialized.');
+    }
+
+    overlayPromise = overlayManager.register('printServiceOverlay',
       document.getElementById('printServiceOverlay'), abort, true);
     document.getElementById('printCancel').onclick = abort;
   }
@@ -320,12 +330,12 @@ function ensureOverlay() {
 PDFPrintServiceFactory.instance = {
   supportsPrinting: true,
 
-  createPrintService: function (pdfDocument, pagesOverview, printContainer) {
+  createPrintService(pdfDocument, pagesOverview, printContainer, l10n) {
     if (activeService) {
       throw new Error('The print service is created and active.');
     }
     activeService = new PDFPrintService(pdfDocument, pagesOverview,
-                                        printContainer);
+                                        printContainer, l10n);
     return activeService;
   }
 };

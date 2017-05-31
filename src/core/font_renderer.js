@@ -13,31 +13,11 @@
  * limitations under the License.
  */
 
-'use strict';
-(function (root, factory) {
-  if (typeof define === 'function' && define.amd) {
-    define('pdfjs/core/font_renderer', ['exports', 'pdfjs/shared/util',
-      'pdfjs/core/stream', 'pdfjs/core/glyphlist', 'pdfjs/core/encodings',
-      'pdfjs/core/cff_parser'], factory);
-  } else if (typeof exports !== 'undefined') {
-    factory(exports, require('../shared/util.js'), require('./stream.js'),
-      require('./glyphlist.js'), require('./encodings.js'),
-      require('./cff_parser.js'));
-  } else {
-    factory((root.pdfjsCoreFontRenderer = {}), root.pdfjsSharedUtil,
-      root.pdfjsCoreStream, root.pdfjsCoreGlyphList, root.pdfjsCoreEncodings,
-      root.pdfjsCoreCFFParser);
-  }
-}(this, function (exports, sharedUtil, coreStream, coreGlyphList,
-                  coreEncodings, coreCFFParser) {
-
-var Util = sharedUtil.Util;
-var bytesToString = sharedUtil.bytesToString;
-var error = sharedUtil.error;
-var Stream = coreStream.Stream;
-var getGlyphsUnicode = coreGlyphList.getGlyphsUnicode;
-var StandardEncoding = coreEncodings.StandardEncoding;
-var CFFParser = coreCFFParser.CFFParser;
+import { bytesToString, error, Util } from '../shared/util';
+import { CFFParser } from './cff_parser';
+import { getGlyphsUnicode } from './glyphlist';
+import { StandardEncoding } from './encodings';
+import { Stream } from './stream';
 
 var FontRendererFactory = (function FontRendererFactoryClosure() {
   function getLong(data, offset) {
@@ -237,7 +217,7 @@ var FontRendererFactory = (function FontRendererFactoryClosure() {
           repeat += code[i++];
         }
         while (repeat-- > 0) {
-          points.push({flags: flags});
+          points.push({ flags, });
         }
       }
       for (j = 0; j < numberOfPoints; j++) {
@@ -617,7 +597,7 @@ var FontRendererFactory = (function FontRendererFactoryClosure() {
     this.fontMatrix = fontMatrix;
   }
   CompiledFont.prototype = {
-    getPathJs: function (unicode) {
+    getPathJs(unicode) {
       var cmap = lookupCmap(this.cmap, unicode);
       var fn = this.compiledGlyphs[cmap.glyphId];
       if (!fn) {
@@ -630,7 +610,7 @@ var FontRendererFactory = (function FontRendererFactoryClosure() {
       return fn;
     },
 
-    compileGlyph: function (code) {
+    compileGlyph(code) {
       if (!code || code.length === 0 || code[0] === 14) {
         return noop;
       }
@@ -647,11 +627,11 @@ var FontRendererFactory = (function FontRendererFactoryClosure() {
       return cmds;
     },
 
-    compileGlyphImpl: function () {
+    compileGlyphImpl() {
       error('Children classes should implement this.');
     },
 
-    hasBuiltPath: function (unicode) {
+    hasBuiltPath(unicode) {
       var cmap = lookupCmap(this.cmap, unicode);
       return (this.compiledGlyphs[cmap.glyphId] !== undefined &&
               this.compiledCharCodeToGlyphId[cmap.charCode] !== undefined);
@@ -667,7 +647,7 @@ var FontRendererFactory = (function FontRendererFactoryClosure() {
   }
 
   Util.inherit(TrueTypeCompiled, CompiledFont, {
-    compileGlyphImpl: function (code, cmds) {
+    compileGlyphImpl(code, cmds) {
       compileGlyf(code, cmds, this);
     }
   });
@@ -689,7 +669,7 @@ var FontRendererFactory = (function FontRendererFactoryClosure() {
   }
 
   Util.inherit(Type2Compiled, CompiledFont, {
-    compileGlyphImpl: function (code, cmds) {
+    compileGlyphImpl(code, cmds) {
       compileCharString(code, cmds, this);
     }
   });
@@ -735,5 +715,6 @@ var FontRendererFactory = (function FontRendererFactoryClosure() {
   };
 })();
 
-exports.FontRendererFactory = FontRendererFactory;
-}));
+export {
+  FontRendererFactory,
+};
