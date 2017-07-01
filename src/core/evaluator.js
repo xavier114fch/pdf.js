@@ -79,7 +79,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         var data = message.data;
         return new Stream(data, 0, data.length, image.dict);
       });
-    }
+    },
   };
   /**
    * Checks if the image can be decoded and displayed by the browser without any
@@ -154,7 +154,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
     reset: function TimeSlotManager_reset() {
       this.endTime = Date.now() + TIME_SLOT_DURATION_MS;
       this.checked = 0;
-    }
+    },
   };
 
   // Convert PDF blend mode names to HTML5 blend mode names.
@@ -298,7 +298,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
           bbox,
           smask,
           isolated: false,
-          knockout: false
+          knockout: false,
         };
 
         var groupSubtype = group.get('S');
@@ -457,7 +457,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
       var smaskContent = smask.get('G');
       var smaskOptions = {
         subtype: smask.get('S').name,
-        backdrop: smask.get('BC')
+        backdrop: smask.get('BC'),
       };
 
       // The SMask might have a alpha/luminosity value transfer function --
@@ -480,30 +480,40 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
                                    stateManager.state.clone());
     },
 
-    handleTilingType:
-        function PartialEvaluator_handleTilingType(fn, args, resources,
-                                                   pattern, patternDict,
-                                                   operatorList, task) {
+    handleTilingType(fn, args, resources, pattern, patternDict, operatorList,
+                     task) {
       // Create an IR of the pattern code.
-      var tilingOpList = new OperatorList();
+      let tilingOpList = new OperatorList();
       // Merge the available resources, to prevent issues when the patternDict
       // is missing some /Resources entries (fixes issue6541.pdf).
-      var resourcesArray = [patternDict.get('Resources'), resources];
-      var patternResources = Dict.merge(this.xref, resourcesArray);
+      let resourcesArray = [patternDict.get('Resources'), resources];
+      let patternResources = Dict.merge(this.xref, resourcesArray);
 
       return this.getOperatorList({
         stream: pattern,
         task,
         resources: patternResources,
         operatorList: tilingOpList,
-      }).then(function () {
-        // Add the dependencies to the parent operator list so they are
-        // resolved before sub operator list is executed synchronously.
-        operatorList.addDependencies(tilingOpList.dependencies);
-        operatorList.addOp(fn, getTilingPatternIR({
+      }).then(function() {
+        return getTilingPatternIR({
           fnArray: tilingOpList.fnArray,
-          argsArray: tilingOpList.argsArray
-        }, patternDict, args));
+          argsArray: tilingOpList.argsArray,
+        }, patternDict, args);
+      }).then(function(tilingPatternIR) {
+        // Add the dependencies to the parent operator list so they are
+        // resolved before the sub operator list is executed synchronously.
+        operatorList.addDependencies(tilingOpList.dependencies);
+        operatorList.addOp(fn, tilingPatternIR);
+      }, (reason) => {
+        if (this.options.ignoreErrors) {
+          // Error(s) in the TilingPattern -- sending unsupported feature
+          // notification and allow rendering to continue.
+          this.handler.send('UnsupportedFeature',
+                            { featureId: UNSUPPORTED_FEATURES.unknown, });
+          warn(`handleTilingType - ignoring pattern: "${reason}".`);
+          return;
+        }
+        throw reason;
       });
     },
 
@@ -527,7 +537,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         }).catch((reason) => {
           // Error in the font data -- sending unsupported feature notification.
           this.handler.send('UnsupportedFeature',
-                            {featureId: UNSUPPORTED_FEATURES.font});
+                            { featureId: UNSUPPORTED_FEATURES.font, });
           return new TranslatedFont('g_font_error',
             new ErrorFont('Type3 font load error: ' + reason), translated.font);
         });
@@ -720,7 +730,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
           }
         } else {
           fontAliases[hash] = {
-            fontID: Font.getFontID()
+            fontID: Font.getFontID(),
           };
         }
 
@@ -783,7 +793,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         // TODO fontCapability.reject?
         // Error in the font data -- sending unsupported feature notification.
         this.handler.send('UnsupportedFeature',
-                          {featureId: UNSUPPORTED_FEATURES.font});
+                          { featureId: UNSUPPORTED_FEATURES.font, });
 
         try {
           // error, but it's still nice to have font type reported
@@ -1155,7 +1165,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
           // Error(s) in the OperatorList -- sending unsupported feature
           // notification and allow rendering to continue.
           this.handler.send('UnsupportedFeature',
-                            { featureId: UNSUPPORTED_FEATURES.unknown });
+                            { featureId: UNSUPPORTED_FEATURES.unknown, });
           warn('getOperatorList - ignoring errors during task: ' + task.name);
 
           closePendingRestoreOPS();
@@ -1166,7 +1176,8 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
     },
 
     getTextContent({ stream, task, resources, stateManager = null,
-                     normalizeWhitespace = false, combineTextItems = false, }) {
+                     normalizeWhitespace = false, combineTextItems = false,
+                     sink, seenStyles = Object.create(null), }) {
       // Ensure that `resources`/`stateManager` is correctly initialized,
       // even if the provided parameter is e.g. `null`.
       resources = resources || Dict.empty;
@@ -1176,7 +1187,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
 
       var textContent = {
         items: [],
-        styles: Object.create(null)
+        styles: Object.create(null),
       };
       var textContentItem = {
         initialized: false,
@@ -1193,7 +1204,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         fakeMultiSpaceMax: -0,
         textRunBreakAllowed: false,
         transform: null,
-        fontName: null
+        fontName: null,
       };
       var SPACE_FACTOR = 0.3;
       var MULTI_SPACE_FACTOR = 1.5;
@@ -1204,7 +1215,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
 
       // The xobj is parsed iff it's needed, e.g. if there is a `DO` cmd.
       var xobjs = null;
-      var xobjsCache = Object.create(null);
+      var skipEmptyXObjs = Object.create(null);
 
       var preprocessor = new EvaluatorPreprocessor(stream, xref, stateManager);
 
@@ -1215,12 +1226,13 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
           return textContentItem;
         }
         var font = textState.font;
-        if (!(font.loadedName in textContent.styles)) {
+        if (!(font.loadedName in seenStyles)) {
+          seenStyles[font.loadedName] = true;
           textContent.styles[font.loadedName] = {
             fontFamily: font.fallbackName,
             ascent: font.ascent,
             descent: font.descent,
-            vertical: font.vertical
+            vertical: font.vertical,
           };
         }
         textContentItem.fontName = font.loadedName;
@@ -1306,7 +1318,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
           width: textChunk.width,
           height: textChunk.height,
           transform: textChunk.transform,
-          fontName: textChunk.fontName
+          fontName: textChunk.fontName,
         };
       }
 
@@ -1406,11 +1418,21 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         textContentItem.str.length = 0;
       }
 
+      function enqueueChunk() {
+        let length = textContent.items.length;
+        if (length > 0) {
+          sink.enqueue(textContent, length);
+          textContent.items = [];
+          textContent.styles = Object.create(null);
+        }
+      }
+
       var timeSlotManager = new TimeSlotManager();
 
       return new Promise(function promiseBody(resolve, reject) {
-        var next = function (promise) {
-          promise.then(function () {
+        let next = function (promise) {
+          enqueueChunk();
+          Promise.all([promise, sink.ready]).then(function () {
             try {
               promiseBody(resolve, reject);
             } catch (ex) {
@@ -1605,11 +1627,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
               }
 
               var name = args[0].name;
-              if (xobjsCache.key === name) {
-                if (xobjsCache.texts) {
-                  Util.appendToArray(textContent.items, xobjsCache.texts.items);
-                  Util.extendObj(textContent.styles, xobjsCache.texts.styles);
-                }
+              if (name in skipEmptyXObjs) {
                 break;
               }
 
@@ -1623,8 +1641,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
               assert(isName(type), 'XObject should have a Name subtype');
 
               if (type.name !== 'Form') {
-                xobjsCache.key = name;
-                xobjsCache.texts = null;
+                skipEmptyXObjs[name] = true;
                 break;
               }
 
@@ -1640,6 +1657,26 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
                 xObjStateManager.transform(matrix);
               }
 
+              // Enqueue the `textContent` chunk before parsing the /Form
+              // XObject.
+              enqueueChunk();
+              let sinkWrapper = {
+                enqueueInvoked: false,
+
+                enqueue(chunk, size) {
+                  this.enqueueInvoked = true;
+                  sink.enqueue(chunk, size);
+                },
+
+                get desiredSize() {
+                  return sink.desiredSize;
+                },
+
+                get ready() {
+                  return sink.ready;
+                },
+              };
+
               next(self.getTextContent({
                 stream: xobj,
                 task,
@@ -1647,12 +1684,12 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
                 stateManager: xObjStateManager,
                 normalizeWhitespace,
                 combineTextItems,
-              }).then(function (formTextContent) {
-                Util.appendToArray(textContent.items, formTextContent.items);
-                Util.extendObj(textContent.styles, formTextContent.styles);
-
-                xobjsCache.key = name;
-                xobjsCache.texts = formTextContent;
+                sink: sinkWrapper,
+                seenStyles,
+              }).then(function() {
+                if (!sinkWrapper.enqueueInvoked) {
+                  skipEmptyXObjs[name] = true;
+                }
               }));
               return;
             case OPS.setGState:
@@ -1676,20 +1713,27 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
               }
               break;
           } // switch
+          if (textContent.items.length >= sink.desiredSize) {
+            // Wait for ready, if we reach highWaterMark.
+            stop = true;
+            break;
+          }
         } // while
         if (stop) {
           next(deferred);
           return;
         }
         flushTextContentItem();
-        resolve(textContent);
+        enqueueChunk();
+        resolve();
       }).catch((reason) => {
         if (this.options.ignoreErrors) {
           // Error(s) in the TextContent -- allow text-extraction to continue.
           warn('getTextContent - ignoring errors during task: ' + task.name);
 
           flushTextContentItem();
-          return textContent;
+          enqueueChunk();
+          return;
         }
         throw reason;
       });
@@ -1711,7 +1755,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
           properties.cidSystemInfo = {
             registry: cidSystemInfo.get('Registry'),
             ordering: cidSystemInfo.get('Ordering'),
-            supplement: cidSystemInfo.get('Supplement')
+            supplement: cidSystemInfo.get('Supplement'),
           };
         }
 
@@ -2260,7 +2304,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         baseDict,
         composite,
         type: type.name,
-        hash: hash ? hash.hexdigest() : ''
+        hash: hash ? hash.hexdigest() : '',
       };
     },
 
@@ -2306,7 +2350,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
             defaultWidth: metrics.defaultWidth,
             flags,
             firstChar: 0,
-            lastChar: maxCharIndex
+            lastChar: maxCharIndex,
           };
           return this.extractDataStructures(dict, dict, properties).
             then((properties) => {
@@ -2389,7 +2433,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         capHeight: descriptor.get('CapHeight'),
         flags: descriptor.get('Flags'),
         italicAngle: descriptor.get('ItalicAngle'),
-        coded: false
+        coded: false,
       };
 
       var cMapPromise;
@@ -2420,7 +2464,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         }
         return new Font(fontName.name, fontFile, properties);
       });
-    }
+    },
   };
 
   return PartialEvaluator;
@@ -2494,7 +2538,7 @@ var TranslatedFont = (function TranslatedFontClosure() {
         translatedFont.charProcOperatorList = charProcOperatorList;
       });
       return this.type3Loaded;
-    }
+    },
   };
   return TranslatedFont;
 })();
@@ -2583,7 +2627,7 @@ var OperatorList = (function OperatorListClosure() {
       return {
         fnArray: this.fnArray,
         argsArray: this.argsArray,
-        length: this.length
+        length: this.length,
       };
     },
 
@@ -2603,12 +2647,12 @@ var OperatorList = (function OperatorListClosure() {
           length,
         },
         pageIndex: this.pageIndex,
-        intent: this.intent
+        intent: this.intent,
       }, transfers);
       this.dependencies = Object.create(null);
       this.fnArray.length = 0;
       this.argsArray.length = 0;
-    }
+    },
   };
 
   return OperatorList;
@@ -2633,7 +2677,7 @@ var StateManager = (function StateManagerClosure() {
     },
     transform(args) {
       this.state.ctm = Util.transform(this.state.ctm, args);
-    }
+    },
   };
   return StateManager;
 })();
@@ -2714,7 +2758,7 @@ var TextState = (function TextStateClosure() {
       clone.textLineMatrix = this.textLineMatrix.slice();
       clone.fontMatrix = this.fontMatrix.slice();
       return clone;
-    }
+    },
   };
   return TextState;
 })();
@@ -2742,100 +2786,101 @@ var EvaluatorPreprocessor = (function EvaluatorPreprocessorClosure() {
   // If variableArgs === false: exactly `numArgs` expected
   var getOPMap = getLookupTableFactory(function (t) {
     // Graphic state
-    t['w'] = { id: OPS.setLineWidth, numArgs: 1, variableArgs: false };
-    t['J'] = { id: OPS.setLineCap, numArgs: 1, variableArgs: false };
-    t['j'] = { id: OPS.setLineJoin, numArgs: 1, variableArgs: false };
-    t['M'] = { id: OPS.setMiterLimit, numArgs: 1, variableArgs: false };
-    t['d'] = { id: OPS.setDash, numArgs: 2, variableArgs: false };
-    t['ri'] = { id: OPS.setRenderingIntent, numArgs: 1, variableArgs: false };
-    t['i'] = { id: OPS.setFlatness, numArgs: 1, variableArgs: false };
-    t['gs'] = { id: OPS.setGState, numArgs: 1, variableArgs: false };
-    t['q'] = { id: OPS.save, numArgs: 0, variableArgs: false };
-    t['Q'] = { id: OPS.restore, numArgs: 0, variableArgs: false };
-    t['cm'] = { id: OPS.transform, numArgs: 6, variableArgs: false };
+    t['w'] = { id: OPS.setLineWidth, numArgs: 1, variableArgs: false, };
+    t['J'] = { id: OPS.setLineCap, numArgs: 1, variableArgs: false, };
+    t['j'] = { id: OPS.setLineJoin, numArgs: 1, variableArgs: false, };
+    t['M'] = { id: OPS.setMiterLimit, numArgs: 1, variableArgs: false, };
+    t['d'] = { id: OPS.setDash, numArgs: 2, variableArgs: false, };
+    t['ri'] = { id: OPS.setRenderingIntent, numArgs: 1, variableArgs: false, };
+    t['i'] = { id: OPS.setFlatness, numArgs: 1, variableArgs: false, };
+    t['gs'] = { id: OPS.setGState, numArgs: 1, variableArgs: false, };
+    t['q'] = { id: OPS.save, numArgs: 0, variableArgs: false, };
+    t['Q'] = { id: OPS.restore, numArgs: 0, variableArgs: false, };
+    t['cm'] = { id: OPS.transform, numArgs: 6, variableArgs: false, };
 
     // Path
-    t['m'] = { id: OPS.moveTo, numArgs: 2, variableArgs: false };
-    t['l'] = { id: OPS.lineTo, numArgs: 2, variableArgs: false };
-    t['c'] = { id: OPS.curveTo, numArgs: 6, variableArgs: false };
-    t['v'] = { id: OPS.curveTo2, numArgs: 4, variableArgs: false };
-    t['y'] = { id: OPS.curveTo3, numArgs: 4, variableArgs: false };
-    t['h'] = { id: OPS.closePath, numArgs: 0, variableArgs: false };
-    t['re'] = { id: OPS.rectangle, numArgs: 4, variableArgs: false };
-    t['S'] = { id: OPS.stroke, numArgs: 0, variableArgs: false };
-    t['s'] = { id: OPS.closeStroke, numArgs: 0, variableArgs: false };
-    t['f'] = { id: OPS.fill, numArgs: 0, variableArgs: false };
-    t['F'] = { id: OPS.fill, numArgs: 0, variableArgs: false };
-    t['f*'] = { id: OPS.eoFill, numArgs: 0, variableArgs: false };
-    t['B'] = { id: OPS.fillStroke, numArgs: 0, variableArgs: false };
-    t['B*'] = { id: OPS.eoFillStroke, numArgs: 0, variableArgs: false };
-    t['b'] = { id: OPS.closeFillStroke, numArgs: 0, variableArgs: false };
-    t['b*'] = { id: OPS.closeEOFillStroke, numArgs: 0, variableArgs: false };
-    t['n'] = { id: OPS.endPath, numArgs: 0, variableArgs: false };
+    t['m'] = { id: OPS.moveTo, numArgs: 2, variableArgs: false, };
+    t['l'] = { id: OPS.lineTo, numArgs: 2, variableArgs: false, };
+    t['c'] = { id: OPS.curveTo, numArgs: 6, variableArgs: false, };
+    t['v'] = { id: OPS.curveTo2, numArgs: 4, variableArgs: false, };
+    t['y'] = { id: OPS.curveTo3, numArgs: 4, variableArgs: false, };
+    t['h'] = { id: OPS.closePath, numArgs: 0, variableArgs: false, };
+    t['re'] = { id: OPS.rectangle, numArgs: 4, variableArgs: false, };
+    t['S'] = { id: OPS.stroke, numArgs: 0, variableArgs: false, };
+    t['s'] = { id: OPS.closeStroke, numArgs: 0, variableArgs: false, };
+    t['f'] = { id: OPS.fill, numArgs: 0, variableArgs: false, };
+    t['F'] = { id: OPS.fill, numArgs: 0, variableArgs: false, };
+    t['f*'] = { id: OPS.eoFill, numArgs: 0, variableArgs: false, };
+    t['B'] = { id: OPS.fillStroke, numArgs: 0, variableArgs: false, };
+    t['B*'] = { id: OPS.eoFillStroke, numArgs: 0, variableArgs: false, };
+    t['b'] = { id: OPS.closeFillStroke, numArgs: 0, variableArgs: false, };
+    t['b*'] = { id: OPS.closeEOFillStroke, numArgs: 0, variableArgs: false, };
+    t['n'] = { id: OPS.endPath, numArgs: 0, variableArgs: false, };
 
     // Clipping
-    t['W'] = { id: OPS.clip, numArgs: 0, variableArgs: false };
-    t['W*'] = { id: OPS.eoClip, numArgs: 0, variableArgs: false };
+    t['W'] = { id: OPS.clip, numArgs: 0, variableArgs: false, };
+    t['W*'] = { id: OPS.eoClip, numArgs: 0, variableArgs: false, };
 
     // Text
-    t['BT'] = { id: OPS.beginText, numArgs: 0, variableArgs: false };
-    t['ET'] = { id: OPS.endText, numArgs: 0, variableArgs: false };
-    t['Tc'] = { id: OPS.setCharSpacing, numArgs: 1, variableArgs: false };
-    t['Tw'] = { id: OPS.setWordSpacing, numArgs: 1, variableArgs: false };
-    t['Tz'] = { id: OPS.setHScale, numArgs: 1, variableArgs: false };
-    t['TL'] = { id: OPS.setLeading, numArgs: 1, variableArgs: false };
-    t['Tf'] = { id: OPS.setFont, numArgs: 2, variableArgs: false };
-    t['Tr'] = { id: OPS.setTextRenderingMode, numArgs: 1, variableArgs: false };
-    t['Ts'] = { id: OPS.setTextRise, numArgs: 1, variableArgs: false };
-    t['Td'] = { id: OPS.moveText, numArgs: 2, variableArgs: false };
-    t['TD'] = { id: OPS.setLeadingMoveText, numArgs: 2, variableArgs: false };
-    t['Tm'] = { id: OPS.setTextMatrix, numArgs: 6, variableArgs: false };
-    t['T*'] = { id: OPS.nextLine, numArgs: 0, variableArgs: false };
-    t['Tj'] = { id: OPS.showText, numArgs: 1, variableArgs: false };
-    t['TJ'] = { id: OPS.showSpacedText, numArgs: 1, variableArgs: false };
-    t['\''] = { id: OPS.nextLineShowText, numArgs: 1, variableArgs: false };
+    t['BT'] = { id: OPS.beginText, numArgs: 0, variableArgs: false, };
+    t['ET'] = { id: OPS.endText, numArgs: 0, variableArgs: false, };
+    t['Tc'] = { id: OPS.setCharSpacing, numArgs: 1, variableArgs: false, };
+    t['Tw'] = { id: OPS.setWordSpacing, numArgs: 1, variableArgs: false, };
+    t['Tz'] = { id: OPS.setHScale, numArgs: 1, variableArgs: false, };
+    t['TL'] = { id: OPS.setLeading, numArgs: 1, variableArgs: false, };
+    t['Tf'] = { id: OPS.setFont, numArgs: 2, variableArgs: false, };
+    t['Tr'] = { id: OPS.setTextRenderingMode, numArgs: 1,
+                variableArgs: false, };
+    t['Ts'] = { id: OPS.setTextRise, numArgs: 1, variableArgs: false, };
+    t['Td'] = { id: OPS.moveText, numArgs: 2, variableArgs: false, };
+    t['TD'] = { id: OPS.setLeadingMoveText, numArgs: 2, variableArgs: false, };
+    t['Tm'] = { id: OPS.setTextMatrix, numArgs: 6, variableArgs: false, };
+    t['T*'] = { id: OPS.nextLine, numArgs: 0, variableArgs: false, };
+    t['Tj'] = { id: OPS.showText, numArgs: 1, variableArgs: false, };
+    t['TJ'] = { id: OPS.showSpacedText, numArgs: 1, variableArgs: false, };
+    t['\''] = { id: OPS.nextLineShowText, numArgs: 1, variableArgs: false, };
     t['"'] = { id: OPS.nextLineSetSpacingShowText, numArgs: 3,
-               variableArgs: false };
+               variableArgs: false, };
 
     // Type3 fonts
-    t['d0'] = { id: OPS.setCharWidth, numArgs: 2, variableArgs: false };
+    t['d0'] = { id: OPS.setCharWidth, numArgs: 2, variableArgs: false, };
     t['d1'] = { id: OPS.setCharWidthAndBounds, numArgs: 6,
-                variableArgs: false };
+                variableArgs: false, };
 
     // Color
-    t['CS'] = { id: OPS.setStrokeColorSpace, numArgs: 1, variableArgs: false };
-    t['cs'] = { id: OPS.setFillColorSpace, numArgs: 1, variableArgs: false };
-    t['SC'] = { id: OPS.setStrokeColor, numArgs: 4, variableArgs: true };
-    t['SCN'] = { id: OPS.setStrokeColorN, numArgs: 33, variableArgs: true };
-    t['sc'] = { id: OPS.setFillColor, numArgs: 4, variableArgs: true };
-    t['scn'] = { id: OPS.setFillColorN, numArgs: 33, variableArgs: true };
-    t['G'] = { id: OPS.setStrokeGray, numArgs: 1, variableArgs: false };
-    t['g'] = { id: OPS.setFillGray, numArgs: 1, variableArgs: false };
-    t['RG'] = { id: OPS.setStrokeRGBColor, numArgs: 3, variableArgs: false };
-    t['rg'] = { id: OPS.setFillRGBColor, numArgs: 3, variableArgs: false };
-    t['K'] = { id: OPS.setStrokeCMYKColor, numArgs: 4, variableArgs: false };
-    t['k'] = { id: OPS.setFillCMYKColor, numArgs: 4, variableArgs: false };
+    t['CS'] = { id: OPS.setStrokeColorSpace, numArgs: 1, variableArgs: false, };
+    t['cs'] = { id: OPS.setFillColorSpace, numArgs: 1, variableArgs: false, };
+    t['SC'] = { id: OPS.setStrokeColor, numArgs: 4, variableArgs: true, };
+    t['SCN'] = { id: OPS.setStrokeColorN, numArgs: 33, variableArgs: true, };
+    t['sc'] = { id: OPS.setFillColor, numArgs: 4, variableArgs: true, };
+    t['scn'] = { id: OPS.setFillColorN, numArgs: 33, variableArgs: true, };
+    t['G'] = { id: OPS.setStrokeGray, numArgs: 1, variableArgs: false, };
+    t['g'] = { id: OPS.setFillGray, numArgs: 1, variableArgs: false, };
+    t['RG'] = { id: OPS.setStrokeRGBColor, numArgs: 3, variableArgs: false, };
+    t['rg'] = { id: OPS.setFillRGBColor, numArgs: 3, variableArgs: false, };
+    t['K'] = { id: OPS.setStrokeCMYKColor, numArgs: 4, variableArgs: false, };
+    t['k'] = { id: OPS.setFillCMYKColor, numArgs: 4, variableArgs: false, };
 
     // Shading
-    t['sh'] = { id: OPS.shadingFill, numArgs: 1, variableArgs: false };
+    t['sh'] = { id: OPS.shadingFill, numArgs: 1, variableArgs: false, };
 
     // Images
-    t['BI'] = { id: OPS.beginInlineImage, numArgs: 0, variableArgs: false };
-    t['ID'] = { id: OPS.beginImageData, numArgs: 0, variableArgs: false };
-    t['EI'] = { id: OPS.endInlineImage, numArgs: 1, variableArgs: false };
+    t['BI'] = { id: OPS.beginInlineImage, numArgs: 0, variableArgs: false, };
+    t['ID'] = { id: OPS.beginImageData, numArgs: 0, variableArgs: false, };
+    t['EI'] = { id: OPS.endInlineImage, numArgs: 1, variableArgs: false, };
 
     // XObjects
-    t['Do'] = { id: OPS.paintXObject, numArgs: 1, variableArgs: false };
-    t['MP'] = { id: OPS.markPoint, numArgs: 1, variableArgs: false };
-    t['DP'] = { id: OPS.markPointProps, numArgs: 2, variableArgs: false };
-    t['BMC'] = { id: OPS.beginMarkedContent, numArgs: 1, variableArgs: false };
+    t['Do'] = { id: OPS.paintXObject, numArgs: 1, variableArgs: false, };
+    t['MP'] = { id: OPS.markPoint, numArgs: 1, variableArgs: false, };
+    t['DP'] = { id: OPS.markPointProps, numArgs: 2, variableArgs: false, };
+    t['BMC'] = { id: OPS.beginMarkedContent, numArgs: 1, variableArgs: false, };
     t['BDC'] = { id: OPS.beginMarkedContentProps, numArgs: 2,
-                 variableArgs: false };
-    t['EMC'] = { id: OPS.endMarkedContent, numArgs: 0, variableArgs: false };
+                 variableArgs: false, };
+    t['EMC'] = { id: OPS.endMarkedContent, numArgs: 0, variableArgs: false, };
 
     // Compatibility
-    t['BX'] = { id: OPS.beginCompat, numArgs: 0, variableArgs: false };
-    t['EX'] = { id: OPS.endCompat, numArgs: 0, variableArgs: false };
+    t['BX'] = { id: OPS.beginCompat, numArgs: 0, variableArgs: false, };
+    t['EX'] = { id: OPS.endCompat, numArgs: 0, variableArgs: false, };
 
     // (reserved partial commands for the lexer)
     t['BM'] = null;
@@ -2968,7 +3013,7 @@ var EvaluatorPreprocessor = (function EvaluatorPreprocessorClosure() {
           this.stateManager.transform(args);
           break;
       }
-    }
+    },
   };
   return EvaluatorPreprocessor;
 })();
@@ -3062,7 +3107,7 @@ var QueueOptimizer = (function QueueOptimizerClosure() {
         map.push({
           transform,
           x: currentX, y: currentY,
-          w: img.width, h: img.height
+          w: img.width, h: img.height,
         });
         currentX += img.width + 2 * IMAGE_PADDING;
         maxLineHeight = Math.max(maxLineHeight, img.height);
@@ -3101,7 +3146,7 @@ var QueueOptimizer = (function QueueOptimizerClosure() {
       fnArray.splice(iFirstSave, count * 4, OPS.paintInlineImageXObjectGroup);
       argsArray.splice(iFirstSave, count * 4,
         [{ width: imgWidth, height: imgHeight, kind: ImageKind.RGBA_32BPP,
-           data: imgData }, map]);
+           data: imgData, }, map]);
 
       return iFirstSave + 1;
     });
@@ -3194,7 +3239,7 @@ var QueueOptimizer = (function QueueOptimizerClosure() {
           var maskParams = argsArray[iFirstPIMXO + (q << 2)][0];
           images.push({ data: maskParams.data, width: maskParams.width,
                         height: maskParams.height,
-                        transform: transformArgs });
+                        transform: transformArgs, });
         }
 
         // Replace queue items.
@@ -3372,7 +3417,7 @@ var QueueOptimizer = (function QueueOptimizerClosure() {
           i++;
         }
       }
-    }
+    },
   };
   return QueueOptimizer;
 })();

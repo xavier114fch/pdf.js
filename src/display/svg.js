@@ -28,7 +28,7 @@ if (typeof PDFJSDev === 'undefined' ||
 var SVG_DEFAULTS = {
   fontStyle: 'normal',
   fontWeight: 'normal',
-  fillColor: '#000000'
+  fillColor: '#000000',
 };
 
 var convertImgDataToPng = (function convertImgDataToPngClosure() {
@@ -277,7 +277,7 @@ var SVGExtraState = (function SVGExtraStateClosure() {
     setCurrentPoint: function SVGExtraState_setCurrentPoint(x, y) {
       this.x = x;
       this.y = y;
-    }
+    },
   };
   return SVGExtraState;
 })();
@@ -290,7 +290,7 @@ SVGGraphics = (function SVGGraphicsClosure() {
 
     for (var x = 0; x < opListLen; x++) {
       if (opList[x].fn === 'save') {
-        opTree.push({'fnId': 92, 'fn': 'group', 'items': []});
+        opTree.push({ 'fnId': 92, 'fn': 'group', 'items': [], });
         tmp.push(opTree);
         opTree = opTree[opTree.length - 1].items;
         continue;
@@ -361,6 +361,7 @@ SVGGraphics = (function SVGGraphicsClosure() {
     this.extraStack = [];
     this.commonObjs = commonObjs;
     this.objs = objs;
+    this.pendingClip = null;
     this.pendingEOFill = false;
 
     this.embedFonts = false;
@@ -389,6 +390,7 @@ SVGGraphics = (function SVGGraphicsClosure() {
       this.transformMatrix = this.transformStack.pop();
       this.current = this.extraStack.pop();
 
+      this.pendingClip = null;
       this.tgrp = null;
     },
 
@@ -458,7 +460,11 @@ SVGGraphics = (function SVGGraphicsClosure() {
 
       for (var x = 0; x < fnArrayLen; x++) {
         var fnId = fnArray[x];
-        opList.push({'fnId': fnId, 'fn': REVOPS[fnId], 'args': argsArray[x]});
+        opList.push({
+          'fnId': fnId,
+          'fn': REVOPS[fnId],
+          'args': argsArray[x],
+        });
       }
       return opListToTree(opList);
     },
@@ -799,9 +805,15 @@ SVGGraphics = (function SVGGraphicsClosure() {
     setMiterLimit: function SVGGraphics_setMiterLimit(limit) {
       this.current.miterLimit = limit;
     },
+    setStrokeAlpha: function SVGGraphics_setStrokeAlpha(strokeAlpha) {
+      this.current.strokeAlpha = strokeAlpha;
+    },
     setStrokeRGBColor: function SVGGraphics_setStrokeRGBColor(r, g, b) {
       var color = Util.makeCssRgb(r, g, b);
       this.current.strokeColor = color;
+    },
+    setFillAlpha: function SVGGraphics_setFillAlpha(fillAlpha) {
+      this.current.fillAlpha = fillAlpha;
     },
     setFillRGBColor: function SVGGraphics_setFillRGBColor(r, g, b) {
       var color = Util.makeCssRgb(r, g, b);
@@ -870,16 +882,6 @@ SVGGraphics = (function SVGGraphicsClosure() {
         }
       }
       current.path.setAttributeNS(null, 'd', d.join(' '));
-      current.path.setAttributeNS(null, 'stroke-miterlimit',
-                                  pf(current.miterLimit));
-      current.path.setAttributeNS(null, 'stroke-linecap', current.lineCap);
-      current.path.setAttributeNS(null, 'stroke-linejoin', current.lineJoin);
-      current.path.setAttributeNS(null, 'stroke-width',
-                                  pf(current.lineWidth) + 'px');
-      current.path.setAttributeNS(null, 'stroke-dasharray',
-                                  current.dashArray.map(pf).join(' '));
-      current.path.setAttributeNS(null, 'stroke-dashoffset',
-                                  pf(current.dashPhase) + 'px');
       current.path.setAttributeNS(null, 'fill', 'none');
 
       this._ensureTransformGroup().appendChild(current.path);
@@ -890,9 +892,10 @@ SVGGraphics = (function SVGGraphicsClosure() {
       current.setCurrentPoint(x, y);
     },
 
-    endPath: function SVGGraphics_endPath() {},
-
-    clip: function SVGGraphics_clip(type) {
+    endPath: function SVGGraphics_endPath() {
+      if (!this.pendingClip) {
+        return;
+      }
       var current = this.current;
       // Add current path to clipping path
       var clipId = 'clippath' + clipCount;
@@ -901,17 +904,18 @@ SVGGraphics = (function SVGGraphicsClosure() {
       clipPath.setAttributeNS(null, 'id', clipId);
       clipPath.setAttributeNS(null, 'transform', pm(this.transformMatrix));
       var clipElement = current.element.cloneNode();
-      if (type === 'evenodd') {
+      if (this.pendingClip === 'evenodd') {
         clipElement.setAttributeNS(null, 'clip-rule', 'evenodd');
       } else {
         clipElement.setAttributeNS(null, 'clip-rule', 'nonzero');
       }
+      this.pendingClip = null;
       clipPath.appendChild(clipElement);
       this.defs.appendChild(clipPath);
 
       if (current.activeClipUrl) {
         // The previous clipping group content can go out of order -- resetting
-        // cached clipGroup's.
+        // cached clipGroups.
         current.clipGroup = null;
         this.extraStack.forEach(function (prev) {
           prev.clipGroup = null;
@@ -920,6 +924,10 @@ SVGGraphics = (function SVGGraphicsClosure() {
       current.activeClipUrl = 'url(#' + clipId + ')';
 
       this.tgrp = null;
+    },
+
+    clip: function SVGGraphics_clip(type) {
+      this.pendingClip = type;
     },
 
     closePath: function SVGGraphics_closePath() {
@@ -966,6 +974,12 @@ SVGGraphics = (function SVGGraphicsClosure() {
           case 'Font':
             this.setFont(value);
             break;
+          case 'CA':
+            this.setStrokeAlpha(value);
+            break;
+          case 'ca':
+            this.setFillAlpha(value);
+            break;
           default:
             warn('Unimplemented graphic state ' + key);
             break;
@@ -976,18 +990,32 @@ SVGGraphics = (function SVGGraphicsClosure() {
     fill: function SVGGraphics_fill() {
       var current = this.current;
       current.element.setAttributeNS(null, 'fill', current.fillColor);
+      current.element.setAttributeNS(null, 'fill-opacity', current.fillAlpha);
     },
 
     stroke: function SVGGraphics_stroke() {
       var current = this.current;
+
       current.element.setAttributeNS(null, 'stroke', current.strokeColor);
+      current.element.setAttributeNS(null, 'stroke-opacity',
+                                     current.strokeAlpha);
+      current.element.setAttributeNS(null, 'stroke-miterlimit',
+                                     pf(current.miterLimit));
+      current.element.setAttributeNS(null, 'stroke-linecap', current.lineCap);
+      current.element.setAttributeNS(null, 'stroke-linejoin', current.lineJoin);
+      current.element.setAttributeNS(null, 'stroke-width',
+                                     pf(current.lineWidth) + 'px');
+      current.element.setAttributeNS(null, 'stroke-dasharray',
+                                     current.dashArray.map(pf).join(' '));
+      current.element.setAttributeNS(null, 'stroke-dashoffset',
+                                     pf(current.dashPhase) + 'px');
+
       current.element.setAttributeNS(null, 'fill', 'none');
     },
 
     eoFill: function SVGGraphics_eoFill() {
-      var current = this.current;
-      current.element.setAttributeNS(null, 'fill', current.fillColor);
-      current.element.setAttributeNS(null, 'fill-rule', 'evenodd');
+      this.current.element.setAttributeNS(null, 'fill-rule', 'evenodd');
+      this.fill();
     },
 
     fillStroke: function SVGGraphics_fillStroke() {
@@ -1187,7 +1215,7 @@ SVGGraphics = (function SVGGraphicsClosure() {
         }
       }
       return this.tgrp;
-    }
+    },
   };
   return SVGGraphics;
 })();

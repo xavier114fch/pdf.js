@@ -400,7 +400,7 @@ var PDFViewer = (function pdfViewer() {
           }
         });
 
-        this.eventBus.dispatch('pagesinit', { source: this });
+        this.eventBus.dispatch('pagesinit', { source: this, });
 
         if (this.defaultRenderingQueue) {
           this.update();
@@ -452,14 +452,11 @@ var PDFViewer = (function pdfViewer() {
       this.viewer.textContent = '';
     },
 
-    _scrollUpdate: function PDFViewer_scrollUpdate() {
+    _scrollUpdate() {
       if (this.pagesCount === 0) {
         return;
       }
       this.update();
-      for (var i = 0, ii = this._pages.length; i < ii; i++) {
-        this._pages[i].updatePosition();
-      }
     },
 
     _setScaleDispatchEvent: function pdfViewer_setScaleDispatchEvent(
@@ -467,7 +464,7 @@ var PDFViewer = (function pdfViewer() {
       var arg = {
         source: this,
         scale: newScale,
-        presetValue: preset ? newValue : undefined
+        presetValue: preset ? newValue : undefined,
       };
       this.eventBus.dispatch('scalechanging', arg);
       this.eventBus.dispatch('scalechange', arg);
@@ -494,7 +491,7 @@ var PDFViewer = (function pdfViewer() {
         if (this._location && !PDFJS.ignoreCurrentPositionOnZoom &&
             !(this.isInPresentationMode || this.isChangingPresentationMode)) {
           page = this._location.pageNumber;
-          dest = [null, { name: 'XYZ' }, this._location.left,
+          dest = [null, { name: 'XYZ', }, this._location.left,
                   this._location.top, null];
         }
         this.scrollPageIntoView({
@@ -776,7 +773,7 @@ var PDFViewer = (function pdfViewer() {
 
       this.eventBus.dispatch('updateviewarea', {
         source: this,
-        location: this._location
+        location: this._location,
       });
     },
 
@@ -809,8 +806,8 @@ var PDFViewer = (function pdfViewer() {
       // configurations when presentation mode is active.
       var visible = [];
       var currentPage = this._pages[this._currentPageNumber - 1];
-      visible.push({ id: currentPage.id, view: currentPage });
-      return { first: currentPage, last: currentPage, views: visible };
+      visible.push({ id: currentPage.id, view: currentPage, });
+      return { first: currentPage, last: currentPage, views: visible, };
     },
 
     cleanup() {

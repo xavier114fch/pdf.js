@@ -111,7 +111,7 @@ AnnotationFactory.prototype = /** @lends AnnotationFactory.prototype */ {
         }
         return new Annotation(parameters);
     }
-  }
+  },
 };
 
 var Annotation = (function AnnotationClosure() {
@@ -390,9 +390,8 @@ var Annotation = (function AnnotationClosure() {
         if (!resources) {
           return;
         }
-        var objectLoader = new ObjectLoader(resources.map,
-                                            keys,
-                                            resources.xref);
+        let objectLoader = new ObjectLoader(resources, keys, resources.xref);
+
         return objectLoader.load().then(function() {
           return resources;
         });
@@ -435,7 +434,7 @@ var Annotation = (function AnnotationClosure() {
           return opList;
         });
       });
-    }
+    },
   };
 
   return Annotation;
@@ -573,7 +572,7 @@ var AnnotationBorderStyle = (function AnnotationBorderStyleClosure() {
       if (radius === (radius | 0)) {
         this.verticalCornerRadius = radius;
       }
-    }
+    },
   };
 
   return AnnotationBorderStyle;
@@ -736,7 +735,7 @@ var TextWidgetAnnotation = (function TextWidgetAnnotationClosure() {
       }).then(function () {
         return operatorList;
       });
-    }
+    },
   });
 
   return TextWidgetAnnotation;
@@ -806,7 +805,7 @@ var ButtonWidgetAnnotation = (function ButtonWidgetAnnotationClosure() {
                                                          renderForms);
       }
       return Promise.resolve(operatorList);
-    }
+    },
   });
 
   return ButtonWidgetAnnotation;
@@ -867,7 +866,7 @@ var ChoiceWidgetAnnotation = (function ChoiceWidgetAnnotationClosure() {
 
       return Annotation.prototype.getOperatorList.call(this, evaluator, task,
                                                        renderForms);
-    }
+    },
   });
 
   return ChoiceWidgetAnnotation;

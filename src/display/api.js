@@ -191,11 +191,11 @@ function getDocument(src, pdfDataRangeTransport,
 
   var source;
   if (typeof src === 'string') {
-    source = { url: src };
+    source = { url: src, };
   } else if (isArrayBuffer(src)) {
-    source = { data: src };
+    source = { data: src, };
   } else if (src instanceof PDFDataRangeTransport) {
-    source = { range: src };
+    source = { range: src, };
   } else {
     if (typeof src !== 'object') {
       error('Invalid parameter in getDocument, need either Uint8Array, ' +
@@ -211,6 +211,8 @@ function getDocument(src, pdfDataRangeTransport,
   var params = {};
   var rangeTransport = null;
   var worker = null;
+  var CMapReaderFactory = DOMCMapReaderFactory;
+
   for (var key in source) {
     if (key === 'url' && typeof window !== 'undefined') {
       // The full path is required in the 'url' field.
@@ -237,13 +239,15 @@ function getDocument(src, pdfDataRangeTransport,
               'array-like object is expected in the data property.');
       }
       continue;
+    } else if (key === 'CMapReaderFactory') {
+      CMapReaderFactory = source[key];
+      continue;
     }
     params[key] = source[key];
   }
 
   params.rangeChunkSize = params.rangeChunkSize || DEFAULT_RANGE_CHUNK_SIZE;
   params.ignoreErrors = params.stopAtErrors !== true;
-  var CMapReaderFactory = params.CMapReaderFactory || DOMCMapReaderFactory;
 
   if (params.disableNativeImageDecoder !== undefined) {
     deprecated('parameter disableNativeImageDecoder, ' +
@@ -264,7 +268,7 @@ function getDocument(src, pdfDataRangeTransport,
     // Worker was not provided -- creating and owning our own. If message port
     // is specified in global settings, using it.
     var workerPort = getDefaultSetting('workerPort');
-    worker = workerPort ? new PDFWorker(null, workerPort) : new PDFWorker();
+    worker = workerPort ? PDFWorker.fromPort(workerPort) : new PDFWorker();
     task._worker = worker;
   }
   var docId = task.docId;
@@ -415,7 +419,7 @@ var PDFDocumentLoadingTask = (function PDFDocumentLoadingTaskClosure() {
      */
     then: function PDFDocumentLoadingTask_then(onFulfilled, onRejected) {
       return this.promise.then.apply(this.promise, arguments);
-    }
+    },
   };
 
   return PDFDocumentLoadingTask;
@@ -491,7 +495,7 @@ var PDFDataRangeTransport = (function pdfDataRangeTransportClosure() {
     },
 
     abort: function PDFDataRangeTransport_abort() {
-    }
+    },
   };
   return PDFDataRangeTransport;
 })();
@@ -639,7 +643,7 @@ var PDFDocumentProxy = (function PDFDocumentProxyClosure() {
      */
     destroy: function PDFDocumentProxy_destroy() {
       return this.loadingTask.destroy();
-    }
+    },
   };
   return PDFDocumentProxy;
 })();
@@ -843,7 +847,7 @@ var PDFPageProxy = (function PDFPageProxyClosure() {
         intentState.operatorList = {
           fnArray: [],
           argsArray: [],
-          lastChunk: false
+          lastChunk: false,
         };
 
         this.stats.time('Page Request');
@@ -901,7 +905,7 @@ var PDFPageProxy = (function PDFPageProxyClosure() {
         stats.time('Rendering');
         internalRenderTask.initializeGraphics(transparency);
         internalRenderTask.operatorListChanged();
-      }, complete);
+      }).catch(complete);
 
       return renderTask;
     },
@@ -939,7 +943,7 @@ var PDFPageProxy = (function PDFPageProxyClosure() {
         intentState.operatorList = {
           fnArray: [],
           argsArray: [],
-          lastChunk: false
+          lastChunk: false,
         };
 
         this.transport.messageHandler.send('RenderPageRequest', {
@@ -952,15 +956,51 @@ var PDFPageProxy = (function PDFPageProxyClosure() {
 
     /**
      * @param {getTextContentParameters} params - getTextContent parameters.
+     * @return {ReadableStream} ReadableStream to read textContent chunks.
+     */
+    streamTextContent(params = {}) {
+      const TEXT_CONTENT_CHUNK_SIZE = 100;
+      return this.transport.messageHandler.sendWithStream('GetTextContent', {
+        pageIndex: this.pageNumber - 1,
+        normalizeWhitespace: (params.normalizeWhitespace === true),
+        combineTextItems: (params.disableCombineTextItems !== true),
+      }, {
+        highWaterMark: TEXT_CONTENT_CHUNK_SIZE,
+        size(textContent) {
+          return textContent.items.length;
+        },
+      });
+    },
+
+    /**
+     * @param {getTextContentParameters} params - getTextContent parameters.
      * @return {Promise} That is resolved a {@link TextContent}
      * object that represent the page text content.
      */
     getTextContent: function PDFPageProxy_getTextContent(params) {
       params = params || {};
-      return this.transport.messageHandler.sendWithPromise('GetTextContent', {
-        pageIndex: this.pageNumber - 1,
-        normalizeWhitespace: (params.normalizeWhitespace === true),
-        combineTextItems: (params.disableCombineTextItems !== true),
+      let readableStream = this.streamTextContent(params);
+
+      return new Promise(function(resolve, reject) {
+        function pump() {
+          reader.read().then(function({ value, done, }) {
+            if (done) {
+              resolve(textContent);
+              return;
+            }
+            Util.extendObj(textContent.styles, value.styles);
+            Util.appendToArray(textContent.items, value.items);
+            pump();
+          }, reject);
+        }
+
+        let reader = readableStream.getReader();
+        let textContent = {
+          items: [],
+          styles: Object.create(null),
+        };
+
+        pump();
       });
     },
 
@@ -1066,7 +1106,7 @@ var PDFPageProxy = (function PDFPageProxyClosure() {
         intentState.receivingOperatorList = false;
         this._tryCleanup();
       }
-    }
+    },
   };
   return PDFPageProxy;
 })();
@@ -1125,13 +1165,13 @@ class LoopbackPort {
 
     if (!this._defer) {
       this._listeners.forEach(function (listener) {
-        listener.call(this, {data: obj});
+        listener.call(this, { data: obj, });
       }, this);
       return;
     }
 
     var cloned = new WeakMap();
-    var e = {data: cloneValue(obj)};
+    var e = { data: cloneValue(obj), };
     this._deferred.then(() => {
       this._listeners.forEach(function (listener) {
         listener.call(this, e);
@@ -1160,7 +1200,7 @@ class LoopbackPort {
  * @class
  */
 var PDFWorker = (function PDFWorkerClosure() {
-  var nextFakeWorkerId = 0;
+  let nextFakeWorkerId = 0;
 
   function getWorkerSrc() {
     if (typeof workerSrc !== 'undefined') {
@@ -1177,7 +1217,7 @@ var PDFWorker = (function PDFWorkerClosure() {
     error('No PDFJS.workerSrc specified');
   }
 
-  var fakeWorkerFilesLoadedCapability;
+  let fakeWorkerFilesLoadedCapability;
 
   // Loads worker code into main thread.
   function setupFakeWorkerGlobal() {
@@ -1229,7 +1269,13 @@ var PDFWorker = (function PDFWorkerClosure() {
     return URL.createObjectURL(new Blob([wrapper]));
   }
 
+  let pdfWorkerPorts = new WeakMap();
+
   function PDFWorker(name, port) {
+    if (port && pdfWorkerPorts.has(port)) {
+      throw new Error('Cannot use more than one PDFWorker per port');
+    }
+
     this.name = name;
     this.destroyed = false;
 
@@ -1239,6 +1285,7 @@ var PDFWorker = (function PDFWorkerClosure() {
     this._messageHandler = null;
 
     if (port) {
+      pdfWorkerPorts.set(port, this);
       this._initializeFromPort(port);
       return;
     }
@@ -1332,7 +1379,7 @@ var PDFWorker = (function PDFWorkerClosure() {
               this._readyCapability.resolve();
               // Send global setting, e.g. verbosity level.
               messageHandler.send('configure', {
-                verbosity: getVerbosityLevel()
+                verbosity: getVerbosityLevel(),
               });
             } else {
               this._setupFakeWorker();
@@ -1441,7 +1488,14 @@ var PDFWorker = (function PDFWorkerClosure() {
         this._messageHandler.destroy();
         this._messageHandler = null;
       }
+    },
+  };
+
+  PDFWorker.fromPort = function (port) {
+    if (pdfWorkerPorts.has(port)) {
+      return pdfWorkerPorts.get(port);
     }
+    return new PDFWorker(null, port);
   };
 
   return PDFWorker;
@@ -1658,7 +1712,7 @@ var WorkerTransport = (function WorkerTransportClosure() {
               fontRegistry = {
                 registerFont(font, url) {
                   globalScope['FontInspector'].fontAdded(font, url);
-                }
+                },
               };
             }
             var font = new FontFaceObject(exportedData, {
@@ -1724,7 +1778,7 @@ var WorkerTransport = (function WorkerTransportClosure() {
         if (loadingTask.onProgress) {
           loadingTask.onProgress({
             loaded: data.loaded,
-            total: data.total
+            total: data.total,
           });
         }
       }, this);
@@ -1902,7 +1956,7 @@ var WorkerTransport = (function WorkerTransportClosure() {
         then(function transportMetadata(results) {
         return {
           info: results[0],
-          metadata: (results[1] ? new Metadata(results[1]) : null)
+          metadata: (results[1] ? new Metadata(results[1]) : null),
         };
       });
     },
@@ -1922,7 +1976,7 @@ var WorkerTransport = (function WorkerTransportClosure() {
         this.commonObjs.clear();
         this.fontLoader.clear();
       });
-    }
+    },
   };
   return WorkerTransport;
 
@@ -1953,7 +2007,7 @@ var PDFObjects = (function PDFObjectsClosure() {
       var obj = {
         capability: createPromiseCapability(),
         data: null,
-        resolved: false
+        resolved: false,
       };
       this.objs[objId] = obj;
 
@@ -2027,7 +2081,7 @@ var PDFObjects = (function PDFObjectsClosure() {
 
     clear: function PDFObjects_clear() {
       this.objs = Object.create(null);
-    }
+    },
   };
   return PDFObjects;
 })();
@@ -2078,7 +2132,7 @@ var RenderTask = (function RenderTaskClosure() {
      */
     then: function RenderTask_then(onFulfilled, onRejected) {
       return this.promise.then.apply(this.promise, arguments);
-    }
+    },
   };
 
   return RenderTask;
@@ -2089,6 +2143,7 @@ var RenderTask = (function RenderTaskClosure() {
  * @ignore
  */
 var InternalRenderTask = (function InternalRenderTaskClosure() {
+  let canvasInRendering = new WeakMap();
 
   function InternalRenderTask(callback, params, objs, commonObjs, operatorList,
                               pageNumber, canvasFactory) {
@@ -2111,12 +2166,23 @@ var InternalRenderTask = (function InternalRenderTaskClosure() {
     this._continueBound = this._continue.bind(this);
     this._scheduleNextBound = this._scheduleNext.bind(this);
     this._nextBound = this._next.bind(this);
+    this._canvas = params.canvasContext.canvas;
   }
 
   InternalRenderTask.prototype = {
 
     initializeGraphics:
         function InternalRenderTask_initializeGraphics(transparency) {
+
+      if (this._canvas) {
+        if (canvasInRendering.has(this._canvas)) {
+          throw new Error(
+            'Cannot use the same canvas during multiple render() operations. ' +
+            'Use different canvas or ensure previous operations were ' +
+            'cancelled or completed.');
+        }
+        canvasInRendering.set(this._canvas, this);
+      }
 
       if (this.cancelled) {
         return;
@@ -2149,6 +2215,9 @@ var InternalRenderTask = (function InternalRenderTaskClosure() {
     cancel: function InternalRenderTask_cancel() {
       this.running = false;
       this.cancelled = true;
+      if (this._canvas) {
+        canvasInRendering.delete(this._canvas);
+      }
 
       if ((typeof PDFJSDev !== 'undefined' && PDFJSDev.test('PDFJS_NEXT')) ||
           getDefaultSetting('pdfjsNext')) {
@@ -2209,10 +2278,13 @@ var InternalRenderTask = (function InternalRenderTaskClosure() {
         this.running = false;
         if (this.operatorList.lastChunk) {
           this.gfx.endDrawing();
+          if (this._canvas) {
+            canvasInRendering.delete(this._canvas);
+          }
           this.callback();
         }
       }
-    }
+    },
 
   };
 
@@ -2235,7 +2307,7 @@ var _UnsupportedManager = (function UnsupportedManagerClosure() {
       for (var i = 0, ii = listeners.length; i < ii; i++) {
         listeners[i](featureId);
       }
-    }
+    },
   };
 })();
 

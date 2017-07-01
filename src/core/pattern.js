@@ -28,7 +28,7 @@ var ShadingType = {
   FREE_FORM_MESH: 4,
   LATTICE_FORM_MESH: 5,
   COONS_PATCH_MESH: 6,
-  TENSOR_PATCH_MESH: 7
+  TENSOR_PATCH_MESH: 7,
 };
 
 var Pattern = (function PatternClosure() {
@@ -42,7 +42,7 @@ var Pattern = (function PatternClosure() {
     // Output: the appropriate fillStyle or strokeStyle
     getPattern: function Pattern_getPattern(ctx) {
       error('Should not call Pattern.getStyle: ' + ctx);
-    }
+    },
   };
 
   Pattern.parseShading = function Pattern_parseShading(shading, matrix, xref,
@@ -70,7 +70,7 @@ var Pattern = (function PatternClosure() {
         throw ex;
       }
       handler.send('UnsupportedFeature',
-                   {featureId: UNSUPPORTED_FEATURES.shadingPattern});
+                   { featureId: UNSUPPORTED_FEATURES.shadingPattern, });
       warn(ex);
       return new Shadings.Dummy();
     }
@@ -213,7 +213,7 @@ Shadings.RadialAxial = (function RadialAxialClosure() {
       }
 
       return ['RadialAxial', type, this.colorStops, p0, p1, r0, r1];
-    }
+    },
   };
 
   return RadialAxial;
@@ -313,7 +313,7 @@ Shadings.Mesh = (function MeshClosure() {
         this.context.colorFn(components, 0, color, 0);
       }
       return this.context.colorSpace.getRgb(color, 0);
-    }
+    },
   };
 
   function decodeType4Shading(mesh, reader) {
@@ -589,7 +589,7 @@ Shadings.Mesh = (function MeshClosure() {
       mesh.figures.push({
         type: 'patch',
         coords: new Int32Array(ps), // making copies of ps and cs
-        colors: new Int32Array(cs)
+        colors: new Int32Array(cs),
       });
     }
   }
@@ -654,7 +654,7 @@ Shadings.Mesh = (function MeshClosure() {
       mesh.figures.push({
         type: 'patch',
         coords: new Int32Array(ps), // making copies of ps and cs
-        colors: new Int32Array(cs)
+        colors: new Int32Array(cs),
       });
     }
   }
@@ -731,7 +731,7 @@ Shadings.Mesh = (function MeshClosure() {
       decode: dict.getArray('Decode'),
       colorFn: fn,
       colorSpace: cs,
-      numComps: fn ? 1 : cs.numComps
+      numComps: fn ? 1 : cs.numComps,
     };
     var reader = new MeshStreamReader(stream, decodeContext);
 
@@ -775,7 +775,7 @@ Shadings.Mesh = (function MeshClosure() {
     getIR: function Mesh_getIR() {
       return ['Mesh', this.shadingType, this.coords, this.colors, this.figures,
         this.bounds, this.matrix, this.bbox, this.background];
-    }
+    },
   };
 
   return Mesh;
@@ -789,18 +789,24 @@ Shadings.Dummy = (function DummyClosure() {
   Dummy.prototype = {
     getIR: function Dummy_getIR() {
       return ['Dummy'];
-    }
+    },
   };
   return Dummy;
 })();
 
 function getTilingPatternIR(operatorList, dict, args) {
-  var matrix = dict.getArray('Matrix');
-  var bbox = dict.getArray('BBox');
-  var xstep = dict.get('XStep');
-  var ystep = dict.get('YStep');
-  var paintType = dict.get('PaintType');
-  var tilingType = dict.get('TilingType');
+  let matrix = dict.getArray('Matrix');
+  let bbox = Util.normalizeRect(dict.getArray('BBox'));
+  let xstep = dict.get('XStep');
+  let ystep = dict.get('YStep');
+  let paintType = dict.get('PaintType');
+  let tilingType = dict.get('TilingType');
+
+  // Ensure that the pattern has a non-zero width and height, to prevent errors
+  // in `pattern_helper.js` (fixes issue8330.pdf).
+  if ((bbox[2] - bbox[0]) === 0 || (bbox[3] - bbox[1]) === 0) {
+    throw new Error(`getTilingPatternIR - invalid /BBox array: [${bbox}].`);
+  }
 
   return [
     'TilingPattern', args, operatorList, matrix, bbox, xstep, ystep,

@@ -24,8 +24,6 @@ import {
 import { getGlobalEventBus } from './dom_events';
 import { RenderingStates } from './pdf_rendering_queue';
 
-const TEXT_LAYER_RENDER_DELAY = 200; // ms
-
 /**
  * @typedef {Object} PDFPageViewOptions
  * @property {HTMLDivElement} container - The viewer element.
@@ -230,7 +228,7 @@ class PDFPageView {
         });
         return;
       }
-      if (!this.zoomLayer) {
+      if (!this.zoomLayer && !this.canvas.hasAttribute('hidden')) {
         this.zoomLayer = this.canvas.parentNode;
         this.zoomLayer.style.position = 'absolute';
       }
@@ -252,15 +250,6 @@ class PDFPageView {
     if (this.textLayer) {
       this.textLayer.cancel();
       this.textLayer = null;
-    }
-  }
-
-  /**
-   * Called when moved in the parent's container.
-   */
-  updatePosition() {
-    if (this.textLayer) {
-      this.textLayer.render(TEXT_LAYER_RENDER_DELAY);
     }
   }
 
@@ -453,12 +442,11 @@ class PDFPageView {
     let resultPromise = paintTask.promise.then(function() {
       return finishPaintTask(null).then(function () {
         if (textLayer) {
-          pdfPage.getTextContent({
+          let readableStream = pdfPage.streamTextContent({
             normalizeWhitespace: true,
-          }).then(function textContentResolved(textContent) {
-            textLayer.setTextContent(textContent);
-            textLayer.render(TEXT_LAYER_RENDER_DELAY);
           });
+          textLayer.setTextContentStream(readableStream);
+          textLayer.render();
         }
       });
     }, function(reason) {
