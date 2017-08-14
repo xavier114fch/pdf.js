@@ -17,7 +17,7 @@ import {
   assert, createPromiseCapability, globalScope, isInt, MissingPDFException,
   UnexpectedResponseException
 } from '../shared/util';
-import { setPDFNetworkStreamClass } from './worker';
+import { setPDFNetworkStreamClass } from './api';
 
 if (typeof PDFJSDev !== 'undefined' && PDFJSDev.test('FIREFOX || MOZCENTRAL')) {
   throw new Error('Module "./network" shall not ' +
@@ -491,7 +491,7 @@ PDFNetworkStreamFullRequestReader.prototype = {
     }
     if (this._cachedChunks.length > 0) {
       var chunk = this._cachedChunks.shift();
-      return Promise.resolve(chunk);
+      return Promise.resolve({ value: chunk, done: false, });
     }
     if (this._done) {
       return Promise.resolve({ value: undefined, done: true, });

@@ -682,6 +682,13 @@
        "link": false,
        "type": "eq"
     },
+    {  "id": "issue8707",
+       "file": "pdfs/issue8707.pdf",
+       "md5": "d3dc670adde9ec9fb82c974027033029",
+       "rounds": 1,
+       "link": false,
+       "type": "eq"
+    },
     {  "id": "issue5509",
        "file": "pdfs/issue5509.pdf",
        "md5": "1975ef8db7355b1d691bc79d0749574b",
@@ -1152,6 +1159,20 @@
     {  "id": "issue8480",
        "file": "pdfs/issue8480.pdf",
        "md5": "769bc07bf8041d95667f2d32aaf75665",
+       "rounds": 1,
+       "link": false,
+       "type": "eq"
+    },
+    {  "id": "issue8570",
+       "file": "pdfs/issue8570.pdf",
+       "md5": "0355731adb72df233eaa10464dcc8c51",
+       "rounds": 1,
+       "link": false,
+       "type": "eq"
+    },
+    {  "id": "issue7696",
+       "file": "pdfs/issue7696.pdf",
+       "md5": "0593f52d03251164caa219d704a15e4c",
        "rounds": 1,
        "link": false,
        "type": "eq"
@@ -1751,6 +1772,13 @@
        "rounds": 1,
        "type": "eq"
     },
+    {  "id": "issue8697",
+       "file": "pdfs/issue8697.pdf",
+       "md5": "65c6f0d861d49fa685051a64c3f78694",
+       "link": false,
+       "rounds": 1,
+       "type": "eq"
+    },
     {  "id": "non-embedded-NuptialScript",
        "file": "pdfs/non-embedded-NuptialScript.pdf",
        "md5": "94225085d3fbf5d2d12b8be1c52bb3c1",
@@ -1859,6 +1887,13 @@
     {  "id": "zerowidthline",
       "file": "pdfs/zerowidthline.pdf",
       "md5": "295d26e61a85635433f8e4b768953f60",
+      "rounds": 1,
+      "link": false,
+      "type": "eq"
+    },
+    {  "id": "issue8187",
+      "file": "pdfs/issue8187.pdf",
+      "md5": "1724dcada47b90c9217ee0139d8352a8",
       "rounds": 1,
       "link": false,
       "type": "eq"
@@ -2931,6 +2966,13 @@
        "type": "eq",
        "about": "Inline image with ASCII85Decode filter."
     },
+    {  "id": "issue8613",
+       "file": "pdfs/issue8613.pdf",
+       "md5": "bc7ad2db75710aa9916c5769e0c02123",
+       "rounds": 1,
+       "link": true,
+       "type": "eq"
+    },
     {  "id": "bug1108753",
        "file": "pdfs/bug1108753.pdf",
        "md5": "a7aaf92d55b4602afb0ca3d75198b56b",
@@ -3356,6 +3398,15 @@
        "rounds": 1,
        "link": true,
        "type": "eq"
+    },
+    {  "id": "issue4926-built-in-jpg",
+       "file": "pdfs/issue4926.pdf",
+       "md5": "ed881c8ea2f9bc4be94ecb7f2b2c149b",
+       "rounds": 1,
+       "link": true,
+       "lastPage": 1,
+       "type": "eq",
+       "nativeImageDecoderSupport": "none"
     },
     {  "id": "issue5592",
        "file": "pdfs/issue5592.pdf",

@@ -24,7 +24,8 @@ if ((typeof PDFJSDev === 'undefined' ||
 var globalScope =
   (typeof window !== 'undefined' && window.Math === Math) ? window :
   (typeof global !== 'undefined' && global.Math === Math) ? global :
-  (typeof self !== 'undefined' && self.Math === Math) ? self : this;
+  (typeof self !== 'undefined' && self.Math === Math) ? self :
+  (typeof this !== 'undefined' && this.Math === Math) ? this : {};
 
 var userAgent = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
 var isAndroid = /Android/.test(userAgent);
@@ -833,6 +834,29 @@ PDFJS.compatibilityChecked = true;
     if (this.parentNode) {
       this.parentNode.removeChild(this);
     }
+  };
+})();
+
+// Provides support for Number.isNaN in legacy browsers.
+// Support: IE.
+(function checkNumberIsNaN() {
+  if (Number.isNaN) {
+    return;
+  }
+  Number.isNaN = function(value) {
+    return typeof value === 'number' && isNaN(value);
+  };
+})();
+
+// Provides support for Number.isInteger in legacy browsers.
+// Support: IE.
+(function checkNumberIsInteger() {
+  if (Number.isInteger) {
+    return;
+  }
+  Number.isInteger = function(value) {
+    return typeof value === 'number' && isFinite(value) &&
+           Math.floor(value) === value;
   };
 })();
 
