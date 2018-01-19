@@ -15,10 +15,11 @@
 /* globals __non_webpack_require__ */
 
 import {
-  createObjectURL, FONT_IDENTITY_MATRIX, IDENTITY_MATRIX, ImageKind, isNodeJS,
-  isNum, OPS, Util, warn
+  createObjectURL, FONT_IDENTITY_MATRIX, IDENTITY_MATRIX, ImageKind, isNum, OPS,
+  Util, warn
 } from '../shared/util';
 import { DOMSVGFactory } from './dom_utils';
+import isNodeJS from '../shared/is_node';
 
 var SVGGraphics = function() {
   throw new Error('Not implemented: SVGGraphics');
@@ -182,7 +183,7 @@ var convertImgDataToPng = (function convertImgDataToPngClosure() {
     return idat;
   }
 
-  function encode(imgData, kind, forceDataSchema) {
+  function encode(imgData, kind, forceDataSchema, isMask) {
     var width = imgData.width;
     var height = imgData.height;
     var bitDepth, colorType, lineSize;
@@ -220,8 +221,8 @@ var convertImgDataToPng = (function convertImgDataToPngClosure() {
       offsetLiterals += lineSize;
     }
 
-    if (kind === ImageKind.GRAYSCALE_1BPP) {
-      // inverting for B/W
+    if (kind === ImageKind.GRAYSCALE_1BPP && isMask) {
+      // inverting for image masks
       offsetLiterals = 0;
       for (y = 0; y < height; y++) {
         offsetLiterals++; // skipping predictor
@@ -265,10 +266,10 @@ var convertImgDataToPng = (function convertImgDataToPngClosure() {
     return createObjectURL(data, 'image/png', forceDataSchema);
   }
 
-  return function convertImgDataToPng(imgData, forceDataSchema) {
+  return function convertImgDataToPng(imgData, forceDataSchema, isMask) {
     var kind = (imgData.kind === undefined ?
                 ImageKind.GRAYSCALE_1BPP : imgData.kind);
-    return encode(imgData, kind, forceDataSchema);
+    return encode(imgData, kind, forceDataSchema, isMask);
   };
 })();
 
@@ -641,6 +642,9 @@ SVGGraphics = (function SVGGraphicsClosure() {
             break;
           case OPS.closeFillStroke:
             this.closeFillStroke();
+            break;
+          case OPS.closeEOFillStroke:
+            this.closeEOFillStroke();
             break;
           case OPS.nextLine:
             this.nextLine();
@@ -1120,6 +1124,11 @@ SVGGraphics = (function SVGGraphicsClosure() {
       this.fillStroke();
     },
 
+    closeEOFillStroke() {
+      this.closePath();
+      this.eoFillStroke();
+    },
+
     paintSolidColorImageMask:
         function SVGGraphics_paintSolidColorImageMask() {
       var current = this.current;
@@ -1161,7 +1170,7 @@ SVGGraphics = (function SVGGraphicsClosure() {
       var width = imgData.width;
       var height = imgData.height;
 
-      var imgSrc = convertImgDataToPng(imgData, this.forceDataSchema);
+      var imgSrc = convertImgDataToPng(imgData, this.forceDataSchema, !!mask);
       var cliprect = this.svgFactory.createElement('svg:rect');
       cliprect.setAttributeNS(null, 'x', '0');
       cliprect.setAttributeNS(null, 'y', '0');

@@ -18,7 +18,7 @@ import { createPromiseCapability, PDFJS } from 'pdfjs-lib';
 const CSS_UNITS = 96.0 / 72.0;
 const DEFAULT_SCALE_VALUE = 'auto';
 const DEFAULT_SCALE = 1.0;
-const MIN_SCALE = 0.25;
+const MIN_SCALE = 0.10;
 const MAX_SCALE = 10.0;
 const UNKNOWN_SCALE = 0;
 const MAX_AUTO_SCALE = 1.25;
@@ -381,6 +381,14 @@ function noContextMenuHandler(evt) {
   evt.preventDefault();
 }
 
+function isFileSchema(url) {
+  let i = 0, ii = url.length;
+  while (i < ii && url[i].trim() === '') {
+    i++;
+  }
+  return url.substr(i, 7).toLowerCase() === 'file://';
+}
+
 function isDataSchema(url) {
   let i = 0, ii = url.length;
   while (i < ii && url[i].trim() === '') {
@@ -665,6 +673,7 @@ export {
   SCROLLBAR_PADDING,
   VERTICAL_PADDING,
   isValidRotation,
+  isFileSchema,
   cloneObj,
   PresentationModeState,
   RendererType,
