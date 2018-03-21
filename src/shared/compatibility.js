@@ -12,35 +12,26 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/* eslint-disable no-extend-native */
-/* globals PDFJS */
+/* eslint-disable mozilla/use-includes-instead-of-indexOf */
+
+const globalScope = require('./global_scope');
 
 // Skip compatibility checks for the extensions and if we already ran
 // this module.
 if ((typeof PDFJSDev === 'undefined' ||
-     !PDFJSDev.test('FIREFOX || MOZCENTRAL || CHROME')) &&
-    (typeof PDFJS === 'undefined' || !PDFJS.compatibilityChecked)) {
+     !PDFJSDev.test('FIREFOX || MOZCENTRAL')) &&
+    !globalScope._pdfjsCompatibilityChecked) {
 
-var globalScope = require('./global_scope');
+globalScope._pdfjsCompatibilityChecked = true;
+
+// In the Chrome extension, most of the polyfills are unnecessary.
+// We support down to Chrome 49, because it's still commonly used by Windows XP
+// users - https://github.com/mozilla/pdf.js/issues/9397
+if (typeof PDFJSDev === 'undefined' || !PDFJSDev.test('CHROME')) {
+
 const isNodeJS = require('./is_node');
 
-var userAgent = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
-var isAndroid = /Android/.test(userAgent);
-var isIOSChrome = userAgent.indexOf('CriOS') >= 0;
-var isIE = userAgent.indexOf('Trident') >= 0;
-var isIOS = /\b(iPad|iPhone|iPod)(?=;)/.test(userAgent);
-var isSafari = /Safari\//.test(userAgent) &&
-               !/(Chrome\/|Android\s)/.test(userAgent);
-
-var hasDOM = typeof window === 'object' && typeof document === 'object';
-
-// Initializing PDFJS global object here, it case if we need to change/disable
-// some PDF.js features, e.g. range requests
-if (typeof PDFJS === 'undefined') {
-  globalScope.PDFJS = {};
-}
-
-PDFJS.compatibilityChecked = true;
+const hasDOM = typeof window === 'object' && typeof document === 'object';
 
 // Support: Node.js
 (function checkNodeBtoa() {
@@ -62,57 +53,6 @@ PDFJS.compatibilityChecked = true;
     // eslint-disable-next-line no-undef
     return Buffer.from(input, 'base64').toString('binary');
   };
-})();
-
-// Checks if possible to use URL.createObjectURL()
-// Support: IE, Chrome on iOS
-(function checkOnBlobSupport() {
-  // sometimes IE and Chrome on iOS loosing the data created with
-  // createObjectURL(), see #3977 and #8081
-  if (isIE || isIOSChrome) {
-    PDFJS.disableCreateObjectURL = true;
-  }
-})();
-
-// Checks if navigator.language is supported
-(function checkNavigatorLanguage() {
-  if (typeof navigator === 'undefined') {
-    return;
-  }
-  if ('language' in navigator) {
-    return;
-  }
-  PDFJS.locale = navigator.userLanguage || 'en-US';
-})();
-
-// Support: Safari 6.0+, iOS
-(function checkRangeRequests() {
-  // Safari has issues with cached range requests see:
-  // https://github.com/mozilla/pdf.js/issues/3260
-  // Last tested with version 6.0.4.
-  if (isSafari || isIOS) {
-    PDFJS.disableRange = true;
-    PDFJS.disableStream = true;
-  }
-})();
-
-// Support: Android, iOS
-(function checkCanvasSizeLimitation() {
-  if (isIOS || isAndroid) {
-    // 5MP
-    PDFJS.maxCanvasPixels = 5242880;
-  }
-})();
-
-// Disable fullscreen support for certain problematic configurations.
-// Support: IE11+ (when embedded).
-(function checkFullscreenSupport() {
-  if (!hasDOM) {
-    return;
-  }
-  if (isIE && window.parent !== window) {
-    PDFJS.disableFullscreen = true;
-  }
 })();
 
 // Provides document.currentScript support
@@ -145,31 +85,32 @@ PDFJS.compatibilityChecked = true;
   }
   Element.prototype.remove = function () {
     if (this.parentNode) {
+      // eslint-disable-next-line mozilla/avoid-removeChild
       this.parentNode.removeChild(this);
     }
   };
 })();
 
-// Provides support for Object.values in legacy browsers.
-// Support: IE.
-(function checkObjectValues() {
-  if (Object.values) {
+// Provides support for String.prototype.includes in legacy browsers.
+// Support: IE, Chrome<41
+(function checkStringIncludes() {
+  if (String.prototype.includes) {
     return;
   }
-  Object.values = require('core-js/fn/object/values');
+  require('core-js/fn/string/includes');
 })();
 
 // Provides support for Array.prototype.includes in legacy browsers.
-// Support: IE.
+// Support: IE, Chrome<47
 (function checkArrayIncludes() {
   if (Array.prototype.includes) {
     return;
   }
-  Array.prototype.includes = require('core-js/fn/array/includes');
+  require('core-js/fn/array/includes');
 })();
 
 // Provides support for Math.log2 in legacy browsers.
-// Support: IE.
+// Support: IE, Chrome<38
 (function checkMathLog2() {
   if (Math.log2) {
     return;
@@ -187,7 +128,7 @@ PDFJS.compatibilityChecked = true;
 })();
 
 // Provides support for Number.isInteger in legacy browsers.
-// Support: IE.
+// Support: IE, Chrome<34
 (function checkNumberIsInteger() {
   if (Number.isInteger) {
     return;
@@ -195,6 +136,7 @@ PDFJS.compatibilityChecked = true;
   Number.isInteger = require('core-js/fn/number/is-integer');
 })();
 
+// Support: IE, Safari<8, Chrome<32
 (function checkPromise() {
   if (globalScope.Promise) {
     return;
@@ -202,6 +144,7 @@ PDFJS.compatibilityChecked = true;
   globalScope.Promise = require('core-js/fn/promise');
 })();
 
+// Support: IE<11, Safari<8, Chrome<36
 (function checkWeakMap() {
   if (globalScope.WeakMap) {
     return;
@@ -209,6 +152,7 @@ PDFJS.compatibilityChecked = true;
   globalScope.WeakMap = require('core-js/fn/weak-map');
 })();
 
+// Support: IE, Chrome<32
 // Polyfill from https://github.com/Polymer/URL
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
@@ -859,6 +803,17 @@ PDFJS.compatibilityChecked = true;
   }
 
   globalScope.URL = JURL;
+})();
+
+} // End of !PDFJSDev.test('CHROME')
+
+// Provides support for Object.values in legacy browsers.
+// Support: IE, Chrome<54
+(function checkObjectValues() {
+  if (Object.values) {
+    return;
+  }
+  Object.values = require('core-js/fn/object/values');
 })();
 
 }

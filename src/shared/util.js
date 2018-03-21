@@ -142,10 +142,10 @@ var FontType = {
   MMTYPE1: 10,
 };
 
-var VERBOSITY_LEVELS = {
-  errors: 0,
-  warnings: 1,
-  infos: 5,
+const VerbosityLevel = {
+  ERRORS: 0,
+  WARNINGS: 1,
+  INFOS: 5,
 };
 
 var CMapCompressionType = {
@@ -251,10 +251,12 @@ var OPS = {
   constructPath: 91,
 };
 
-var verbosity = VERBOSITY_LEVELS.warnings;
+let verbosity = VerbosityLevel.WARNINGS;
 
 function setVerbosityLevel(level) {
-  verbosity = level;
+  if (Number.isInteger(level)) {
+    verbosity = level;
+  }
 }
 
 function getVerbosityLevel() {
@@ -265,19 +267,19 @@ function getVerbosityLevel() {
 // as warning that Workers were disabled, which is important to devs but not
 // end users.
 function info(msg) {
-  if (verbosity >= VERBOSITY_LEVELS.infos) {
+  if (verbosity >= VerbosityLevel.INFOS) {
     console.log('Info: ' + msg);
   }
 }
 
 // Non-fatal warnings.
 function warn(msg) {
-  if (verbosity >= VERBOSITY_LEVELS.warnings) {
+  if (verbosity >= VerbosityLevel.WARNINGS) {
     console.log('Warning: ' + msg);
   }
 }
 
-// Deprecated API function -- display regardless of the PDFJS.verbosity setting.
+// Deprecated API function -- display regardless of the `verbosity` setting.
 function deprecated(details) {
   console.log('Deprecated API usage: ' + details);
 }
@@ -642,6 +644,53 @@ function isEvalSupported() {
   }
 }
 
+/**
+ * Get the value of an inheritable property.
+ *
+ * If the PDF specification explicitly lists a property in a dictionary as
+ * inheritable, then the value of the property may be present in the dictionary
+ * itself or in one or more parents of the dictionary.
+ *
+ * If the key is not found in the tree, `undefined` is returned. Otherwise,
+ * the value for the key is returned or, if `stopWhenFound` is `false`, a list
+ * of values is returned. To avoid infinite loops, the traversal is stopped when
+ * the loop limit is reached.
+ *
+ * @param {Dict} dict - Dictionary from where to start the traversal.
+ * @param {string} key - The key of the property to find the value for.
+ * @param {boolean} getArray - Whether or not the value should be fetched as an
+ *   array. The default value is `false`.
+ * @param {boolean} stopWhenFound - Whether or not to stop the traversal when
+ *   the key is found. If set to `false`, we always walk up the entire parent
+ *   chain, for example to be able to find `\Resources` placed on multiple
+ *   levels of the tree. The default value is `true`.
+ */
+function getInheritableProperty({ dict, key, getArray = false,
+                                  stopWhenFound = true, }) {
+  const LOOP_LIMIT = 100;
+  let loopCount = 0;
+  let values;
+
+  while (dict) {
+    const value = getArray ? dict.getArray(key) : dict.get(key);
+    if (value !== undefined) {
+      if (stopWhenFound) {
+        return value;
+      }
+      if (!values) {
+        values = [];
+      }
+      values.push(value);
+    }
+    if (++loopCount > LOOP_LIMIT) {
+      warn(`getInheritableProperty: maximum loop count exceeded for "${key}"`);
+      break;
+    }
+    dict = dict.get('Parent');
+  }
+  return values;
+}
+
 var IDENTITY_MATRIX = [1, 0, 0, 1, 0, 0];
 
 var Util = (function UtilClosure() {
@@ -849,17 +898,6 @@ var Util = (function UtilClosure() {
     for (var key in obj2) {
       obj1[key] = obj2[key];
     }
-  };
-
-  Util.getInheritableProperty =
-      function Util_getInheritableProperty(dict, name, getArray) {
-    while (dict && !dict.has(name)) {
-      dict = dict.get('Parent');
-    }
-    if (!dict) {
-      return null;
-    }
-    return getArray ? dict.getArray(name) : dict.get(name);
   };
 
   Util.inherit = function Util_inherit(sub, base, prototype) {
@@ -1569,23 +1607,11 @@ MessageHandler.prototype = {
   },
 };
 
-function loadJpegStream(id, imageUrl, objs) {
-  var img = new Image();
-  img.onload = (function loadJpegStream_onloadClosure() {
-    objs.resolve(id, img);
-  });
-  img.onerror = (function loadJpegStream_onerrorClosure() {
-    objs.resolve(id, null);
-    warn('Error during JPEG image loading');
-  });
-  img.src = imageUrl;
-}
-
 export {
   FONT_IDENTITY_MATRIX,
   IDENTITY_MATRIX,
   OPS,
-  VERBOSITY_LEVELS,
+  VerbosityLevel,
   UNSUPPORTED_FEATURES,
   AnnotationBorderStyleType,
   AnnotationFieldFlag,
@@ -1619,6 +1645,7 @@ export {
   createPromiseCapability,
   createObjectURL,
   deprecated,
+  getInheritableProperty,
   getLookupTableFactory,
   getVerbosityLevel,
   info,
@@ -1632,7 +1659,6 @@ export {
   createValidAbsoluteUrl,
   isLittleEndian,
   isEvalSupported,
-  loadJpegStream,
   log2,
   readInt8,
   readUint16,

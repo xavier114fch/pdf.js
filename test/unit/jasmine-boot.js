@@ -42,10 +42,11 @@
 
 function initializePDFJS(callback) {
   Promise.all([
-    'pdfjs/display/global',
     'pdfjs/display/api',
+    'pdfjs/display/worker_options',
     'pdfjs/display/network',
     'pdfjs/display/fetch_stream',
+    'pdfjs/shared/is_node',
     'pdfjs-test/unit/annotation_spec',
     'pdfjs-test/unit/api_spec',
     'pdfjs-test/unit/bidi_spec',
@@ -76,22 +77,31 @@ function initializePDFJS(callback) {
     'pdfjs-test/unit/util_stream_spec',
   ].map(function (moduleName) {
     return SystemJS.import(moduleName);
-  })).then(function (modules) {
-    var displayGlobal = modules[0];
-    var displayApi = modules[1];
+  })).then(function(modules) {
+    var displayApi = modules[0];
+    const GlobalWorkerOptions = modules[1].GlobalWorkerOptions;
     var PDFNetworkStream = modules[2].PDFNetworkStream;
     var PDFFetchStream = modules[3].PDFFetchStream;
+    const isNodeJS = modules[4];
 
-    // Set network stream class for unit tests.
+    if (isNodeJS()) {
+      throw new Error('The `gulp unittest` command cannot be used in ' +
+                      'Node.js environments.');
+    }
+    // Set the network stream factory for unit-tests.
     if (typeof Response !== 'undefined' && 'body' in Response.prototype &&
         typeof ReadableStream !== 'undefined') {
-      displayApi.setPDFNetworkStreamClass(PDFFetchStream);
+      displayApi.setPDFNetworkStreamFactory(function(params) {
+        return new PDFFetchStream(params);
+      });
     } else {
-      displayApi.setPDFNetworkStreamClass(PDFNetworkStream);
+      displayApi.setPDFNetworkStreamFactory(function(params) {
+        return new PDFNetworkStream(params);
+      });
     }
 
     // Configure the worker.
-    displayGlobal.PDFJS.workerSrc = '../../build/generic/build/pdf.worker.js';
+    GlobalWorkerOptions.workerSrc = '../../build/generic/build/pdf.worker.js';
 
     callback();
   });

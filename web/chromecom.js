@@ -15,10 +15,10 @@
 /* globals chrome */
 
 import { DefaultExternalServices, PDFViewerApplication } from './app';
+import { AppOptions } from './app_options';
 import { BasePreferences } from './preferences';
 import { DownloadManager } from './download_manager';
 import { GenericL10n } from './genericl10n';
-import { PDFJS } from 'pdfjs-lib';
 
 if (typeof PDFJSDev === 'undefined' || !PDFJSDev.test('CHROME')) {
   throw new Error('Module "pdfjs-web/chromecom" shall not be used outside ' +
@@ -65,26 +65,6 @@ let ChromeCom = {
     file = file.replace(/^drive:/i,
         'filesystem:' + location.origin + '/external/');
 
-    if (/^filesystem:/.test(file) && !PDFJS.disableWorker) {
-      // The security origin of filesystem:-URLs are not preserved when the
-      // URL is passed to a Web worker, (http://crbug.com/362061), so we have
-      // to create an intermediate blob:-URL as a work-around.
-      let resolveLocalFileSystemURL = window.resolveLocalFileSystemURL ||
-                                      window.webkitResolveLocalFileSystemURL;
-      resolveLocalFileSystemURL(file, function onResolvedFSURL(fileEntry) {
-        fileEntry.file(function(fileObject) {
-          let blobUrl = URL.createObjectURL(fileObject);
-          callback(blobUrl, fileObject.size);
-        });
-      }, function onFileSystemError(error) {
-        // This should not happen. When it happens, just fall back to the
-        // usual way of getting the File's data (via the Web worker).
-        console.warn('Cannot resolve file ' + file + ', ' + error.name + ' ' +
-                     error.message);
-        callback(file);
-      });
-      return;
-    }
     if (/^https?:/.test(file)) {
       // Assumption: The file being opened is the file that was requested.
       // There is no UI to input a different URL, so this assumption will hold
@@ -329,16 +309,43 @@ class ChromePreferences extends BasePreferences {
         // Get preferences as set by the system administrator.
         // See extensions/chromium/preferences_schema.json for more information.
         // These preferences can be overridden by the user.
-        chrome.storage.managed.get(this.defaults, function(items) {
-          // Migration code for https://github.com/mozilla/pdf.js/pull/7635.
+
+        // Deprecated preferences are removed from web/default_preferences.json,
+        // but kept in extensions/chromium/preferences_schema.json for backwards
+        // compatibility with managed preferences.
+        let defaultManagedPrefs = Object.assign({
+          enableHandToolOnLoad: false,
+          disableTextLayer: false,
+          enhanceTextSelection: false,
+        }, this.defaults);
+
+        chrome.storage.managed.get(defaultManagedPrefs, function(items) {
+          items = items || defaultManagedPrefs;
+          // Migration logic for deprecated preferences: If the new preference
+          // is not defined by an administrator (i.e. the value is the same as
+          // the default value), and a deprecated preference is set with a
+          // non-default value, migrate the deprecated preference value to the
+          // new preference value.
           // Never remove this, because we have no means of modifying managed
           // preferences.
-          if (items && items.enableHandToolOnLoad && !items.cursorToolOnLoad) {
-            // if the old enableHandToolOnLoad has a non-default value,
-            // and cursorToolOnLoad has a default value, migrate.
-            items.enableHandToolOnLoad = false;
+
+          // Migration code for https://github.com/mozilla/pdf.js/pull/7635.
+          if (items.enableHandToolOnLoad && !items.cursorToolOnLoad) {
             items.cursorToolOnLoad = 1;
           }
+          delete items.enableHandToolOnLoad;
+
+          // Migration code for https://github.com/mozilla/pdf.js/pull/9479.
+          if (items.textLayerMode !== 1) {
+            if (items.disableTextLayer) {
+              items.textLayerMode = 0;
+            } else if (items.enhanceTextSelection) {
+              items.textLayerMode = 2;
+            }
+          }
+          delete items.disableTextLayer;
+          delete items.enhanceTextSelection;
+
           getPreferences(items);
         });
       } else {
@@ -351,19 +358,20 @@ class ChromePreferences extends BasePreferences {
 
 let ChromeExternalServices = Object.create(DefaultExternalServices);
 ChromeExternalServices.initPassiveLoading = function(callbacks) {
-  let { appConfig, overlayManager, } = PDFViewerApplication;
-  ChromeCom.resolvePDFFile(appConfig.defaultUrl, overlayManager,
+  let { overlayManager, } = PDFViewerApplication;
+  // defaultUrl is set in viewer.js
+  ChromeCom.resolvePDFFile(AppOptions.get('defaultUrl'), overlayManager,
       function(url, length, originalURL) {
     callbacks.onOpenWithURL(url, length, originalURL);
   });
 };
-ChromeExternalServices.createDownloadManager = function() {
-  return new DownloadManager();
+ChromeExternalServices.createDownloadManager = function(options) {
+  return new DownloadManager(options);
 };
 ChromeExternalServices.createPreferences = function() {
   return new ChromePreferences();
 };
-ChromeExternalServices.createL10n = function() {
+ChromeExternalServices.createL10n = function(options) {
   return new GenericL10n(navigator.language);
 };
 PDFViewerApplication.externalServices = ChromeExternalServices;

@@ -712,6 +712,13 @@
        "link": false,
        "type": "eq"
     },
+    {  "id": "issue9458",
+       "file": "pdfs/issue9458.pdf",
+       "md5": "ee54358d8b2fdc75dc8da5220cf8e8da",
+       "rounds": 1,
+       "link": false,
+       "type": "eq"
+    },
     {  "id": "issue5501",
        "file": "pdfs/issue5501.pdf",
        "md5": "55a60699728fc92f491a2d7d490474e4",
@@ -858,6 +865,21 @@
        "rounds": 1,
        "link": true,
        "lastPage": 1,
+       "type": "eq"
+    },
+    {  "id": "issue9425",
+       "file": "pdfs/issue9425.pdf",
+       "md5": "cb5e99c9ada308304ca2dfcb7f72e3a0",
+       "rounds": 1,
+       "link": true,
+       "lastPage": 1,
+       "type": "eq"
+    },
+    {  "id": "issue9540",
+       "file": "pdfs/issue9540.pdf",
+       "md5": "7de7979270c9136bdd737428185fbbed",
+       "rounds": 1,
+       "link": true,
        "type": "eq"
     },
     {  "id": "txt2pdf",
@@ -2518,6 +2540,23 @@
       "link": true,
       "type": "eq"
     },
+    {  "id": "jbig2_huffman_1",
+       "file": "pdfs/jbig2_huffman_1.pdf",
+       "md5": "93ccd85c5686bea27d3e6c3b41921b21",
+       "lastPage": 1,
+       "rounds": 1,
+       "link": true,
+       "type": "eq"
+    },
+    {  "id": "jbig2_huffman_2",
+       "file": "pdfs/jbig2_huffman_2.pdf",
+       "md5": "f019e2722bd64684e2093a0933e390f4",
+       "firstPage": 7,
+       "lastPage": 7,
+       "rounds": 1,
+       "link": true,
+       "type": "eq"
+    },
     {  "id": "issue1233",
       "file": "pdfs/issue1233.pdf",
       "md5": "2d3565b0a286e29955796c37c66326c1",
@@ -3160,13 +3199,22 @@
        "md5": "ad02d4aa374b315bf1766038d002d57a",
        "link": false,
        "rounds": 1,
-       "type": "eq"
+       "type": "eq",
+       "about": "Also tests issue9398."
     },
     {  "id": "issue8613",
        "file": "pdfs/issue8613.pdf",
        "md5": "bc7ad2db75710aa9916c5769e0c02123",
        "rounds": 1,
        "link": true,
+       "type": "eq"
+    },
+    {  "id": "issue8614",
+       "file": "pdfs/issue8614.pdf",
+       "md5": "7e8b66cf674ac2b79d6b267d0c6f2fa2",
+       "rounds": 1,
+       "link": true,
+       "lastPage": 1,
        "type": "eq"
     },
     {  "id": "bug1108753",

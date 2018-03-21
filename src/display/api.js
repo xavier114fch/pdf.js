@@ -16,29 +16,30 @@
 
 import {
   assert, createPromiseCapability, getVerbosityLevel, info, InvalidPDFException,
-  isArrayBuffer, isSameOrigin, loadJpegStream, MessageHandler,
-  MissingPDFException, NativeImageDecoding, PageViewport, PasswordException,
-  stringToBytes, UnexpectedResponseException, UnknownErrorException,
+  isArrayBuffer, isNum, isSameOrigin, MessageHandler, MissingPDFException,
+  NativeImageDecoding, PageViewport, PasswordException, setVerbosityLevel,
+  shadow, stringToBytes, UnexpectedResponseException, UnknownErrorException,
   unreachable, Util, warn
 } from '../shared/util';
 import {
-  DOMCanvasFactory, DOMCMapReaderFactory, DummyStatTimer, getDefaultSetting,
+  DOMCanvasFactory, DOMCMapReaderFactory, DummyStatTimer,
   RenderingCancelledException, StatTimer
 } from './dom_utils';
 import { FontFaceObject, FontLoader } from './font_loader';
+import { apiCompatibilityParams } from './api_compatibility';
 import { CanvasGraphics } from './canvas';
 import globalScope from '../shared/global_scope';
+import { GlobalWorkerOptions } from './worker_options';
 import { Metadata } from './metadata';
 import { PDFDataTransportStream } from './transport_stream';
 import { WebGLContext } from './webgl';
 
 var DEFAULT_RANGE_CHUNK_SIZE = 65536; // 2^16 = 65536
 
-var isWorkerDisabled = false;
-var workerSrc;
-var isPostMessageTransfersDisabled = false;
+let isWorkerDisabled = false;
+let workerSrc;
 
-var pdfjsFilePath =
+const pdfjsFilePath =
   typeof PDFJSDev !== 'undefined' &&
   PDFJSDev.test('PRODUCTION && !(MOZCENTRAL || FIREFOX)') &&
   typeof document !== 'undefined' && document.currentScript ?
@@ -46,10 +47,9 @@ var pdfjsFilePath =
 
 var fakeWorkerFilesLoader = null;
 var useRequireEnsure = false;
-if (typeof PDFJSDev !== 'undefined' &&
-    PDFJSDev.test('GENERIC && !SINGLE_FILE')) {
-  // For GENERIC build we need add support of different fake file loaders
-  // for different  frameworks.
+if (typeof PDFJSDev !== 'undefined' && PDFJSDev.test('GENERIC')) {
+  // For GENERIC build we need to add support for different fake file loaders
+  // for different frameworks.
   if (typeof window === 'undefined') {
     // node.js - disable worker and set require.ensure.
     isWorkerDisabled = true;
@@ -83,15 +83,25 @@ if (typeof PDFJSDev !== 'undefined' &&
   }) : null;
 }
 
-/** @type IPDFStream */
-var PDFNetworkStream;
+/**
+ * @typedef {function} IPDFStreamFactory
+ * @param {DocumentInitParameters} params The document initialization
+ * parameters. The "url" key is always present.
+ * @return {IPDFStream}
+ */
+
+/** @type IPDFStreamFactory */
+var createPDFNetworkStream;
 
 /**
- * Sets PDFNetworkStream class to be used as alternative PDF data transport.
- * @param {IPDFStream} cls - the PDF data transport.
+ * Sets the function that instantiates a IPDFStream as an alternative PDF data
+ * transport.
+ * @param {IPDFStreamFactory} pdfNetworkStreamFactory - the factory function
+ * that takes document initialization parameters (including a "url") and returns
+ * an instance of IPDFStream.
  */
-function setPDFNetworkStreamClass(cls) {
-  PDFNetworkStream = cls;
+function setPDFNetworkStreamFactory(pdfNetworkStreamFactory) {
+  createPDFNetworkStream = pdfNetworkStreamFactory;
 }
 
 /**
@@ -116,8 +126,12 @@ function setPDFNetworkStreamClass(cls) {
  * @property {number}     rangeChunkSize - Optional parameter to specify
  *   maximum number of bytes fetched per range request. The default value is
  *   2^16 = 65536.
- * @property {PDFWorker}  worker - The worker that will be used for the loading
- *   and parsing of the PDF data.
+ * @property {PDFWorker}  worker - (optional) The worker that will be used for
+ *   the loading and parsing of the PDF data.
+ * @property {boolean} postMessageTransfers - (optional) Enables transfer usage
+ *   in postMessage for ArrayBuffers. The default value is `true`.
+ * @property {number} verbosity - (optional) Controls the logging level; the
+ *   constants from {VerbosityLevel} should be used.
  * @property {string} docBaseUrl - (optional) The base URL of the document,
  *   used when attempting to recover valid absolute URLs for annotations, and
  *   outline items, that (incorrectly) only specify relative URLs.
@@ -129,6 +143,10 @@ function setPDFNetworkStreamClass(cls) {
  *   with limited image support through stubs (useful for SVG conversion),
  *   and 'none' where JPEG images will be decoded entirely by PDF.js.
  *   The default value is 'decode'.
+ * @property {string} cMapUrl - (optional) The URL where the predefined
+ *   Adobe CMaps are located. Include trailing slash.
+ * @property {boolean} cMapPacked - (optional) Specifies if the Adobe CMaps are
+ *   binary packed.
  * @property {Object} CMapReaderFactory - (optional) The factory that will be
  *   used when reading built-in CMap files. Providing a custom factory is useful
  *   for environments without `XMLHttpRequest` support, such as e.g. Node.js.
@@ -137,6 +155,34 @@ function setPDFNetworkStreamClass(cls) {
  *   `getOperatorList`, `getTextContent`, and `RenderTask`, when the associated
  *   PDF data cannot be successfully parsed, instead of attempting to recover
  *   whatever possible of the data. The default value is `false`.
+ * @property {number} maxImageSize - (optional) The maximum allowed image size
+ *   in total pixels, i.e. width * height. Images above this value will not be
+ *   rendered. Use -1 for no limit, which is also the default value.
+ * @property {boolean} isEvalSupported - (optional) Determines if we can eval
+ *   strings as JS. Primarily used to improve performance of font rendering,
+ *   and when parsing PDF functions. The default value is `true`.
+ * @property {boolean} disableFontFace - (optional) By default fonts are
+ *   converted to OpenType fonts and loaded via font face rules. If disabled,
+ *   fonts will be rendered using a built-in font renderer that constructs the
+ *   glyphs with primitive path commands. The default value is `false`.
+ * @property {boolean} disableRange - (optional) Disable range request loading
+ *   of PDF files. When enabled, and if the server supports partial content
+ *   requests, then the PDF will be fetched in chunks.
+ *   The default value is `false`.
+ * @property {boolean} disableStream - (optional) Disable streaming of PDF file
+ *   data. By default PDF.js attempts to load PDFs in chunks.
+ *   The default value is `false`.
+ * @property {boolean} disableAutoFetch - (optional) Disable pre-fetching of PDF
+ *   file data. When range requests are enabled PDF.js will automatically keep
+ *   fetching more data even if it isn't needed to display the current page.
+ *   The default value is `false`.
+ *   NOTE: It is also necessary to disable streaming, see above,
+ *         in order for disabling of pre-fetching to work correctly.
+ * @property {boolean} disableCreateObjectURL - (optional) Disable the use of
+ *   `URL.createObjectURL`, for compatibility with older browsers.
+ *   The default value is `false`.
+ * @property {boolean} pdfBug - (optional) Enables special hooks for debugging
+ *   PDF.js (see `web/debugger.js`). The default value is `false`.
  */
 
 /**
@@ -182,10 +228,10 @@ function getDocument(src) {
     source = src;
   }
 
-  var params = {};
+  let params = Object.create(null);
   var rangeTransport = null;
-  var worker = null;
-  var CMapReaderFactory = DOMCMapReaderFactory;
+  let worker = null;
+  let CMapReaderFactory = DOMCMapReaderFactory;
 
   for (var key in source) {
     if (key === 'url' && typeof window !== 'undefined') {
@@ -223,18 +269,54 @@ function getDocument(src) {
 
   params.rangeChunkSize = params.rangeChunkSize || DEFAULT_RANGE_CHUNK_SIZE;
   params.ignoreErrors = params.stopAtErrors !== true;
+  params.pdfBug = params.pdfBug === true;
 
-  const nativeImageDecoderValues = Object.values(NativeImageDecoding);
+  const NativeImageDecoderValues = Object.values(NativeImageDecoding);
   if (params.nativeImageDecoderSupport === undefined ||
-      !nativeImageDecoderValues.includes(params.nativeImageDecoderSupport)) {
+      !NativeImageDecoderValues.includes(params.nativeImageDecoderSupport)) {
     params.nativeImageDecoderSupport = NativeImageDecoding.DECODE;
   }
+  if (!Number.isInteger(params.maxImageSize)) {
+    params.maxImageSize = -1;
+  }
+  if (typeof params.isEvalSupported !== 'boolean') {
+    params.isEvalSupported = true;
+  }
+  if (typeof params.disableFontFace !== 'boolean') {
+    params.disableFontFace = false;
+  }
+
+  if (typeof params.disableRange !== 'boolean') {
+    params.disableRange = apiCompatibilityParams.disableRange || false;
+  }
+  if (typeof params.disableStream !== 'boolean') {
+    params.disableStream = apiCompatibilityParams.disableStream || false;
+  }
+  if (typeof params.disableAutoFetch !== 'boolean') {
+    params.disableAutoFetch = false;
+  }
+  if (typeof params.disableCreateObjectURL !== 'boolean') {
+    params.disableCreateObjectURL =
+      apiCompatibilityParams.disableCreateObjectURL || false;
+  }
+
+  // Set the main-thread verbosity level.
+  setVerbosityLevel(params.verbosity);
 
   if (!worker) {
+    const workerParams = {
+      postMessageTransfers: params.postMessageTransfers,
+      verbosity: params.verbosity,
+    };
     // Worker was not provided -- creating and owning our own. If message port
-    // is specified in global settings, using it.
-    var workerPort = getDefaultSetting('workerPort');
-    worker = workerPort ? PDFWorker.fromPort(workerPort) : new PDFWorker();
+    // is specified in global worker options, using it.
+    let workerPort = GlobalWorkerOptions.workerPort;
+    if (workerPort) {
+      workerParams.port = workerPort;
+      worker = PDFWorker.fromPort(workerParams);
+    } else {
+      worker = new PDFWorker(workerParams);
+    }
     task._worker = worker;
   }
   var docId = task.docId;
@@ -250,15 +332,28 @@ function getDocument(src) {
 
       let networkStream;
       if (rangeTransport) {
-        networkStream = new PDFDataTransportStream(params, rangeTransport);
+        networkStream = new PDFDataTransportStream({
+          length: params.length,
+          initialData: params.initialData,
+          disableRange: params.disableRange,
+          disableStream: params.disableStream,
+        }, rangeTransport);
       } else if (!params.data) {
-        networkStream = new PDFNetworkStream(params);
+        networkStream = createPDFNetworkStream({
+          url: params.url,
+          length: params.length,
+          httpHeaders: params.httpHeaders,
+          withCredentials: params.withCredentials,
+          rangeChunkSize: params.rangeChunkSize,
+          disableRange: params.disableRange,
+          disableStream: params.disableStream,
+        });
       }
 
       var messageHandler = new MessageHandler(docId, workerId, worker.port);
       messageHandler.postMessageTransfers = worker.postMessageTransfers;
       var transport = new WorkerTransport(messageHandler, task, networkStream,
-                                          CMapReaderFactory);
+                                          params, CMapReaderFactory);
       task._transport = transport;
       messageHandler.send('Ready', null);
     });
@@ -281,19 +376,15 @@ function _fetchDocument(worker, source, pdfDataRangeTransport, docId) {
   if (worker.destroyed) {
     return Promise.reject(new Error('Worker was destroyed'));
   }
-  let apiVersion =
-    typeof PDFJSDev !== 'undefined' ? PDFJSDev.eval('BUNDLE_VERSION') : null;
 
-  source.disableRange = getDefaultSetting('disableRange');
-  source.disableAutoFetch = getDefaultSetting('disableAutoFetch');
-  source.disableStream = getDefaultSetting('disableStream');
   if (pdfDataRangeTransport) {
     source.length = pdfDataRangeTransport.length;
     source.initialData = pdfDataRangeTransport.initialData;
   }
   return worker.messageHandler.sendWithPromise('GetDocRequest', {
     docId,
-    apiVersion,
+    apiVersion: (typeof PDFJSDev !== 'undefined' ?
+                 PDFJSDev.eval('BUNDLE_VERSION') : null),
     source: {
       data: source.data,
       url: source.url,
@@ -302,15 +393,14 @@ function _fetchDocument(worker, source, pdfDataRangeTransport, docId) {
       rangeChunkSize: source.rangeChunkSize,
       length: source.length,
     },
-    maxImageSize: getDefaultSetting('maxImageSize'),
-    disableFontFace: getDefaultSetting('disableFontFace'),
-    disableCreateObjectURL: getDefaultSetting('disableCreateObjectURL'),
-    postMessageTransfers: getDefaultSetting('postMessageTransfers') &&
-                          !isPostMessageTransfersDisabled,
+    maxImageSize: source.maxImageSize,
+    disableFontFace: source.disableFontFace,
+    disableCreateObjectURL: source.disableCreateObjectURL,
+    postMessageTransfers: worker.postMessageTransfers,
     docBaseUrl: source.docBaseUrl,
     nativeImageDecoderSupport: source.nativeImageDecoderSupport,
     ignoreErrors: source.ignoreErrors,
-    isEvalSupported: getDefaultSetting('isEvalSupported'),
+    isEvalSupported: source.isEvalSupported,
   }).then(function (workerId) {
     if (worker.destroyed) {
       throw new Error('Worker was destroyed');
@@ -636,6 +726,10 @@ var PDFDocumentProxy = (function PDFDocumentProxyClosure() {
     destroy: function PDFDocumentProxy_destroy() {
       return this.loadingTask.destroy();
     },
+
+    get loadingParams() {
+      return this.transport.loadingParams;
+    },
   };
   return PDFDocumentProxy;
 })();
@@ -699,6 +793,8 @@ var PDFDocumentProxy = (function PDFDocumentProxyClosure() {
  *                                calling of PDFPage.getViewport method.
  * @property {string} intent - Rendering intent, can be 'display' or 'print'
  *                    (default value is 'display').
+ * @property {boolean} enableWebGL - (optional) Enables WebGL accelerated
+ *   rendering for some operations. The default value is `false`.
  * @property {boolean} renderInteractiveForms - (optional) Whether or not
  *                     interactive form elements are rendered in the display
  *                     layer. If so, we do not render them on canvas as well.
@@ -731,12 +827,12 @@ var PDFDocumentProxy = (function PDFDocumentProxyClosure() {
  * @alias PDFPageProxy
  */
 var PDFPageProxy = (function PDFPageProxyClosure() {
-  function PDFPageProxy(pageIndex, pageInfo, transport) {
+  function PDFPageProxy(pageIndex, pageInfo, transport, pdfBug = false) {
     this.pageIndex = pageIndex;
     this.pageInfo = pageInfo;
     this.transport = transport;
-    this._stats = (getDefaultSetting('enableStats') ?
-                   new StatTimer() : DummyStatTimer);
+    this._stats = (pdfBug ? new StatTimer() : DummyStatTimer);
+    this._pdfBug = pdfBug;
     this.commonObjs = transport.commonObjs;
     this.objs = new PDFObjects();
     this.cleanupAfterRender = false;
@@ -777,6 +873,20 @@ var PDFPageProxy = (function PDFPageProxyClosure() {
     get view() {
       return this.pageInfo.view;
     },
+
+    /**
+     * The size of the current page, converted from PDF units to inches.
+     * @return {Object} An Object containing the properties: {number} `width`
+     *   and {number} `height`, given in inches.
+     */
+    get pageSizeInches() {
+      const [x1, y1, x2, y2] = this.view, userUnit = this.userUnit;
+      return {
+        width: (x2 - x1) / 72 * userUnit,
+        height: (y2 - y1) / 72 * userUnit,
+      };
+    },
+
     /**
      * @param {number} scale The desired scale of the viewport.
      * @param {number} rotate Degrees to rotate the viewport. If omitted this
@@ -820,9 +930,7 @@ var PDFPageProxy = (function PDFPageProxyClosure() {
       var renderingIntent = (params.intent === 'print' ? 'print' : 'display');
       var canvasFactory = params.canvasFactory || new DOMCanvasFactory();
       let webGLContext = new WebGLContext({
-        // TODO: When moving this parameter from `PDFJS` to {RenderParameters},
-        //       change its name to `enableWebGL` instead.
-        enable: !getDefaultSetting('disableWebGL'),
+        enable: params.enableWebGL,
       });
 
       if (!this.intentStates[renderingIntent]) {
@@ -875,7 +983,8 @@ var PDFPageProxy = (function PDFPageProxyClosure() {
                                                       intentState.operatorList,
                                                       this.pageNumber,
                                                       canvasFactory,
-                                                      webGLContext);
+                                                      webGLContext,
+                                                      this._pdfBug);
       internalRenderTask.useRequestAnimationFrame = renderingIntent !== 'print';
       if (!intentState.renderTasks) {
         intentState.renderTasks = [];
@@ -1046,8 +1155,8 @@ var PDFPageProxy = (function PDFPageProxyClosure() {
       }, this);
       this.objs.clear();
       this.annotationsPromise = null;
-      if (resetStats) {
-        this._stats.reset();
+      if (resetStats && this._stats instanceof StatTimer) {
+        this._stats = new StatTimer();
       }
       this.pendingCleanup = false;
     },
@@ -1122,7 +1231,7 @@ class LoopbackPort {
       var buffer;
       if ((buffer = value.buffer) && isArrayBuffer(buffer)) {
         // We found object with ArrayBuffer (typed array).
-        var transferable = transfers && transfers.indexOf(buffer) >= 0;
+        var transferable = transfers && transfers.includes(buffer);
         if (value === buffer) {
           // Special case when we are faking typed arrays in compatibility.js.
           result = value;
@@ -1184,8 +1293,18 @@ class LoopbackPort {
 }
 
 /**
+ * @typedef {Object} PDFWorkerParameters
+ * @property {string} name - (optional) The name of the worker.
+ * @property {Object} port - (optional) The `workerPort`.
+ * @property {boolean} postMessageTransfers - (optional) Enables transfer usage
+ *   in postMessage for ArrayBuffers. The default value is `true`.
+ * @property {number} verbosity - (optional) Controls the logging level; the
+ *   constants from {VerbosityLevel} should be used.
+ */
+
+/**
  * PDF.js web worker abstraction, it controls instantiation of PDF documents and
- * WorkerTransport for them.  If creation of a web worker is not possible,
+ * WorkerTransport for them. If creation of a web worker is not possible,
  * a "fake" worker will be used instead.
  * @class
  */
@@ -1193,54 +1312,67 @@ var PDFWorker = (function PDFWorkerClosure() {
   let nextFakeWorkerId = 0;
 
   function getWorkerSrc() {
+    if (GlobalWorkerOptions.workerSrc) {
+      return GlobalWorkerOptions.workerSrc;
+    }
     if (typeof workerSrc !== 'undefined') {
       return workerSrc;
-    }
-    if (getDefaultSetting('workerSrc')) {
-      return getDefaultSetting('workerSrc');
     }
     if (typeof PDFJSDev !== 'undefined' &&
         PDFJSDev.test('PRODUCTION && !(MOZCENTRAL || FIREFOX)') &&
         pdfjsFilePath) {
       return pdfjsFilePath.replace(/(\.(?:min\.)?js)(\?.*)?$/i, '.worker$1$2');
     }
-    throw new Error('No PDFJS.workerSrc specified');
+    throw new Error('No "GlobalWorkerOptions.workerSrc" specified.');
+  }
+
+  function getMainThreadWorkerMessageHandler() {
+    if (typeof window === 'undefined') {
+      return null;
+    }
+    if (typeof PDFJSDev === 'undefined' || !PDFJSDev.test('PRODUCTION')) {
+      return (window.pdfjsNonProductionPdfWorker &&
+              window.pdfjsNonProductionPdfWorker.WorkerMessageHandler);
+    }
+    // PRODUCTION
+    return (window.pdfjsWorker &&
+            window.pdfjsWorker.WorkerMessageHandler);
   }
 
   let fakeWorkerFilesLoadedCapability;
 
   // Loads worker code into main thread.
   function setupFakeWorkerGlobal() {
-    var WorkerMessageHandler;
     if (fakeWorkerFilesLoadedCapability) {
       return fakeWorkerFilesLoadedCapability.promise;
     }
     fakeWorkerFilesLoadedCapability = createPromiseCapability();
-    // In the developer build load worker_loader which in turn loads all the
+
+    let mainWorkerMessageHandler = getMainThreadWorkerMessageHandler();
+    if (mainWorkerMessageHandler) {
+      // The worker was already loaded using a `<script>` tag.
+      fakeWorkerFilesLoadedCapability.resolve(mainWorkerMessageHandler);
+      return fakeWorkerFilesLoadedCapability.promise;
+    }
+    // In the developer build load worker_loader.js which in turn loads all the
     // other files and resolves the promise. In production only the
     // pdf.worker.js file is needed.
     if (typeof PDFJSDev === 'undefined' || !PDFJSDev.test('PRODUCTION')) {
       if (typeof SystemJS === 'object') {
         SystemJS.import('pdfjs/core/worker').then((worker) => {
-          WorkerMessageHandler = worker.WorkerMessageHandler;
-          fakeWorkerFilesLoadedCapability.resolve(WorkerMessageHandler);
+          fakeWorkerFilesLoadedCapability.resolve(worker.WorkerMessageHandler);
         });
       } else if (typeof require === 'function') {
-        var worker = require('../core/worker.js');
-        WorkerMessageHandler = worker.WorkerMessageHandler;
-        fakeWorkerFilesLoadedCapability.resolve(WorkerMessageHandler);
+        let worker = require('../core/worker.js');
+        fakeWorkerFilesLoadedCapability.resolve(worker.WorkerMessageHandler);
       } else {
         throw new Error(
           'SystemJS or CommonJS must be used to load fake worker.');
       }
-    } else if (PDFJSDev.test('SINGLE_FILE')) {
-      var pdfjsCoreWorker = require('../core/worker.js');
-      WorkerMessageHandler = pdfjsCoreWorker.WorkerMessageHandler;
-      fakeWorkerFilesLoadedCapability.resolve(WorkerMessageHandler);
     } else {
-      var loader = fakeWorkerFilesLoader || function (callback) {
-        Util.loadScript(getWorkerSrc(), function () {
-          callback(window.pdfjsDistBuildPdfWorker.WorkerMessageHandler);
+      let loader = fakeWorkerFilesLoader || function(callback) {
+        Util.loadScript(getWorkerSrc(), function() {
+          callback(window.pdfjsWorker.WorkerMessageHandler);
         });
       };
       loader(fakeWorkerFilesLoadedCapability.resolve);
@@ -1258,14 +1390,19 @@ var PDFWorker = (function PDFWorkerClosure() {
 
   let pdfWorkerPorts = new WeakMap();
 
-  function PDFWorker(name, port) {
+  /**
+   * @param {PDFWorkerParameters} params - The worker initialization parameters.
+   */
+  function PDFWorker({ name = null, port = null,
+                       postMessageTransfers = true, verbosity = null, } = {}) {
     if (port && pdfWorkerPorts.has(port)) {
       throw new Error('Cannot use more than one PDFWorker per port');
     }
 
     this.name = name;
     this.destroyed = false;
-    this.postMessageTransfers = true;
+    this.postMessageTransfers = postMessageTransfers !== false;
+    this.verbosity = (isNum(verbosity) ? verbosity : getVerbosityLevel());
 
     this._readyCapability = createPromiseCapability();
     this._port = null;
@@ -1310,9 +1447,8 @@ var PDFWorker = (function PDFWorkerClosure() {
       // all requirements to run parts of pdf.js in a web worker.
       // Right now, the requirement is, that an Uint8Array is still an
       // Uint8Array as it arrives on the worker. (Chrome added this with v.15.)
-      if ((typeof PDFJSDev === 'undefined' || !PDFJSDev.test('SINGLE_FILE')) &&
-          !isWorkerDisabled && !getDefaultSetting('disableWorker') &&
-          typeof Worker !== 'undefined') {
+      if (typeof Worker !== 'undefined' && !isWorkerDisabled &&
+          !getMainThreadWorkerMessageHandler()) {
         var workerSrc = getWorkerSrc();
 
         try {
@@ -1363,12 +1499,11 @@ var PDFWorker = (function PDFWorkerClosure() {
               this._webWorker = worker;
               if (!data.supportTransfers) {
                 this.postMessageTransfers = false;
-                isPostMessageTransfersDisabled = true;
               }
               this._readyCapability.resolve();
               // Send global setting, e.g. verbosity level.
               messageHandler.send('configure', {
-                verbosity: getVerbosityLevel(),
+                verbosity: this.verbosity,
               });
             } else {
               this._setupFakeWorker();
@@ -1391,11 +1526,8 @@ var PDFWorker = (function PDFWorkerClosure() {
             }
           });
 
-          var sendTest = function () {
-            var postMessageTransfers =
-              getDefaultSetting('postMessageTransfers') &&
-              !isPostMessageTransfersDisabled;
-            var testObj = new Uint8Array([postMessageTransfers ? 255 : 0]);
+          const sendTest = () => {
+            let testObj = new Uint8Array([this.postMessageTransfers ? 255 : 0]);
             // Some versions of Opera throw a DATA_CLONE_ERR on serializing the
             // typed array. Also, checking if we can use transfers.
             try {
@@ -1423,7 +1555,7 @@ var PDFWorker = (function PDFWorkerClosure() {
     },
 
     _setupFakeWorker: function PDFWorker_setupFakeWorker() {
-      if (!isWorkerDisabled && !getDefaultSetting('disableWorker')) {
+      if (!isWorkerDisabled) {
         warn('Setting up fake worker.');
         isWorkerDisabled = true;
       }
@@ -1474,11 +1606,18 @@ var PDFWorker = (function PDFWorkerClosure() {
     },
   };
 
-  PDFWorker.fromPort = function (port) {
-    if (pdfWorkerPorts.has(port)) {
-      return pdfWorkerPorts.get(port);
+  /**
+   * @param {PDFWorkerParameters} params - The worker initialization parameters.
+   */
+  PDFWorker.fromPort = function(params) {
+    if (pdfWorkerPorts.has(params.port)) {
+      return pdfWorkerPorts.get(params.port);
     }
-    return new PDFWorker(null, port);
+    return new PDFWorker(params);
+  };
+
+  PDFWorker.getWorkerSrc = function() {
+    return getWorkerSrc();
   };
 
   return PDFWorker;
@@ -1490,14 +1629,15 @@ var PDFWorker = (function PDFWorkerClosure() {
  */
 var WorkerTransport = (function WorkerTransportClosure() {
   function WorkerTransport(messageHandler, loadingTask, networkStream,
-                           CMapReaderFactory) {
+                           params, CMapReaderFactory) {
     this.messageHandler = messageHandler;
     this.loadingTask = loadingTask;
     this.commonObjs = new PDFObjects();
     this.fontLoader = new FontLoader(loadingTask.docId);
+    this._params = params;
     this.CMapReaderFactory = new CMapReaderFactory({
-      baseUrl: getDefaultSetting('cMapUrl'),
-      isCompressed: getDefaultSetting('cMapPacked'),
+      baseUrl: params.cMapUrl,
+      isCompressed: params.cMapPacked,
     });
 
     this.destroyed = false;
@@ -1741,6 +1881,7 @@ var WorkerTransport = (function WorkerTransportClosure() {
         switch (type) {
           case 'Font':
             var exportedData = data[2];
+            let params = this._params;
 
             if ('error' in exportedData) {
               var exportedError = exportedData.error;
@@ -1749,8 +1890,8 @@ var WorkerTransport = (function WorkerTransportClosure() {
               break;
             }
             var fontRegistry = null;
-            if (getDefaultSetting('pdfBug') && globalScope.FontInspector &&
-                globalScope['FontInspector'].enabled) {
+            if (params.pdfBug && globalScope.FontInspector &&
+                globalScope.FontInspector.enabled) {
               fontRegistry = {
                 registerFont(font, url) {
                   globalScope['FontInspector'].fontAdded(font, url);
@@ -1758,8 +1899,8 @@ var WorkerTransport = (function WorkerTransportClosure() {
               };
             }
             var font = new FontFaceObject(exportedData, {
-              isEvalSupported: getDefaultSetting('isEvalSupported'),
-              disableFontFace: getDefaultSetting('disableFontFace'),
+              isEvalSupported: params.isEvalSupported,
+              disableFontFace: params.disableFontFace,
               fontRegistry,
             });
             var fontReady = (fontObjs) => {
@@ -1793,8 +1934,22 @@ var WorkerTransport = (function WorkerTransportClosure() {
         switch (type) {
           case 'JpegStream':
             imageData = data[3];
-            loadJpegStream(id, imageData, pageProxy.objs);
-            break;
+            return new Promise((resolve, reject) => {
+              const img = new Image();
+              img.onload = function() {
+                resolve(img);
+              };
+              img.onerror = function() {
+                reject(new Error('Error during JPEG image loading'));
+                // Note that when the browser image loading/decoding fails,
+                // we'll fallback to the built-in PDF.js JPEG decoder; see
+                // `PartialEvaluator.buildPaintImageXObject` in the
+                // `src/core/evaluator.js` file.
+              };
+              img.src = imageData;
+            }).then((img) => {
+              pageProxy.objs.resolve(id, img);
+            });
           case 'Image':
             imageData = data[3];
             pageProxy.objs.resolve(id, imageData);
@@ -1942,7 +2097,8 @@ var WorkerTransport = (function WorkerTransportClosure() {
         if (this.destroyed) {
           throw new Error('Transport destroyed');
         }
-        var page = new PDFPageProxy(pageIndex, pageInfo, this);
+        let page = new PDFPageProxy(pageIndex, pageInfo, this,
+                                    this._params.pdfBug);
         this.pageCache[pageIndex] = page;
         return page;
       });
@@ -2021,6 +2177,16 @@ var WorkerTransport = (function WorkerTransportClosure() {
         }
         this.commonObjs.clear();
         this.fontLoader.clear();
+      });
+    },
+
+    get loadingParams() {
+      let params = this._params;
+      return shadow(this, 'loadingParams', {
+        disableRange: params.disableRange,
+        disableStream: params.disableStream,
+        disableAutoFetch: params.disableAutoFetch,
+        disableCreateObjectURL: params.disableCreateObjectURL,
       });
     },
   };
@@ -2192,7 +2358,8 @@ var InternalRenderTask = (function InternalRenderTaskClosure() {
   let canvasInRendering = new WeakMap();
 
   function InternalRenderTask(callback, params, objs, commonObjs, operatorList,
-                              pageNumber, canvasFactory, webGLContext) {
+                              pageNumber, canvasFactory, webGLContext,
+                              pdfBug = false) {
     this.callback = callback;
     this.params = params;
     this.objs = objs;
@@ -2202,6 +2369,7 @@ var InternalRenderTask = (function InternalRenderTaskClosure() {
     this.pageNumber = pageNumber;
     this.canvasFactory = canvasFactory;
     this.webGLContext = webGLContext;
+    this._pdfBug = pdfBug;
 
     this.running = false;
     this.graphicsReadyCallback = null;
@@ -2235,7 +2403,7 @@ var InternalRenderTask = (function InternalRenderTaskClosure() {
       if (this.cancelled) {
         return;
       }
-      if (getDefaultSetting('pdfBug') && globalScope.StepperManager &&
+      if (this._pdfBug && globalScope.StepperManager &&
           globalScope.StepperManager.enabled) {
         this.stepper = globalScope.StepperManager.create(this.pageNumber - 1);
         this.stepper.init(this.operatorList);
@@ -2346,7 +2514,7 @@ export {
   PDFWorker,
   PDFDocumentProxy,
   PDFPageProxy,
-  setPDFNetworkStreamClass,
+  setPDFNetworkStreamFactory,
   version,
   build,
 };
