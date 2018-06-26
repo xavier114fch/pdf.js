@@ -536,14 +536,6 @@ function noContextMenuHandler(evt) {
   evt.preventDefault();
 }
 
-function isFileSchema(url) {
-  let i = 0, ii = url.length;
-  while (i < ii && url[i].trim() === '') {
-    i++;
-  }
-  return url.substr(i, 7).toLowerCase() === 'file://';
-}
-
 function isDataSchema(url) {
   let i = 0, ii = url.length;
   while (i < ii && url[i].trim() === '') {
@@ -689,6 +681,13 @@ function waitOnEventOrTimeout({ target, name, delay = 0, }) {
  * Promise that is resolved when DOM window becomes visible.
  */
 let animationStarted = new Promise(function (resolve) {
+  if ((typeof PDFJSDev !== 'undefined' && PDFJSDev.test('LIB')) &&
+      typeof window === 'undefined') {
+    // Prevent "ReferenceError: window is not defined" errors when running the
+    // unit-tests in Node.js/Travis.
+    setTimeout(resolve, 20);
+    return;
+  }
   window.requestAnimationFrame(resolve);
 });
 
@@ -843,7 +842,6 @@ export {
   VERTICAL_PADDING,
   isValidRotation,
   isPortraitOrientation,
-  isFileSchema,
   cloneObj,
   PresentationModeState,
   RendererType,

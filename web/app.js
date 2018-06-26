@@ -15,15 +15,15 @@
 /* globals PDFBug, Stats */
 
 import {
-  animationStarted, DEFAULT_SCALE_VALUE, getPDFFileNameFromURL, isFileSchema,
-  isValidRotation, MAX_SCALE, MIN_SCALE, noContextMenuHandler,
-  normalizeWheelEventDelta, parseQueryString, PresentationModeState,
-  ProgressBar, RendererType, TextLayerMode
+  animationStarted, DEFAULT_SCALE_VALUE, getPDFFileNameFromURL, isValidRotation,
+  MAX_SCALE, MIN_SCALE, noContextMenuHandler, normalizeWheelEventDelta,
+  parseQueryString, PresentationModeState, ProgressBar, RendererType,
+  TextLayerMode
 } from './ui_utils';
 import {
   build, createBlob, getDocument, getFilenameFromUrl, GlobalWorkerOptions,
-  InvalidPDFException, LinkTarget, MissingPDFException, OPS, PDFWorker, shadow,
-  UnexpectedResponseException, UNSUPPORTED_FEATURES, version
+  InvalidPDFException, LinkTarget, loadScript, MissingPDFException, OPS,
+  PDFWorker, shadow, UnexpectedResponseException, UNSUPPORTED_FEATURES, version
 } from 'pdfjs-lib';
 import { CursorTool, PDFCursorTools } from './pdf_cursor_tools';
 import { PDFRenderingQueue, RenderingStates } from './pdf_rendering_queue';
@@ -319,11 +319,9 @@ let PDFViewerApplication = {
         let enabled = hashParams['pdfbug'].split(',');
         waitOn.push(loadAndEnablePDFBug(enabled));
       }
-      // Locale can be changed only when special debugging flags is present in
-      // the hash section of the URL, or development version of viewer is used.
-      // It is not possible to change locale for Firefox extension builds.
-      if ((typeof PDFJSDev === 'undefined' || !PDFJSDev.test('PRODUCTION') ||
-           !PDFJSDev.test('FIREFOX || MOZCENTRAL')) && 'locale' in hashParams) {
+      // It is not possible to change locale for the (various) extension builds.
+      if ((typeof PDFJSDev === 'undefined' ||
+           PDFJSDev.test('!PRODUCTION || GENERIC')) && 'locale' in hashParams) {
         AppOptions.set('locale', hashParams['locale']);
       }
     }
@@ -553,10 +551,6 @@ let PDFViewerApplication = {
         support = false;
       }
     }
-    if (support && AppOptions.get('disableFullscreen') === true) {
-      support = false;
-    }
-
     return shadow(this, 'supportsFullscreen', support);
   },
 
@@ -597,13 +591,13 @@ let PDFViewerApplication = {
       onOpenWithData(data) {
         PDFViewerApplication.open(data);
       },
-      onOpenWithURL(url, length, originalURL) {
+      onOpenWithURL(url, length, originalUrl) {
         let file = url, args = null;
         if (length !== undefined) {
           args = { length, };
         }
-        if (originalURL !== undefined) {
-          file = { file: url, originalURL, };
+        if (originalUrl !== undefined) {
+          file = { url, originalUrl, };
         }
         PDFViewerApplication.open(file, args);
       },
@@ -619,7 +613,7 @@ let PDFViewerApplication = {
     });
   },
 
-  setTitleUsingUrl(url) {
+  setTitleUsingUrl(url = '') {
     this.url = url;
     this.baseUrl = url.split('#')[0];
     let title = getPDFFileNameFromURL(url, '');
@@ -743,12 +737,6 @@ let PDFViewerApplication = {
         }
         parameters[prop] = args[prop];
       }
-    }
-
-    if (this.url && isFileSchema(this.url)) {
-      let appConfig = this.appConfig;
-      appConfig.toolbar.download.setAttribute('hidden', 'true');
-      appConfig.secondaryToolbar.downloadButton.setAttribute('hidden', 'true');
     }
 
     let loadingTask = getDocument(parameters);
@@ -1557,11 +1545,11 @@ if (typeof PDFJSDev === 'undefined' || PDFJSDev.test('GENERIC')) {
 }
 
 function loadFakeWorker() {
-  return new Promise(function(resolve, reject) {
-    if (!GlobalWorkerOptions.workerSrc) {
-      GlobalWorkerOptions.workerSrc = AppOptions.get('workerSrc');
-    }
-    if (typeof PDFJSDev === 'undefined' || !PDFJSDev.test('PRODUCTION')) {
+  if (!GlobalWorkerOptions.workerSrc) {
+    GlobalWorkerOptions.workerSrc = AppOptions.get('workerSrc');
+  }
+  if (typeof PDFJSDev === 'undefined' || !PDFJSDev.test('PRODUCTION')) {
+    return new Promise(function(resolve, reject) {
       if (typeof SystemJS === 'object') {
         SystemJS.import('pdfjs/core/worker').then((worker) => {
           window.pdfjsWorker = worker;
@@ -1574,37 +1562,18 @@ function loadFakeWorker() {
         reject(new Error(
           'SystemJS or CommonJS must be used to load fake worker.'));
       }
-    } else {
-      let script = document.createElement('script');
-      script.src = PDFWorker.getWorkerSrc();
-      script.onload = function() {
-        resolve();
-      };
-      script.onerror = function() {
-        reject(new Error(`Cannot load fake worker at: ${script.src}`));
-      };
-      (document.head || document.documentElement).appendChild(script);
-    }
-  });
+    });
+  }
+  return loadScript(PDFWorker.getWorkerSrc());
 }
 
 function loadAndEnablePDFBug(enabledTabs) {
-  return new Promise(function (resolve, reject) {
-    let appConfig = PDFViewerApplication.appConfig;
-    let script = document.createElement('script');
-    script.src = appConfig.debuggerScriptPath;
-    script.onload = function () {
-      PDFBug.enable(enabledTabs);
-      PDFBug.init({
-        OPS,
-      }, appConfig.mainContainer);
-      resolve();
-    };
-    script.onerror = function () {
-      reject(new Error('Cannot load debugger at ' + script.src));
-    };
-    (document.getElementsByTagName('head')[0] || document.body).
-      appendChild(script);
+  let appConfig = PDFViewerApplication.appConfig;
+  return loadScript(appConfig.debuggerScriptPath).then(function() {
+    PDFBug.enable(enabledTabs);
+    PDFBug.init({
+      OPS,
+    }, appConfig.mainContainer);
   });
 }
 
@@ -1645,6 +1614,24 @@ function webViewerInitialized() {
       }
       PDFViewerApplication.eventBus.dispatch('fileinputchange', {
         fileInput: evt.target,
+      });
+    });
+
+    // Enable draging-and-dropping a new PDF file onto the viewerContainer.
+    appConfig.mainContainer.addEventListener('dragover', function(evt) {
+      evt.preventDefault();
+
+      evt.dataTransfer.dropEffect = 'move';
+    });
+    appConfig.mainContainer.addEventListener('drop', function(evt) {
+      evt.preventDefault();
+
+      const files = evt.dataTransfer.files;
+      if (!files || files.length === 0) {
+        return;
+      }
+      PDFViewerApplication.eventBus.dispatch('fileinputchange', {
+        fileInput: evt.dataTransfer,
       });
     });
   } else {
@@ -1932,11 +1919,20 @@ function webViewerHashchange(evt) {
 let webViewerFileInputChange;
 if (typeof PDFJSDev === 'undefined' || PDFJSDev.test('GENERIC')) {
   webViewerFileInputChange = function webViewerFileInputChange(evt) {
+    if (PDFViewerApplication.pdfViewer &&
+        PDFViewerApplication.pdfViewer.isInPresentationMode) {
+      return; // Opening a new PDF file isn't supported in Presentation Mode.
+    }
     let file = evt.fileInput.files[0];
 
     if (URL.createObjectURL && !AppOptions.get('disableCreateObjectURL')) {
-      PDFViewerApplication.open(URL.createObjectURL(file));
+      let url = URL.createObjectURL(file);
+      if (file.name) {
+        url = { url, originalUrl: file.name, };
+      }
+      PDFViewerApplication.open(url);
     } else {
+      PDFViewerApplication.setTitleUsingUrl(file.name);
       // Read the local file into a Uint8Array.
       let fileReader = new FileReader();
       fileReader.onload = function webViewerChangeFileReaderOnload(evt) {
@@ -1945,8 +1941,6 @@ if (typeof PDFJSDev === 'undefined' || PDFJSDev.test('GENERIC')) {
       };
       fileReader.readAsArrayBuffer(file);
     }
-
-    PDFViewerApplication.setTitleUsingUrl(file.name);
 
     // URL does not reflect proper document location - hiding some icons.
     let appConfig = PDFViewerApplication.appConfig;

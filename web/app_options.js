@@ -43,11 +43,6 @@ const defaultOptions = {
     value: '',
     kind: OptionKind.VIEWER,
   },
-  disableFullscreen: {
-    /** @type {boolean} */
-    value: viewerCompatibilityParams.disableFullscreen || false,
-    kind: OptionKind.VIEWER,
-  },
   disableHistory: {
     /** @type {boolean} */
     value: false,
@@ -88,11 +83,9 @@ const defaultOptions = {
     value: './images/',
     kind: OptionKind.VIEWER,
   },
-  locale: {
-    /** @type {string} */
-    value: (typeof navigator !== 'undefined' ? navigator.language : 'en-US'),
-    kind: OptionKind.VIEWER,
-  },
+  /**
+   * The `locale` is, conditionally, defined below.
+   */
   maxCanvasPixels: {
     /** @type {number} */
     value: viewerCompatibilityParams.maxCanvasPixels || 16777216,
@@ -162,12 +155,12 @@ const defaultOptions = {
   },
   disableRange: {
     /** @type {boolean} */
-    value: apiCompatibilityParams.disableRange || false,
+    value: false,
     kind: OptionKind.API,
   },
   disableStream: {
     /** @type {boolean} */
-    value: apiCompatibilityParams.disableStream || false,
+    value: false,
     kind: OptionKind.API,
   },
   isEvalSupported: {
@@ -208,6 +201,14 @@ const defaultOptions = {
     kind: OptionKind.WORKER,
   },
 };
+if (typeof PDFJSDev === 'undefined' ||
+    PDFJSDev.test('!PRODUCTION || GENERIC')) {
+  defaultOptions.locale = {
+    /** @type {string} */
+    value: (typeof navigator !== 'undefined' ? navigator.language : 'en-US'),
+    kind: OptionKind.VIEWER,
+  };
+}
 
 const userOptions = Object.create(null);
 
