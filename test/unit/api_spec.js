@@ -752,12 +752,12 @@ describe('api', function() {
       var promise = doc.getOutline();
       promise.then(function(outline) {
         // Two top level entries.
-        expect(outline instanceof Array).toEqual(true);
+        expect(Array.isArray(outline)).toEqual(true);
         expect(outline.length).toEqual(2);
         // Make sure some basic attributes are set.
         var outlineItem = outline[1];
         expect(outlineItem.title).toEqual('Chapter 1');
-        expect(outlineItem.dest instanceof Array).toEqual(true);
+        expect(Array.isArray(outlineItem.dest)).toEqual(true);
         expect(outlineItem.url).toEqual(null);
         expect(outlineItem.unsafeUrl).toBeUndefined();
         expect(outlineItem.newWindow).toBeUndefined();
@@ -778,7 +778,7 @@ describe('api', function() {
 
       loadingTask.promise.then(function (pdfDocument) {
         pdfDocument.getOutline().then(function (outline) {
-          expect(outline instanceof Array).toEqual(true);
+          expect(Array.isArray(outline)).toEqual(true);
           expect(outline.length).toEqual(5);
 
           var outlineItemTwo = outline[2];
@@ -1253,6 +1253,37 @@ describe('api', function() {
         done();
       });
     });
+
+    it('re-render page, using the same canvas, after cancelling rendering',
+        function(done) {
+      if (isNodeJS()) {
+        pending('TODO: Support Canvas testing in Node.js.');
+      }
+      let viewport = page.getViewport(1);
+      let canvasAndCtx = CanvasFactory.create(viewport.width, viewport.height);
+
+      let renderTask = page.render({
+        canvasContext: canvasAndCtx.context,
+        viewport,
+      });
+      renderTask.cancel();
+
+      renderTask.promise.then(() => {
+        throw new Error('shall cancel rendering');
+      }, (reason) => {
+        expect(reason instanceof RenderingCancelledException).toEqual(true);
+      }).then(() => {
+        let reRenderTask = page.render({
+          canvasContext: canvasAndCtx.context,
+          viewport,
+        });
+        return reRenderTask.promise;
+      }).then(() => {
+        CanvasFactory.destroy(canvasAndCtx);
+        done();
+      }, done.fail);
+    });
+
     it('multiple render() on the same canvas', function(done) {
       if (isNodeJS()) {
         pending('TODO: Support Canvas testing in Node.js.');
