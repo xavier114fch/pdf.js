@@ -28,8 +28,12 @@ import { ChunkedStream } from './chunked_stream';
 import { CipherTransformFactory } from './crypto';
 import { ColorSpace } from './colorspace';
 
+function fetchDestination(dest) {
+  return isDict(dest) ? dest.get('D') : dest;
+}
+
 var Catalog = (function CatalogClosure() {
-  function Catalog(pdfManager, xref, pageFactory) {
+  function Catalog(pdfManager, xref) {
     this.pdfManager = pdfManager;
     this.xref = xref;
     this.catDict = xref.getCatalogObj();
@@ -38,11 +42,8 @@ var Catalog = (function CatalogClosure() {
     }
 
     this.fontCache = new RefSetCache();
-    this.builtInCMapCache = Object.create(null);
+    this.builtInCMapCache = new Map();
     this.pageKidsCountCache = new RefSetCache();
-    // TODO refactor to move getPage() to the PDFDocument.
-    this.pageFactory = pageFactory;
-    this.pagePromises = [];
   }
 
   Catalog.prototype = {
@@ -176,64 +177,37 @@ var Catalog = (function CatalogClosure() {
       // shadow the prototype getter
       return shadow(this, 'numPages', obj);
     },
+
     get destinations() {
-      function fetchDestination(dest) {
-        return isDict(dest) ? dest.get('D') : dest;
-      }
-
-      var xref = this.xref;
-      var dests = {}, nameTreeRef, nameDictionaryRef;
-      var obj = this.catDict.get('Names');
-      if (obj && obj.has('Dests')) {
-        nameTreeRef = obj.getRaw('Dests');
-      } else if (this.catDict.has('Dests')) {
-        nameDictionaryRef = this.catDict.get('Dests');
-      }
-
-      if (nameDictionaryRef) {
-        // reading simple destination dictionary
-        obj = nameDictionaryRef;
-        obj.forEach(function catalogForEach(key, value) {
-          if (!value) {
-            return;
-          }
-          dests[key] = fetchDestination(value);
-        });
-      }
-      if (nameTreeRef) {
-        var nameTree = new NameTree(nameTreeRef, xref);
-        var names = nameTree.getAll();
-        for (var name in names) {
+      const obj = this._readDests(), dests = Object.create(null);
+      if (obj instanceof NameTree) {
+        const names = obj.getAll();
+        for (let name in names) {
           dests[name] = fetchDestination(names[name]);
         }
+      } else if (obj instanceof Dict) {
+        obj.forEach(function(key, value) {
+          if (value) {
+            dests[key] = fetchDestination(value);
+          }
+        });
       }
       return shadow(this, 'destinations', dests);
     },
-    getDestination: function Catalog_getDestination(destinationId) {
-      function fetchDestination(dest) {
-        return isDict(dest) ? dest.get('D') : dest;
+    getDestination(destinationId) {
+      const obj = this._readDests();
+      if (obj instanceof NameTree || obj instanceof Dict) {
+        return fetchDestination(obj.get(destinationId) || null);
       }
-
-      var xref = this.xref;
-      var dest = null, nameTreeRef, nameDictionaryRef;
-      var obj = this.catDict.get('Names');
+      return null;
+    },
+    _readDests() {
+      const obj = this.catDict.get('Names');
       if (obj && obj.has('Dests')) {
-        nameTreeRef = obj.getRaw('Dests');
-      } else if (this.catDict.has('Dests')) {
-        nameDictionaryRef = this.catDict.get('Dests');
+        return new NameTree(obj.getRaw('Dests'), this.xref);
+      } else if (this.catDict.has('Dests')) { // Simple destination dictionary.
+        return this.catDict.get('Dests');
       }
-
-      if (nameDictionaryRef) { // Simple destination dictionary.
-        var value = nameDictionaryRef.get(destinationId);
-        if (value) {
-          dest = fetchDestination(value);
-        }
-      }
-      if (nameTreeRef) {
-        var nameTree = new NameTree(nameTreeRef, xref);
-        dest = fetchDestination(nameTree.get(destinationId));
-      }
-      return dest;
     },
 
     get pageLabels() {
@@ -449,20 +423,8 @@ var Catalog = (function CatalogClosure() {
           delete font.translated;
         }
         this.fontCache.clear();
-        this.builtInCMapCache = Object.create(null);
+        this.builtInCMapCache.clear();
       });
-    },
-
-    getPage: function Catalog_getPage(pageIndex) {
-      if (!(pageIndex in this.pagePromises)) {
-        this.pagePromises[pageIndex] = this.getPageDict(pageIndex).then(
-            ([dict, ref]) => {
-          return this.pageFactory.createPage(pageIndex, dict, ref,
-                                             this.fontCache,
-                                             this.builtInCMapCache);
-        });
-      }
-      return this.pagePromises[pageIndex];
     },
 
     getPageDict: function Catalog_getPageDict(pageIndex) {
@@ -1535,29 +1497,23 @@ var XRef = (function XRefClosure() {
       return xrefEntry;
     },
 
-    fetchIfRefAsync: function XRef_fetchIfRefAsync(obj, suppressEncryption) {
+    async fetchIfRefAsync(obj, suppressEncryption) {
       if (!isRef(obj)) {
-        return Promise.resolve(obj);
+        return obj;
       }
       return this.fetchAsync(obj, suppressEncryption);
     },
 
-    fetchAsync: function XRef_fetchAsync(ref, suppressEncryption) {
-      var streamManager = this.stream.manager;
-      var xref = this;
-      return new Promise(function tryFetch(resolve, reject) {
-        try {
-          resolve(xref.fetch(ref, suppressEncryption));
-        } catch (e) {
-          if (e instanceof MissingDataException) {
-            streamManager.requestRange(e.begin, e.end).then(function () {
-              tryFetch(resolve, reject);
-            }, reject);
-            return;
-          }
-          reject(e);
+    async fetchAsync(ref, suppressEncryption) {
+      try {
+        return this.fetch(ref, suppressEncryption);
+      } catch (ex) {
+        if (!(ex instanceof MissingDataException)) {
+          throw ex;
         }
-      });
+        await this.pdfManager.requestRange(ex.begin, ex.end);
+        return this.fetchAsync(ref, suppressEncryption);
+      }
     },
 
     getCatalogObj: function XRef_getCatalogObj() {

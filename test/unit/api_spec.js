@@ -28,6 +28,7 @@ import {
 } from '../../src/display/api';
 import { GlobalWorkerOptions } from '../../src/display/worker_options';
 import isNodeJS from '../../src/shared/is_node';
+import { Metadata } from '../../src/display/metadata';
 
 describe('api', function() {
   let basicApiFileName = 'basicapi.pdf';
@@ -79,7 +80,7 @@ describe('api', function() {
         loadingTask.promise
       ];
       Promise.all(promises).then(function (data) {
-        expect((data[0].loaded / data[0].total) > 0).toEqual(true);
+        expect((data[0].loaded / data[0].total) >= 0).toEqual(true);
         expect(data[1] instanceof PDFDocumentProxy).toEqual(true);
         expect(loadingTask).toEqual(data[1].loadingTask);
         loadingTask.destroy().then(done);
@@ -163,11 +164,6 @@ describe('api', function() {
       });
     });
     it('creates pdf doc from non-existent URL', function(done) {
-      if (isNodeJS()) {
-        pending('Fix `src/display/node_stream.js` to actually throw ' +
-                'a `MissingPDFException` in all cases where a PDF file ' +
-                'cannot be found, such that this test-case can be enabled.');
-      }
       var loadingTask = getDocument(
         buildGetDocumentParams('non-existent.pdf'));
       loadingTask.promise.then(function(error) {
@@ -587,6 +583,32 @@ describe('api', function() {
       });
     });
 
+    it('gets non-string destination', function(done) {
+      let numberPromise = doc.getDestination(4.3);
+      let booleanPromise = doc.getDestination(true);
+      let arrayPromise = doc.getDestination([
+        { num: 17, gen: 0, }, { name: 'XYZ', }, 0, 841.89, null]);
+
+      numberPromise = numberPromise.then(function() {
+        throw new Error('shall fail for non-string destination.');
+      }, function(reason) {
+        expect(reason instanceof Error).toEqual(true);
+      });
+      booleanPromise = booleanPromise.then(function() {
+        throw new Error('shall fail for non-string destination.');
+      }, function(reason) {
+        expect(reason instanceof Error).toEqual(true);
+      });
+      arrayPromise = arrayPromise.then(function() {
+        throw new Error('shall fail for non-string destination.');
+      }, function(reason) {
+        expect(reason instanceof Error).toEqual(true);
+      });
+
+      Promise.all([numberPromise, booleanPromise, arrayPromise]).then(
+        done, done.fail);
+    });
+
     it('gets non-existent page labels', function (done) {
       var promise = doc.getPageLabels();
       promise.then(function (data) {
@@ -802,11 +824,18 @@ describe('api', function() {
     });
     it('gets metadata', function(done) {
       var promise = doc.getMetadata();
-      promise.then(function(metadata) {
-        expect(metadata.info['Title']).toEqual('Basic API Test');
-        expect(metadata.info['PDFFormatVersion']).toEqual('1.7');
-        expect(metadata.metadata.get('dc:title')).toEqual('Basic API Test');
-        expect(metadata.contentDispositionFilename).toEqual(null);
+      promise.then(function({ info, metadata, contentDispositionFilename, }) {
+        expect(info['Title']).toEqual('Basic API Test');
+        // The following are PDF.js specific, non-standard, properties.
+        expect(info['PDFFormatVersion']).toEqual('1.7');
+        expect(info['IsLinearized']).toEqual(false);
+        expect(info['IsAcroFormPresent']).toEqual(false);
+        expect(info['IsXFAPresent']).toEqual(false);
+
+        expect(metadata instanceof Metadata).toEqual(true);
+        expect(metadata.get('dc:title')).toEqual('Basic API Test');
+
+        expect(contentDispositionFilename).toEqual(null);
         done();
       }).catch(function (reason) {
         done.fail(reason);
