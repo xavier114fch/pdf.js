@@ -14,9 +14,8 @@
  */
 
 import {
-  isValidRotation, parseQueryString, waitOnEventOrTimeout
+  getGlobalEventBus, isValidRotation, parseQueryString, waitOnEventOrTimeout
 } from './ui_utils';
-import { getGlobalEventBus } from './dom_events';
 
 // Heuristic value used when force-resetting `this._blockHashChange`.
 const HASH_CHANGE_TIMEOUT = 1000; // milliseconds
@@ -159,16 +158,27 @@ class PDFHistory {
    * Push an internal destination to the browser history.
    * @param {PushParameters}
    */
-  push({ namedDest, explicitDest, pageNumber, }) {
+  push({ namedDest = null, explicitDest, pageNumber, }) {
     if (!this.initialized) {
       return;
     }
-    if ((namedDest && typeof namedDest !== 'string') ||
-        !Array.isArray(explicitDest) ||
-        !(Number.isInteger(pageNumber) &&
-          pageNumber > 0 && pageNumber <= this.linkService.pagesCount)) {
-      console.error('PDFHistory.push: Invalid parameters.');
+    if (namedDest && typeof namedDest !== 'string') {
+      console.error('PDFHistory.push: ' +
+                    `"${namedDest}" is not a valid namedDest parameter.`);
       return;
+    } else if (!Array.isArray(explicitDest)) {
+      console.error('PDFHistory.push: ' +
+                    `"${explicitDest}" is not a valid explicitDest parameter.`);
+      return;
+    } else if (!(Number.isInteger(pageNumber) &&
+                 pageNumber > 0 && pageNumber <= this.linkService.pagesCount)) {
+      // Allow an unset `pageNumber` if and only if the history is still empty;
+      // please refer to the `this._destination.page = null;` comment above.
+      if (pageNumber !== null || this._destination) {
+        console.error('PDFHistory.push: ' +
+                      `"${pageNumber}" is not a valid pageNumber parameter.`);
+        return;
+      }
     }
 
     let hash = namedDest || JSON.stringify(explicitDest);
@@ -330,8 +340,8 @@ class PDFHistory {
     }
 
     let forceReplace = false;
-    if (this._destination.page === position.first ||
-        this._destination.page === position.page) {
+    if (this._destination.page >= position.first &&
+        this._destination.page <= position.page) {
       // When the `page` of `this._destination` is still visible, do not
       // update the browsing history when `this._destination` either:
       //  - contains an internal destination, since in this case we

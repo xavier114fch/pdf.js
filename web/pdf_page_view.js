@@ -14,13 +14,12 @@
  */
 
 import {
-  approximateFraction, CSS_UNITS, DEFAULT_SCALE, getOutputScale, NullL10n,
-  RendererType, roundToDivide, TextLayerMode
+  approximateFraction, CSS_UNITS, DEFAULT_SCALE, getGlobalEventBus,
+  getOutputScale, NullL10n, RendererType, roundToDivide, TextLayerMode
 } from './ui_utils';
 import {
   createPromiseCapability, RenderingCancelledException, SVGGraphics
 } from 'pdfjs-lib';
-import { getGlobalEventBus } from './dom_events';
 import { RenderingStates } from './pdf_rendering_queue';
 import { viewerCompatibilityParams } from './viewer_compatibility';
 
@@ -119,8 +118,8 @@ class PDFPageView {
     this.pdfPageRotate = pdfPage.rotate;
 
     let totalRotation = (this.rotation + this.pdfPageRotate) % 360;
-    this.viewport = pdfPage.getViewport(this.scale * CSS_UNITS,
-                                        totalRotation);
+    this.viewport = pdfPage.getViewport({ scale: this.scale * CSS_UNITS,
+                                          rotation: totalRotation, });
     this.stats = pdfPage.stats;
     this.reset();
   }
@@ -260,6 +259,8 @@ class PDFPageView {
   }
 
   cancelRendering(keepAnnotations = false) {
+    const renderingState = this.renderingState;
+
     if (this.paintTask) {
       this.paintTask.cancel();
       this.paintTask = null;
@@ -274,6 +275,14 @@ class PDFPageView {
     if (!keepAnnotations && this.annotationLayer) {
       this.annotationLayer.cancel();
       this.annotationLayer = null;
+    }
+
+    if (renderingState !== RenderingStates.INITIAL) {
+      this.eventBus.dispatch('pagecancelled', {
+        source: this,
+        pageNumber: this.id,
+        renderingState,
+      });
     }
   }
 

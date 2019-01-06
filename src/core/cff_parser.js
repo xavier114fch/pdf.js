@@ -539,6 +539,16 @@ var CFFParser = (function CFFParserClosure() {
         if (validationCommand) {
           if (validationCommand.stem) {
             state.hints += stackSize >> 1;
+            if (value === 3 || value === 23) {
+              // vstem or vstemhm.
+              state.hasVStems = true;
+            } else if (state.hasVStems && (value === 1 || value === 18)) {
+              // Some browsers don't draw glyphs that specify vstems before
+              // hstems. As a workaround, replace hstem (1) and hstemhm (18)
+              // with a pointless vstem (3) or vstemhm (23).
+              warn('CFF stem hints are in wrong order');
+              data[j - 1] = (value === 1) ? 3 : 23;
+            }
           }
           if ('min' in validationCommand) {
             if (!state.undefStack && stackSize < validationCommand.min) {
@@ -599,6 +609,7 @@ var CFFParser = (function CFFParserClosure() {
           firstStackClearing: true,
           seac: null,
           width: null,
+          hasVStems: false,
         };
         var valid = true;
         var localSubrToUse = null;
@@ -1366,7 +1377,7 @@ var CFFCompiler = (function CFFCompilerClosure() {
       nibbles += (nibbles.length & 1) ? 'f' : 'ff';
       var out = [30];
       for (i = 0, ii = nibbles.length; i < ii; i += 2) {
-        out.push(parseInt(nibbles.substr(i, 2), 16));
+        out.push(parseInt(nibbles.substring(i, i + 2), 16));
       }
       return out;
     },

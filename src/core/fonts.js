@@ -589,8 +589,6 @@ var Font = (function FontClosure() {
     this.toUnicode = properties.toUnicode;
     this.encoding = properties.baseEncoding;
     this.seacMap = properties.seacMap;
-
-    this.loading = true;
   }
 
   Font.getFontID = (function () {
@@ -1261,7 +1259,6 @@ var Font = (function FontClosure() {
         });
       }
       this.loadedName = fontName.split('-')[0];
-      this.loading = false;
       this.fontType = getFontType(type, subtype);
     },
 
@@ -1616,7 +1613,19 @@ var Font = (function FontClosure() {
         }
 
         font.pos = (font.start ? font.start : 0) + header.offset;
-        font.pos += header.length - 2;
+        font.pos += 4; // version
+        font.pos += 2; // ascent
+        font.pos += 2; // descent
+        font.pos += 2; // linegap
+        font.pos += 2; // adv_width_max
+        font.pos += 2; // min_sb1
+        font.pos += 2; // min_sb2
+        font.pos += 2; // max_extent
+        font.pos += 2; // caret_slope_rise
+        font.pos += 2; // caret_slope_run
+        font.pos += 2; // caret_offset
+        font.pos += 8; // reserved
+        font.pos += 2; // format
         var numOfMetrics = font.getUint16();
 
         if (numOfMetrics > numGlyphs) {
@@ -2944,7 +2953,7 @@ var ErrorFont = (function ErrorFontClosure() {
   function ErrorFont(error) {
     this.error = error;
     this.loadedName = 'g_font_error';
-    this.loading = false;
+    this.missingFile = true;
   }
 
   ErrorFont.prototype = {

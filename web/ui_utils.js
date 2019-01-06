@@ -537,7 +537,7 @@ function isDataSchema(url) {
   while (i < ii && url[i].trim() === '') {
     i++;
   }
-  return url.substr(i, 5).toLowerCase() === 'data:';
+  return url.substring(i, i + 5).toLowerCase() === 'data:';
 }
 
 /**
@@ -548,6 +548,9 @@ function isDataSchema(url) {
  * @returns {string} Guessed PDF filename.
  */
 function getPDFFileNameFromURL(url, defaultFilename = 'document.pdf') {
+  if (typeof url !== 'string') {
+    return defaultFilename;
+  }
   if (isDataSchema(url)) {
     console.warn('getPDFFileNameFromURL: ' +
                  'ignoring "data:" URL for performance reasons.');
@@ -708,12 +711,13 @@ class EventBus {
     let eventListeners = this._listeners[eventName];
     if (!eventListeners || eventListeners.length === 0) {
       if (this._dispatchToDOM) {
-        this._dispatchDOMEvent(eventName);
+        const args = Array.prototype.slice.call(arguments, 1);
+        this._dispatchDOMEvent(eventName, args);
       }
       return;
     }
     // Passing all arguments after the eventName to the listeners.
-    let args = Array.prototype.slice.call(arguments, 1);
+    const args = Array.prototype.slice.call(arguments, 1);
     // Making copy of the listeners array in case if it will be modified
     // during dispatch.
     eventListeners.slice(0).forEach(function (listener) {
@@ -728,9 +732,6 @@ class EventBus {
    * @private
    */
   _dispatchDOMEvent(eventName, args = null) {
-    if (!this._dispatchToDOM) {
-      return;
-    }
     const details = Object.create(null);
     if (args && args.length > 0) {
       const obj = args[0];
@@ -749,6 +750,14 @@ class EventBus {
     event.initCustomEvent(eventName, true, true, details);
     document.dispatchEvent(event);
   }
+}
+
+let globalEventBus = null;
+function getGlobalEventBus(dispatchToDOM = false) {
+  if (!globalEventBus) {
+    globalEventBus = new EventBus({ dispatchToDOM, });
+  }
+  return globalEventBus;
 }
 
 function clamp(v, min, max) {
@@ -864,6 +873,7 @@ export {
   TextLayerMode,
   NullL10n,
   EventBus,
+  getGlobalEventBus,
   ProgressBar,
   getPDFFileNameFromURL,
   noContextMenuHandler,
