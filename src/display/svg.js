@@ -18,7 +18,7 @@ import {
   createObjectURL, FONT_IDENTITY_MATRIX, IDENTITY_MATRIX, ImageKind, isNum, OPS,
   TextRenderingMode, Util, warn
 } from '../shared/util';
-import { DOMSVGFactory } from './dom_utils';
+import { DOMSVGFactory } from './display_utils';
 import isNodeJS from '../shared/is_node';
 
 var SVGGraphics = function() {
@@ -282,6 +282,7 @@ var SVGExtraState = (function SVGExtraStateClosure() {
     this.fontMatrix = FONT_IDENTITY_MATRIX;
     this.leading = 0;
     this.textRenderingMode = TextRenderingMode.FILL;
+    this.textMatrixScale = 1;
 
     // Current point (in user coordinates)
     this.x = 0;
@@ -428,6 +429,7 @@ SVGGraphics = (function SVGGraphicsClosure() {
   var LINE_JOIN_STYLES = ['miter', 'round', 'bevel'];
   var clipCount = 0;
   var maskCount = 0;
+  var shadingCount = 0;
 
   SVGGraphics.prototype = {
     save: function SVGGraphics_save() {
@@ -592,6 +594,15 @@ SVGGraphics = (function SVGGraphicsClosure() {
           case OPS.setStrokeRGBColor:
             this.setStrokeRGBColor(args[0], args[1], args[2]);
             break;
+          case OPS.setStrokeColorN:
+            this.setStrokeColorN(args);
+            break;
+          case OPS.setFillColorN:
+            this.setFillColorN(args);
+            break;
+          case OPS.shadingFill:
+            this.shadingFill(args[0]);
+            break;
           case OPS.setDash:
             this.setDash(args[0], args[1]);
             break;
@@ -690,6 +701,7 @@ SVGGraphics = (function SVGGraphicsClosure() {
     setTextMatrix: function SVGGraphics_setTextMatrix(a, b, c, d, e, f) {
       var current = this.current;
       this.current.textMatrix = this.current.lineMatrix = [a, b, c, d, e, f];
+      current.textMatrixScale = Math.sqrt(a * a + b * b);
 
       this.current.x = this.current.lineX = 0;
       this.current.y = this.current.lineY = 0;
@@ -710,6 +722,7 @@ SVGGraphics = (function SVGGraphicsClosure() {
       this.current.y = this.current.lineY = 0;
       this.current.textMatrix = IDENTITY_MATRIX;
       this.current.lineMatrix = IDENTITY_MATRIX;
+      this.current.textMatrixScale = 1;
       this.current.tspan = this.svgFactory.createElement('svg:tspan');
       this.current.txtElement = this.svgFactory.createElement('svg:text');
       this.current.txtgrp = this.svgFactory.createElement('svg:g');
@@ -815,7 +828,8 @@ SVGGraphics = (function SVGGraphicsClosure() {
 
       if (fillStrokeMode === TextRenderingMode.STROKE ||
           fillStrokeMode === TextRenderingMode.FILL_STROKE) {
-        this._setStrokeAttributes(current.tspan);
+        const lineWidthScale = 1 / (current.textMatrixScale || 1);
+        this._setStrokeAttributes(current.tspan, lineWidthScale);
       }
 
       // Include the text rise in the text matrix since the `pm` function
@@ -932,6 +946,95 @@ SVGGraphics = (function SVGGraphicsClosure() {
       this.current.tspan = this.svgFactory.createElement('svg:tspan');
       this.current.xcoords = [];
     },
+    setStrokeColorN: function SVGGraphics_setStrokeColorN(args) {
+      this.current.strokeColor = this._makeColorN_Pattern(args);
+    },
+    setFillColorN: function SVGGraphics_setFillColorN(args) {
+      this.current.fillColor = this._makeColorN_Pattern(args);
+    },
+    shadingFill: function SVGGraphics_shadingFill(args) {
+      var viewport = this.viewport;
+      var width = viewport.width;
+      var height = viewport.height;
+      var inv = Util.inverseTransform(this.transformMatrix);
+      var bl = Util.applyTransform([0, 0], inv);
+      var br = Util.applyTransform([0, height], inv);
+      var ul = Util.applyTransform([width, 0], inv);
+      var ur = Util.applyTransform([width, height], inv);
+      var x0 = Math.min(bl[0], br[0], ul[0], ur[0]);
+      var y0 = Math.min(bl[1], br[1], ul[1], ur[1]);
+      var x1 = Math.max(bl[0], br[0], ul[0], ur[0]);
+      var y1 = Math.max(bl[1], br[1], ul[1], ur[1]);
+
+      var rect = this.svgFactory.createElement('svg:rect');
+      rect.setAttributeNS(null, 'x', x0);
+      rect.setAttributeNS(null, 'y', y0);
+      rect.setAttributeNS(null, 'width', x1 - x0);
+      rect.setAttributeNS(null, 'height', y1 - y0);
+      rect.setAttributeNS(null, 'fill', this._makeShadingPattern(args));
+      this._ensureTransformGroup().appendChild(rect);
+    },
+    _makeColorN_Pattern: function SVGGraphics_makeColorN_Pattern(args) {
+      if (args[0] === 'TilingPattern') {
+        warn('Unimplemented: TilingPattern');
+        return null;
+      }
+      return this._makeShadingPattern(args);
+    },
+    _makeShadingPattern: function SVGGraphics_makeShadingPattern(args) {
+      switch (args[0]) {
+        case 'RadialAxial':
+          var shadingId = 'shading' + shadingCount++;
+          var colorStops = args[2];
+          var gradient;
+          switch (args[1]) {
+            case 'axial':
+              var point0 = args[3];
+              var point1 = args[4];
+              gradient = this.svgFactory.createElement('svg:linearGradient');
+              gradient.setAttributeNS(null, 'id', shadingId);
+              gradient.setAttributeNS(null, 'gradientUnits', 'userSpaceOnUse');
+              gradient.setAttributeNS(null, 'x1', point0[0]);
+              gradient.setAttributeNS(null, 'y1', point0[1]);
+              gradient.setAttributeNS(null, 'x2', point1[0]);
+              gradient.setAttributeNS(null, 'y2', point1[1]);
+              break;
+            case 'radial':
+              var focalPoint = args[3];
+              var circlePoint = args[4];
+              var focalRadius = args[5];
+              var circleRadius = args[6];
+              gradient = this.svgFactory.createElement('svg:radialGradient');
+              gradient.setAttributeNS(null, 'id', shadingId);
+              gradient.setAttributeNS(null, 'gradientUnits', 'userSpaceOnUse');
+              gradient.setAttributeNS(null, 'cx', circlePoint[0]);
+              gradient.setAttributeNS(null, 'cy', circlePoint[1]);
+              gradient.setAttributeNS(null, 'r', circleRadius);
+              gradient.setAttributeNS(null, 'fx', focalPoint[0]);
+              gradient.setAttributeNS(null, 'fy', focalPoint[1]);
+              gradient.setAttributeNS(null, 'fr', focalRadius);
+              break;
+            default:
+              throw new Error('Unknown RadialAxial type: ' + args[1]);
+          }
+          for (var i = 0, ilen = colorStops.length; i < ilen; ++i) {
+            var cs = colorStops[i];
+            var stop = this.svgFactory.createElement('svg:stop');
+            stop.setAttributeNS(null, 'offset', cs[0]);
+            stop.setAttributeNS(null, 'stop-color', cs[1]);
+            gradient.appendChild(stop);
+          }
+          this.defs.appendChild(gradient);
+          return 'url(#' + shadingId + ')';
+        case 'Mesh':
+          warn('Unimplemented: Mesh');
+          return null;
+        case 'Dummy':
+          return 'hotpink';
+        default:
+          throw new Error('Unknown IR type: ' + args[0]);
+      }
+    },
     setDash: function SVGGraphics_setDash(dashArray, dashPhase) {
       this.current.dashArray = dashArray;
       this.current.dashPhase = dashPhase;
@@ -940,7 +1043,6 @@ SVGGraphics = (function SVGGraphicsClosure() {
     constructPath: function SVGGraphics_constructPath(ops, args) {
       var current = this.current;
       var x = current.x, y = current.y;
-      current.path = this.svgFactory.createElement('svg:path');
       var d = [];
       var opLength = ops.length;
 
@@ -992,10 +1094,22 @@ SVGGraphics = (function SVGGraphicsClosure() {
             break;
         }
       }
-      current.path.setAttributeNS(null, 'd', d.join(' '));
-      current.path.setAttributeNS(null, 'fill', 'none');
 
-      this._ensureTransformGroup().appendChild(current.path);
+      d = d.join(' ');
+
+      if (current.path && opLength > 0 && ops[0] !== OPS.rectangle &&
+          ops[0] !== OPS.moveTo) {
+        // If a path does not start with an OPS.rectangle or OPS.moveTo, it has
+        // probably been divided into two OPS.constructPath operators by
+        // OperatorList. Append the commands to the previous path element.
+        d = current.path.getAttributeNS(null, 'd') + d;
+      } else {
+        current.path = this.svgFactory.createElement('svg:path');
+        this._ensureTransformGroup().appendChild(current.path);
+      }
+
+      current.path.setAttributeNS(null, 'd', d);
+      current.path.setAttributeNS(null, 'fill', 'none');
 
       // Saving a reference in current.element so that it can be addressed
       // in 'fill' and 'stroke'
@@ -1004,6 +1118,9 @@ SVGGraphics = (function SVGGraphicsClosure() {
     },
 
     endPath: function SVGGraphics_endPath() {
+      // Painting operators end a path.
+      this.current.path = null;
+
       if (!this.pendingClip) {
         return;
       }
@@ -1131,8 +1248,14 @@ SVGGraphics = (function SVGGraphicsClosure() {
     /**
      * @private
      */
-    _setStrokeAttributes(element) {
+    _setStrokeAttributes(element, lineWidthScale = 1) {
       const current = this.current;
+      let dashArray = current.dashArray;
+      if (lineWidthScale !== 1 && dashArray.length > 0) {
+        dashArray = dashArray.map(function(value) {
+          return lineWidthScale * value;
+        });
+      }
       element.setAttributeNS(null, 'stroke', current.strokeColor);
       element.setAttributeNS(null, 'stroke-opacity', current.strokeAlpha);
       element.setAttributeNS(null, 'stroke-miterlimit',
@@ -1140,11 +1263,11 @@ SVGGraphics = (function SVGGraphicsClosure() {
       element.setAttributeNS(null, 'stroke-linecap', current.lineCap);
       element.setAttributeNS(null, 'stroke-linejoin', current.lineJoin);
       element.setAttributeNS(null, 'stroke-width',
-                             pf(current.lineWidth) + 'px');
+                             pf(lineWidthScale * current.lineWidth) + 'px');
       element.setAttributeNS(null, 'stroke-dasharray',
-                             current.dashArray.map(pf).join(' '));
+                             dashArray.map(pf).join(' '));
       element.setAttributeNS(null, 'stroke-dashoffset',
-                             pf(current.dashPhase) + 'px');
+                             pf(lineWidthScale * current.dashPhase) + 'px');
     },
 
     eoFill: function SVGGraphics_eoFill() {

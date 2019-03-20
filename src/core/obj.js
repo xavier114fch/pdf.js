@@ -15,15 +15,17 @@
 
 import {
   bytesToString, createPromiseCapability, createValidAbsoluteUrl, FormatError,
-  info, InvalidPDFException, isBool, isNum, isString, MissingDataException,
-  PermissionFlag, shadow, stringToPDFString, stringToUTF8String,
-  toRomanNumerals, unreachable, warn, XRefEntryException, XRefParseException
+  info, InvalidPDFException, isBool, isNum, isString, PermissionFlag, shadow,
+  stringToPDFString, stringToUTF8String, unreachable, warn
 } from '../shared/util';
 import {
   Dict, isCmd, isDict, isName, isRef, isRefsEqual, isStream, Ref, RefSet,
   RefSetCache
 } from './primitives';
 import { Lexer, Parser } from './parser';
+import {
+  MissingDataException, toRomanNumerals, XRefEntryException, XRefParseException
+} from './core_utils';
 import { ChunkedStream } from './chunked_stream';
 import { CipherTransformFactory } from './crypto';
 import { ColorSpace } from './colorspace';
@@ -490,6 +492,22 @@ class Catalog {
     return shadow(this, 'javaScript', javaScript);
   }
 
+  fontFallback(id, handler) {
+    const promises = [];
+    this.fontCache.forEach(function(promise) {
+      promises.push(promise);
+    });
+
+    return Promise.all(promises).then((translatedFonts) => {
+      for (const translatedFont of translatedFonts) {
+        if (translatedFont.loadedName === id) {
+          translatedFont.fallback(handler);
+          return;
+        }
+      }
+    });
+  }
+
   cleanup() {
     this.pageKidsCountCache.clear();
 
@@ -701,10 +719,7 @@ class Catalog {
   static parseDestDictionary(params) {
     // Lets URLs beginning with 'www.' default to using the 'http://' protocol.
     function addDefaultProtocolToUrl(url) {
-      if (url.indexOf('www.') === 0) {
-        return `http://${url}`;
-      }
-      return url;
+      return (url.startsWith('www.') ? `http://${url}` : url);
     }
 
     // According to ISO 32000-1:2008, section 12.6.4.7, URIs should be encoded
@@ -1199,7 +1214,7 @@ var XRef = (function XRefClosure() {
       }
       var objRegExp = /^(\d+)\s+(\d+)\s+obj\b/;
       const endobjRegExp = /\bendobj[\b\s]$/;
-      const nestedObjRegExp = /\s+(\d+\s+\d+\s+obj[\b\s])$/;
+      const nestedObjRegExp = /\s+(\d+\s+\d+\s+obj[\b\s<])$/;
       const CHECK_CONTENT_LENGTH = 25;
 
       var trailerBytes = new Uint8Array([116, 114, 97, 105, 108, 101, 114]);
@@ -1234,16 +1249,17 @@ var XRef = (function XRefClosure() {
         }
         var token = readToken(buffer, position);
         var m;
-        if (token.indexOf('xref') === 0 &&
+        if (token.startsWith('xref') &&
             (token.length === 4 || /\s/.test(token[4]))) {
           position += skipUntil(buffer, position, trailerBytes);
           trailers.push(position);
           position += skipUntil(buffer, position, startxrefBytes);
         } else if ((m = objRegExp.exec(token))) {
-          if (typeof this.entries[m[1]] === 'undefined') {
-            this.entries[m[1]] = {
+          const num = m[1] | 0, gen = m[2] | 0;
+          if (typeof this.entries[num] === 'undefined') {
+            this.entries[num] = {
               offset: position - stream.start,
-              gen: m[2] | 0,
+              gen,
               uncompressed: true,
             };
           }
@@ -1288,7 +1304,7 @@ var XRef = (function XRefClosure() {
           }
 
           position += contentLength;
-        } else if (token.indexOf('trailer') === 0 &&
+        } else if (token.startsWith('trailer') &&
                    (token.length === 7 || /\s/.test(token[7]))) {
           trailers.push(position);
           position += skipUntil(buffer, position, startxrefBytes);
@@ -1507,7 +1523,7 @@ var XRef = (function XRefClosure() {
       }
       if (obj3.cmd !== 'obj') {
         // some bad PDFs use "obj1234" and really mean 1234
-        if (obj3.cmd.indexOf('obj') === 0) {
+        if (obj3.cmd.startsWith('obj')) {
           num = parseInt(obj3.cmd.substring(3), 10);
           if (!Number.isNaN(num)) {
             return num;

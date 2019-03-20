@@ -51,6 +51,7 @@ var MOZCENTRAL_BASELINE_DIR = BUILD_DIR + 'mozcentral.baseline/';
 var GENERIC_DIR = BUILD_DIR + 'generic/';
 var COMPONENTS_DIR = BUILD_DIR + 'components/';
 var IMAGE_DECODERS_DIR = BUILD_DIR + 'image_decoders';
+var DEFAULT_PREFERENCES_DIR = BUILD_DIR + 'default_preferences/';
 var MINIFIED_DIR = BUILD_DIR + 'minified/';
 var JSDOC_BUILD_DIR = BUILD_DIR + 'jsdoc/';
 var GH_PAGES_DIR = BUILD_DIR + 'gh-pages/';
@@ -484,6 +485,80 @@ gulp.task('buildnumber', function (done) {
   });
 });
 
+gulp.task('default_preferences-pre', function() {
+  console.log();
+  console.log('### Building `default_preferences.json`');
+
+  // Refer to the comment in the 'lib' task below.
+  function babelPluginReplaceNonWebPackRequire(babel) {
+    return {
+      visitor: {
+        Identifier(path, state) {
+          if (path.node.name === '__non_webpack_require__') {
+            path.replaceWith(babel.types.identifier('require'));
+          }
+        },
+      },
+    };
+  }
+  function preprocess(content) {
+    content = preprocessor2.preprocessPDFJSCode(ctx, content);
+    return babel.transform(content, {
+      sourceType: 'module',
+      presets: undefined, // SKIP_BABEL
+      plugins: [
+        '@babel/plugin-transform-modules-commonjs',
+        babelPluginReplaceNonWebPackRequire,
+      ],
+    }).code;
+  }
+  var babel = require('@babel/core');
+  var ctx = {
+    rootPath: __dirname,
+    saveComments: false,
+    defines: builder.merge(DEFINES, {
+      GENERIC: true,
+      LIB: true,
+      BUNDLE_VERSION: 0, // Dummy version
+      BUNDLE_BUILD: 0, // Dummy build
+    }),
+    map: {
+      'pdfjs-lib': '../pdf',
+    },
+  };
+  var preprocessor2 = require('./external/builder/preprocessor2.js');
+  var buildLib = merge([
+    gulp.src([
+      'src/{display,shared}/*.js',
+      '!src/shared/{cffStandardStrings,fonts_utils}.js',
+      'src/pdf.js',
+    ], { base: 'src/', }),
+    gulp.src([
+      'web/*.js',
+      '!web/{app,pdfjs,preferences,viewer}.js',
+    ], { base: '.', }),
+  ]).pipe(transform('utf8', preprocess))
+    .pipe(gulp.dest(DEFAULT_PREFERENCES_DIR + 'lib/'));
+  return merge([
+    buildLib,
+    gulp.src('external/{streams,url}/*.js', { base: '.', })
+      .pipe(gulp.dest(DEFAULT_PREFERENCES_DIR)),
+  ]);
+});
+
+gulp.task('default_preferences', gulp.series('default_preferences-pre',
+    function(done) {
+  var AppOptionsLib =
+    require('./' + DEFAULT_PREFERENCES_DIR + 'lib/web/app_options.js');
+  var AppOptions = AppOptionsLib.AppOptions;
+  var OptionKind = AppOptionsLib.OptionKind;
+
+  createStringSource('default_preferences.json', JSON.stringify(
+      AppOptions.getAll(OptionKind.PREFERENCE), null, 2))
+    .pipe(gulp.dest(BUILD_DIR))
+    .on('end', done);
+}));
+
 gulp.task('locale', function () {
   var VIEWER_LOCALE_OUTPUT = 'web/locale/';
   var METADATA_OUTPUT = 'extensions/firefox/';
@@ -608,7 +683,8 @@ function preprocessHTML(source, defines) {
 
 // Builds the generic production viewer that should be compatible with most
 // modern HTML5 browsers.
-gulp.task('generic', gulp.series('buildnumber', 'locale', function () {
+gulp.task('generic', gulp.series('buildnumber', 'default_preferences', 'locale',
+                                 function() {
   console.log();
   console.log('### Creating generic viewer');
   var defines = builder.merge(DEFINES, { GENERIC: true, });
@@ -671,7 +747,8 @@ gulp.task('image_decoders', gulp.series('buildnumber', function() {
   return createImageDecodersBundle(defines).pipe(gulp.dest(IMAGE_DECODERS_DIR));
 }));
 
-gulp.task('minified-pre', gulp.series('buildnumber', 'locale', function () {
+gulp.task('minified-pre', gulp.series('buildnumber', 'default_preferences',
+                                      'locale', function() {
   console.log();
   console.log('### Creating minified viewer');
   var defines = builder.merge(DEFINES, { MINIFIED: true, GENERIC: true, });
@@ -766,7 +843,8 @@ function preprocessDefaultPreferences(content) {
           content + '\n');
 }
 
-gulp.task('mozcentral-pre', gulp.series('buildnumber', 'locale', function () {
+gulp.task('mozcentral-pre', gulp.series('buildnumber', 'default_preferences',
+                                        'locale', function() {
   console.log();
   console.log('### Building mozilla-central extension');
   var defines = builder.merge(DEFINES, { MOZCENTRAL: true, SKIP_BABEL: true, });
@@ -816,7 +894,8 @@ gulp.task('mozcentral-pre', gulp.series('buildnumber', 'locale', function () {
 
 gulp.task('mozcentral', gulp.series('mozcentral-pre'));
 
-gulp.task('chromium-pre', gulp.series('buildnumber', 'locale', function () {
+gulp.task('chromium-pre', gulp.series('buildnumber', 'default_preferences',
+                                      'locale', function() {
   console.log();
   console.log('### Building Chromium extension');
   var defines = builder.merge(DEFINES, { CHROME: true, });
@@ -883,7 +962,7 @@ gulp.task('jsdoc', function (done) {
   });
 });
 
-gulp.task('lib', gulp.series('buildnumber', function () {
+gulp.task('lib', gulp.series('buildnumber', 'default_preferences', function() {
   // When we create a bundle, webpack is run on the source and it will replace
   // require with __webpack_require__. When we want to use the real require,
   // __non_webpack_require__ has to be used.
@@ -1077,7 +1156,7 @@ gulp.task('unittestcli', gulp.series('testing-pre', 'lib', function(done) {
   });
 }));
 
-gulp.task('lint', function (done) {
+gulp.task('lint', gulp.series('default_preferences', function(done) {
   console.log();
   console.log('### Linting JS files');
 
@@ -1096,7 +1175,7 @@ gulp.task('lint', function (done) {
 
     if (!checkChromePreferencesFile(
           'extensions/chromium/preferences_schema.json',
-          'web/default_preferences.json')) {
+          'build/default_preferences.json')) {
       done(new Error('chromium/preferences_schema is not in sync.'));
       return;
     }
@@ -1104,7 +1183,7 @@ gulp.task('lint', function (done) {
     console.log('files checked, no errors found');
     done();
   });
-});
+}));
 
 gulp.task('server', function () {
   console.log();
@@ -1336,6 +1415,16 @@ gulp.task('dist-repo-git', gulp.series('dist-pre', function (done) {
   console.log('### Committing changes');
 
   var reason = process.env['PDFJS_UPDATE_REASON'];
+  // Attempt to work-around the broken link, see https://github.com/mozilla/pdf.js/issues/10391
+  if (typeof reason === 'string') {
+    var reasonParts =
+      /^(See )(mozilla\/pdf\.js)@tags\/(v\d+\.\d+\.\d+)\s*$/.exec(reason);
+
+    if (reasonParts) {
+      reason = reasonParts[1] + 'https://github.com/' + reasonParts[2] +
+               '/releases/tag/' + reasonParts[3];
+    }
+  }
   var message = 'PDF.js version ' + VERSION + (reason ? ' - ' + reason : '');
   safeSpawnSync('git', ['add', '*'], { cwd: DIST_DIR, });
   safeSpawnSync('git', ['commit', '-am', message], { cwd: DIST_DIR, });

@@ -54,6 +54,7 @@
 !issue8088.pdf
 !issue8125.pdf
 !issue8229.pdf
+!issue8276_reduced.pdf
 !issue8372.pdf
 !issue8424.pdf
 !issue8480.pdf
@@ -72,6 +73,9 @@
 !issue9458.pdf
 !issue9915_reduced.pdf
 !issue9940.pdf
+!issue10388_reduced.pdf
+!issue10438_reduced.pdf
+!issue10529.pdf
 !bad-PageLabels.pdf
 !decodeACSuccessive.pdf
 !filled-background.pdf
@@ -87,7 +91,9 @@
 !bug1200096.pdf
 !bug1068432.pdf
 !bug1146106.pdf
+!bug1245391_reduced.pdf
 !bug1252420.pdf
+!bug1513120_reduced.pdf
 !issue9949.pdf
 !bug1308536.pdf
 !bug1337429.pdf
@@ -249,6 +255,7 @@
 !bug878026.pdf
 !issue1045.pdf
 !issue5010.pdf
+!issue10339_reduced.pdf
 !issue4934.pdf
 !issue4650.pdf
 !issue6721_reduced.pdf

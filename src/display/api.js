@@ -16,16 +16,16 @@
 /* eslint no-var: error */
 
 import {
-  assert, createPromiseCapability, deprecated, getVerbosityLevel, info,
-  InvalidPDFException, isArrayBuffer, isSameOrigin, MissingPDFException,
-  NativeImageDecoding, PasswordException, setVerbosityLevel, shadow,
-  stringToBytes, UnexpectedResponseException, UnknownErrorException,
-  unreachable, URL, warn
+  assert, createPromiseCapability, getVerbosityLevel, info, InvalidPDFException,
+  isArrayBuffer, isSameOrigin, MissingPDFException, NativeImageDecoding,
+  PasswordException, setVerbosityLevel, shadow, stringToBytes,
+  UnexpectedResponseException, UnknownErrorException, unreachable, URL, warn
 } from '../shared/util';
 import {
-  DOMCanvasFactory, DOMCMapReaderFactory, DummyStatTimer, loadScript,
-  PageViewport, RenderingCancelledException, StatTimer
-} from './dom_utils';
+  deprecated, DOMCanvasFactory, DOMCMapReaderFactory, DummyStatTimer,
+  loadScript, PageViewport, releaseImageResources, RenderingCancelledException,
+  StatTimer
+} from './display_utils';
 import { FontFaceObject, FontLoader } from './font_loader';
 import { apiCompatibilityParams } from './api_compatibility';
 import { CanvasGraphics } from './canvas';
@@ -90,7 +90,8 @@ if (typeof PDFJSDev !== 'undefined' && PDFJSDev.test('GENERIC')) {
     });
   }) : null;
 
-  if (!fallbackWorkerSrc && typeof document !== 'undefined') {
+  if (!fallbackWorkerSrc && typeof document === 'object' &&
+      'currentScript' in document) {
     const pdfjsFilePath = document.currentScript && document.currentScript.src;
     if (pdfjsFilePath) {
       fallbackWorkerSrc =
@@ -574,9 +575,7 @@ class PDFDataRangeTransport {
  * properties that can be read synchronously.
  */
 class PDFDocumentProxy {
-  constructor(pdfInfo, transport, loadingTask) {
-    this.loadingTask = loadingTask;
-
+  constructor(pdfInfo, transport) {
     this._pdfInfo = pdfInfo;
     this._transport = transport;
   }
@@ -760,6 +759,13 @@ class PDFDocumentProxy {
    */
   get loadingParams() {
     return this._transport.loadingParams;
+  }
+
+  /**
+   * @return {PDFDocumentLoadingTask} The loadingTask for the current document.
+   */
+  get loadingTask() {
+    return this._transport.loadingTask;
   }
 }
 
@@ -1675,7 +1681,10 @@ class WorkerTransport {
     this.messageHandler = messageHandler;
     this.loadingTask = loadingTask;
     this.commonObjs = new PDFObjects();
-    this.fontLoader = new FontLoader(loadingTask.docId);
+    this.fontLoader = new FontLoader({
+      docId: loadingTask.docId,
+      onUnsupportedFeature: this._onUnsupportedFeature.bind(this),
+    });
     this._params = params;
     this.CMapReaderFactory = new params.CMapReaderFactory({
       baseUrl: params.cMapUrl,
@@ -1824,9 +1833,8 @@ class WorkerTransport {
     }, this);
 
     messageHandler.on('GetDoc', function({ pdfInfo, }) {
-      this.numPages = pdfInfo.numPages;
-      this.pdfDocument = new PDFDocumentProxy(pdfInfo, this, loadingTask);
-      loadingTask._capability.resolve(this.pdfDocument);
+      this._numPages = pdfInfo.numPages;
+      loadingTask._capability.resolve(new PDFDocumentProxy(pdfInfo, this));
     }, this);
 
     messageHandler.on('PasswordRequest', function(exception) {
@@ -1943,11 +1951,16 @@ class WorkerTransport {
             onUnsupportedFeature: this._onUnsupportedFeature.bind(this),
             fontRegistry,
           });
-          const fontReady = (fontObjs) => {
-            this.commonObjs.resolve(id, font);
-          };
 
-          this.fontLoader.bind([font], fontReady);
+          this.fontLoader.bind(font).then(() => {
+            this.commonObjs.resolve(id, font);
+          }, (reason) => {
+            messageHandler.sendWithPromise('FontFallback', {
+              id,
+            }).finally(() => {
+              this.commonObjs.resolve(id, font);
+            });
+          });
           break;
         case 'FontPath':
           this.commonObjs.resolve(id, exportedData);
@@ -1976,11 +1989,14 @@ class WorkerTransport {
               resolve(img);
             };
             img.onerror = function() {
-              reject(new Error('Error during JPEG image loading'));
               // Note that when the browser image loading/decoding fails,
               // we'll fallback to the built-in PDF.js JPEG decoder; see
               // `PartialEvaluator.buildPaintImageXObject` in the
               // `src/core/evaluator.js` file.
+              reject(new Error('Error during JPEG image loading'));
+
+              // Always remember to release the image data if errors occurred.
+              releaseImageResources(img);
             };
             img.src = imageData;
           }).then((img) => {
@@ -2019,11 +2035,11 @@ class WorkerTransport {
         return; // Ignore any pending requests if the worker was terminated.
       }
 
-      const page = this.pageCache[data.pageNum - 1];
+      const page = this.pageCache[data.pageIndex];
       const intentState = page.intentStates[data.intent];
 
       if (intentState.displayReadyCapability) {
-        intentState.displayReadyCapability.reject(data.error);
+        intentState.displayReadyCapability.reject(new Error(data.error));
       } else {
         throw new Error(data.error);
       }
@@ -2059,15 +2075,14 @@ class WorkerTransport {
       return new Promise(function(resolve, reject) {
         const img = new Image();
         img.onload = function() {
-          const width = img.width;
-          const height = img.height;
+          const { width, height, } = img;
           const size = width * height;
           const rgbaLength = size * 4;
           const buf = new Uint8ClampedArray(size * components);
-          const tmpCanvas = document.createElement('canvas');
+          let tmpCanvas = document.createElement('canvas');
           tmpCanvas.width = width;
           tmpCanvas.height = height;
-          const tmpCtx = tmpCanvas.getContext('2d');
+          let tmpCtx = tmpCanvas.getContext('2d');
           tmpCtx.drawImage(img, 0, 0);
           const data = tmpCtx.getImageData(0, 0, width, height).data;
 
@@ -2083,9 +2098,21 @@ class WorkerTransport {
             }
           }
           resolve({ data: buf, width, height, });
+
+          // Immediately release the image data once decoding has finished.
+          releaseImageResources(img);
+          // Zeroing the width and height cause Firefox to release graphics
+          // resources immediately, which can greatly reduce memory consumption.
+          tmpCanvas.width = 0;
+          tmpCanvas.height = 0;
+          tmpCanvas = null;
+          tmpCtx = null;
         };
         img.onerror = function() {
           reject(new Error('JpegDecode failed to load image'));
+
+          // Always remember to release the image data if errors occurred.
+          releaseImageResources(img);
         };
         img.src = imageUrl;
       });
@@ -2116,7 +2143,7 @@ class WorkerTransport {
 
   getPage(pageNumber) {
     if (!Number.isInteger(pageNumber) ||
-        pageNumber <= 0 || pageNumber > this.numPages) {
+        pageNumber <= 0 || pageNumber > this._numPages) {
       return Promise.reject(new Error('Invalid page request'));
     }
 
@@ -2305,6 +2332,14 @@ class PDFObjects {
   }
 
   clear() {
+    for (const objId in this._objs) {
+      const { data, } = this._objs[objId];
+
+      if (typeof Image !== 'undefined' && data instanceof Image) {
+        // Always release the image data when clearing out the cached objects.
+        releaseImageResources(data);
+      }
+    }
     this._objs = Object.create(null);
   }
 }
@@ -2434,7 +2469,7 @@ const InternalRenderTask = (function InternalRenderTaskClosure() {
       }
     }
 
-    cancel() {
+    cancel(error = null) {
       this.running = false;
       this.cancelled = true;
       if (this.gfx) {
@@ -2443,8 +2478,8 @@ const InternalRenderTask = (function InternalRenderTaskClosure() {
       if (this._canvas) {
         canvasInRendering.delete(this._canvas);
       }
-      this.callback(new RenderingCancelledException(
-        'Rendering cancelled, page ' + this.pageNumber, 'canvas'));
+      this.callback(error || new RenderingCancelledException(
+        `Rendering cancelled, page ${this.pageNumber}`, 'canvas'));
     }
 
     operatorListChanged() {
@@ -2480,10 +2515,10 @@ const InternalRenderTask = (function InternalRenderTaskClosure() {
     _scheduleNext() {
       if (this._useRequestAnimationFrame) {
         window.requestAnimationFrame(() => {
-          this._nextBound().catch(this.callback);
+          this._nextBound().catch(this.cancel.bind(this));
         });
       } else {
-        Promise.resolve().then(this._nextBound).catch(this.callback);
+        Promise.resolve().then(this._nextBound).catch(this.cancel.bind(this));
       }
     }
 

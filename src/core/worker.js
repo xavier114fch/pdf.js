@@ -14,15 +14,16 @@
  */
 
 import {
-  arrayByteLength, arraysToBytes, assert, createPromiseCapability, info,
-  InvalidPDFException, MissingPDFException, PasswordException,
-  setVerbosityLevel, UnexpectedResponseException, UnknownErrorException,
-  UNSUPPORTED_FEATURES, warn, XRefParseException
+  arrayByteLength, arraysToBytes, assert, createPromiseCapability,
+  getVerbosityLevel, info, InvalidPDFException, MissingPDFException,
+  PasswordException, setVerbosityLevel, UnexpectedResponseException,
+  UnknownErrorException, UNSUPPORTED_FEATURES, VerbosityLevel, warn
 } from '../shared/util';
 import { LocalPdfManager, NetworkPdfManager } from './pdf_manager';
 import isNodeJS from '../shared/is_node';
 import { MessageHandler } from '../shared/message_handler';
 import { Ref } from './primitives';
+import { XRefParseException } from './core_utils';
 
 var WorkerTask = (function WorkerTaskClosure() {
   function WorkerTask(name) {
@@ -221,6 +222,7 @@ var WorkerMessageHandler = {
     var terminated = false;
     var cancelXHRs = null;
     var WorkerTasks = [];
+    const verbosity = getVerbosityLevel();
 
     let apiVersion = docParams.apiVersion;
     let workerVersion =
@@ -577,8 +579,9 @@ var WorkerMessageHandler = {
         var task = new WorkerTask('RenderPageRequest: page ' + pageIndex);
         startWorkerTask(task);
 
-        var pageNum = pageIndex + 1;
-        var start = Date.now();
+        // NOTE: Keep this condition in sync with the `info` helper function.
+        const start = (verbosity >= VerbosityLevel.INFOS ? Date.now() : 0);
+
         // Pre compile the pdf page and fetch the fonts/images.
         page.getOperatorList({
           handler,
@@ -588,8 +591,10 @@ var WorkerMessageHandler = {
         }).then(function(operatorList) {
           finishWorkerTask(task);
 
-          info('page=' + pageNum + ' - getOperatorList: time=' +
-               (Date.now() - start) + 'ms, len=' + operatorList.totalLength);
+          if (start) {
+            info(`page=${pageIndex + 1} - getOperatorList: time=` +
+                 `${Date.now() - start}ms, len=${operatorList.totalLength}`);
+          }
         }, function(e) {
           finishWorkerTask(task);
           if (task.terminated) {
@@ -625,7 +630,7 @@ var WorkerMessageHandler = {
           }
 
           handler.send('PageError', {
-            pageNum,
+            pageIndex,
             error: wrappedException,
             intent: data.intent,
           });
@@ -642,8 +647,9 @@ var WorkerMessageHandler = {
         var task = new WorkerTask('GetTextContent: page ' + pageIndex);
         startWorkerTask(task);
 
-        var pageNum = pageIndex + 1;
-        var start = Date.now();
+        // NOTE: Keep this condition in sync with the `info` helper function.
+        const start = (verbosity >= VerbosityLevel.INFOS ? Date.now() : 0);
+
         page.extractTextContent({
           handler,
           task,
@@ -653,8 +659,10 @@ var WorkerMessageHandler = {
         }).then(function() {
           finishWorkerTask(task);
 
-          info('text indexing: page=' + pageNum + ' - time=' +
-               (Date.now() - start) + 'ms');
+          if (start) {
+            info(`page=${pageIndex + 1} - getTextContent: time=` +
+                 `${Date.now() - start}ms`);
+          }
           sink.close();
         }, function (reason) {
           finishWorkerTask(task);
@@ -665,6 +673,10 @@ var WorkerMessageHandler = {
           throw reason;
         });
       });
+    });
+
+    handler.on('FontFallback', function(data) {
+      return pdfManager.fontFallback(data.id, handler);
     });
 
     handler.on('Cleanup', function wphCleanup(data) {

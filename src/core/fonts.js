@@ -15,8 +15,7 @@
 
 import {
   assert, bytesToString, FONT_IDENTITY_MATRIX, FontType, FormatError, info,
-  isNum, isSpace, MissingDataException, readUint32, shadow, string32,
-  unreachable, warn
+  isNum, isSpace, readUint32, shadow, string32, unreachable, warn
 } from '../shared/util';
 import {
   CFF, CFFCharset, CFFCompiler, CFFHeader, CFFIndex, CFFParser, CFFPrivateDict,
@@ -36,6 +35,7 @@ import {
 } from './unicode';
 import { FontRendererFactory } from './font_renderer';
 import { IdentityCMap } from './cmap';
+import { MissingDataException } from './core_utils';
 import { Stream } from './stream';
 import { Type1Parser } from './type1_parser';
 
@@ -1159,6 +1159,8 @@ var Font = (function FontClosure() {
     font: null,
     mimetype: null,
     encoding: null,
+    disableFontFace: false,
+
     get renderer() {
       var renderer = FontRendererFactory.create(this, SEAC_ANALYSIS_ENABLED);
       return shadow(this, 'renderer', renderer);
@@ -1200,7 +1202,7 @@ var Font = (function FontClosure() {
       // if at least one width is present, remeasure all chars when exists
       this.remeasure = Object.keys(this.widths).length > 0;
       if (isStandardFont && type === 'CIDFontType2' &&
-          this.cidEncoding.indexOf('Identity-') === 0) {
+          this.cidEncoding.startsWith('Identity-')) {
         var GlyphMapForStandardFonts = getGlyphMapForStandardFonts();
         // Standard fonts might be embedded as CID font without glyph mapping.
         // Building one based on GlyphMapForStandardFonts.
@@ -2944,6 +2946,10 @@ var Font = (function FontClosure() {
       // Enter the translated string into the cache
       return (charsCache[charsCacheKey] = glyphs);
     },
+
+    get glyphCacheValues() {
+      return Object.values(this.glyphCache);
+    },
   };
 
   return Font;
@@ -3329,20 +3335,17 @@ var Type1Font = (function Type1FontClosure() {
       cff.globalSubrIndex = new CFFIndex();
 
       var count = glyphs.length;
-      var charsetArray = [0];
+      var charsetArray = ['.notdef'];
       var i, ii;
       for (i = 0; i < count; i++) {
-        var index = CFFStandardStrings.indexOf(charstrings[i].glyphName);
-        // TODO: Insert the string and correctly map it.  Previously it was
-        // thought mapping names that aren't in the standard strings to .notdef
-        // was fine, however in issue818 when mapping them all to .notdef the
-        // adieresis glyph no longer worked.
+        let glyphName = charstrings[i].glyphName;
+        let index = CFFStandardStrings.indexOf(glyphName);
         if (index === -1) {
-          index = 0;
+          strings.add(glyphName);
         }
-        charsetArray.push((index >> 8) & 0xff, index & 0xff);
+        charsetArray.push(glyphName);
       }
-      cff.charset = new CFFCharset(false, 0, [], charsetArray);
+      cff.charset = new CFFCharset(false, 0, charsetArray);
 
       var charStringsIndex = new CFFIndex();
       charStringsIndex.add([0x8B, 0x0E]); // .notdef

@@ -15,9 +15,11 @@
 
 import {
   CSS_UNITS, DEFAULT_SCALE, DEFAULT_SCALE_VALUE, getGlobalEventBus,
-  isPortraitOrientation, isValidRotation, MAX_AUTO_SCALE, moveToEndOfArray,
-  NullL10n, PresentationModeState, RendererType, SCROLLBAR_PADDING,
-  TextLayerMode, UNKNOWN_SCALE, VERTICAL_PADDING, watchScroll
+  getVisibleElements, isPortraitOrientation, isValidRotation, isValidScrollMode,
+  isValidSpreadMode, MAX_AUTO_SCALE, moveToEndOfArray, NullL10n,
+  PresentationModeState, RendererType, SCROLLBAR_PADDING, scrollIntoView,
+  ScrollMode, SpreadMode, TextLayerMode, UNKNOWN_SCALE, VERTICAL_PADDING,
+  watchScroll
 } from './ui_utils';
 import { PDFRenderingQueue, RenderingStates } from './pdf_rendering_queue';
 import { AnnotationLayerBuilder } from './annotation_layer_builder';
@@ -27,18 +29,6 @@ import { SimpleLinkService } from './pdf_link_service';
 import { TextLayerBuilder } from './text_layer_builder';
 
 const DEFAULT_CACHE_SIZE = 10;
-
-const ScrollMode = {
-  VERTICAL: 0, // The default value.
-  HORIZONTAL: 1,
-  WRAPPED: 2,
-};
-
-const SpreadMode = {
-  NONE: 0, // The default value.
-  ODD: 1,
-  EVEN: 2,
-};
 
 /**
  * @typedef {Object} PDFViewerOptions
@@ -360,6 +350,7 @@ class BaseViewer {
   }
 
   get _setDocumentViewerElement() {
+    // In most viewers, e.g. `PDFViewer`, this should return `this.viewer`.
     throw new Error('Not implemented: _setDocumentViewerElement');
   }
 
@@ -393,8 +384,7 @@ class BaseViewer {
       });
     });
 
-    let isOnePageRenderedResolved = false;
-    let onePageRenderedCapability = createPromiseCapability();
+    const onePageRenderedCapability = createPromiseCapability();
     this.onePageRendered = onePageRenderedCapability.promise;
 
     let bindOnAfterAndBeforeDraw = (pageView) => {
@@ -405,8 +395,7 @@ class BaseViewer {
         this._buffer.push(pageView);
       };
       pageView.onAfterDraw = () => {
-        if (!isOnePageRenderedResolved) {
-          isOnePageRenderedResolved = true;
+        if (!onePageRenderedCapability.settled) {
           onePageRenderedCapability.resolve();
         }
       };
@@ -545,7 +534,7 @@ class BaseViewer {
   }
 
   _scrollIntoView({ pageDiv, pageSpot = null, pageNumber = null, }) {
-    throw new Error('Not implemented: _scrollIntoView');
+    scrollIntoView(pageDiv, pageSpot);
   }
 
   _setScaleUpdatePages(newScale, newValue, noScroll = false, preset = false) {
@@ -784,17 +773,6 @@ class BaseViewer {
     });
   }
 
-  /**
-   * visiblePages is optional; if present, it should be an array of pages and in
-   * practice its length is going to be numVisiblePages, but this is not
-   * required. The new size of the buffer depends only on numVisiblePages.
-   */
-  _resizeBuffer(numVisiblePages, visiblePages) {
-    let suggestedCacheSize = Math.max(DEFAULT_CACHE_SIZE,
-                                      2 * numVisiblePages + 1);
-    this._buffer.resize(suggestedCacheSize, visiblePages);
-  }
-
   _updateLocation(firstPage) {
     let currentScale = this._currentScale;
     let currentScaleValue = this._currentScaleValue;
@@ -824,8 +802,29 @@ class BaseViewer {
     };
   }
 
+  _updateHelper(visiblePages) {
+    throw new Error('Not implemented: _updateHelper');
+  }
+
   update() {
-    throw new Error('Not implemented: update');
+    const visible = this._getVisiblePages();
+    const visiblePages = visible.views, numVisiblePages = visiblePages.length;
+
+    if (numVisiblePages === 0) {
+      return;
+    }
+    const newCacheSize = Math.max(DEFAULT_CACHE_SIZE, 2 * numVisiblePages + 1);
+    this._buffer.resize(newCacheSize, visiblePages);
+
+    this.renderingQueue.renderHighestPriority(visible);
+
+    this._updateHelper(visiblePages); // Run any class-specific update code.
+
+    this._updateLocation(visible.first);
+    this.eventBus.dispatch('updateviewarea', {
+      source: this,
+      location: this._location,
+    });
   }
 
   containsElement(element) {
@@ -837,7 +836,10 @@ class BaseViewer {
   }
 
   get _isScrollModeHorizontal() {
-    throw new Error('Not implemented: _isScrollModeHorizontal');
+    // Used to ensure that pre-rendering of the next/previous page works
+    // correctly, since Scroll/Spread modes are ignored in Presentation Mode.
+    return (this.isInPresentationMode ?
+            false : this._scrollMode === ScrollMode.HORIZONTAL);
   }
 
   get isInPresentationMode() {
@@ -883,7 +885,8 @@ class BaseViewer {
   }
 
   _getVisiblePages() {
-    throw new Error('Not implemented: _getVisiblePages');
+    return getVisibleElements(this.container, this._pages, true,
+                              this._isScrollModeHorizontal);
   }
 
   /**
@@ -1070,7 +1073,7 @@ class BaseViewer {
     if (this._scrollMode === mode) {
       return; // The Scroll mode didn't change.
     }
-    if (!Number.isInteger(mode) || !Object.values(ScrollMode).includes(mode)) {
+    if (!isValidScrollMode(mode)) {
       throw new Error(`Invalid scroll mode: ${mode}`);
     }
     this._scrollMode = mode;
@@ -1116,7 +1119,7 @@ class BaseViewer {
     if (this._spreadMode === mode) {
       return; // The Spread mode didn't change.
     }
-    if (!Number.isInteger(mode) || !Object.values(SpreadMode).includes(mode)) {
+    if (!isValidSpreadMode(mode)) {
       throw new Error(`Invalid spread mode: ${mode}`);
     }
     this._spreadMode = mode;
@@ -1163,6 +1166,4 @@ class BaseViewer {
 
 export {
   BaseViewer,
-  ScrollMode,
-  SpreadMode,
 };
