@@ -19,8 +19,7 @@ import {
   PredictorStream, RunLengthStream
 } from './stream';
 import {
-  assert, bytesToString, FormatError, info, isNum, isSpace, isString,
-  StreamType, warn
+  assert, bytesToString, FormatError, info, isNum, isSpace, StreamType, warn
 } from '../shared/util';
 import {
   Cmd, Dict, EOF, isCmd, isDict, isEOF, isName, Name, Ref
@@ -51,10 +50,10 @@ function computeAdler32(bytes) {
 }
 
 class Parser {
-  constructor(lexer, allowStreams, xref, recoveryMode = false) {
+  constructor({ lexer, xref, allowStreams = false, recoveryMode = false, }) {
     this.lexer = lexer;
-    this.allowStreams = allowStreams;
     this.xref = xref;
+    this.allowStreams = allowStreams;
     this.recoveryMode = recoveryMode;
 
     this.imageCache = Object.create(null);
@@ -67,7 +66,7 @@ class Parser {
   }
 
   shift() {
-    if (isCmd(this.buf2, 'ID')) {
+    if ((this.buf2 instanceof Cmd) && this.buf2.cmd === 'ID') {
       this.buf1 = this.buf2;
       this.buf2 = null;
     } else {
@@ -90,7 +89,7 @@ class Parser {
     }
   }
 
-  getObj(cipherTransform) {
+  getObj(cipherTransform = null) {
     const buf1 = this.buf1;
     this.shift();
 
@@ -148,22 +147,20 @@ class Parser {
     }
 
     if (Number.isInteger(buf1)) { // indirect reference or integer
-      const num = buf1;
       if (Number.isInteger(this.buf1) && isCmd(this.buf2, 'R')) {
-        const ref = new Ref(num, this.buf1);
+        const ref = Ref.get(buf1, this.buf1);
         this.shift();
         this.shift();
         return ref;
       }
-      return num;
+      return buf1;
     }
 
-    if (isString(buf1)) { // string
-      let str = buf1;
+    if (typeof buf1 === 'string') {
       if (cipherTransform) {
-        str = cipherTransform.decryptString(str);
+        return cipherTransform.decryptString(buf1);
       }
-      return str;
+      return buf1;
     }
 
     // simple object
@@ -347,6 +344,8 @@ class Parser {
     let startPos = stream.pos, ch, length;
     while ((ch = stream.getByte()) !== -1) {
       if (ch === TILDE) {
+        const tildePos = stream.pos;
+
         ch = stream.peekByte();
         // Handle corrupt PDF documents which contains whitespace "inside" of
         // the EOD marker (fixes issue10614.pdf).
@@ -357,6 +356,14 @@ class Parser {
         if (ch === GT) {
           stream.skip();
           break;
+        }
+        // Handle corrupt PDF documents which contains truncated EOD markers,
+        // where the '>' character is missing (fixes issue11385.pdf).
+        if (stream.pos > tildePos) {
+          const maybeEI = stream.peekBytes(2);
+          if (maybeEI[0] === /* E = */ 0x45 && maybeEI[1] === /* I = */ 0x49) {
+            break;
+          }
         }
       }
     }
@@ -696,7 +703,7 @@ class Parser {
         return new CCITTFaxStream(stream, maybeLength, params);
       }
       if (name === 'RunLengthDecode' || name === 'RL') {
-        xrefStreamStats[StreamType.RL] = true;
+        xrefStreamStats[StreamType.RLX] = true;
         return new RunLengthStream(stream, maybeLength);
       }
       if (name === 'JBIG2Decode') {
@@ -748,7 +755,7 @@ function toHexDigit(ch) {
 }
 
 class Lexer {
-  constructor(stream, knownCommands) {
+  constructor(stream, knownCommands = null) {
     this.stream = stream;
     this.nextChar();
 
@@ -1202,7 +1209,10 @@ class Linearization {
       throw new Error('Hint array in the linearization dictionary is invalid.');
     }
 
-    const parser = new Parser(new Lexer(stream), false, null);
+    const parser = new Parser({
+      lexer: new Lexer(stream),
+      xref: null,
+    });
     const obj1 = parser.getObj();
     const obj2 = parser.getObj();
     const obj3 = parser.getObj();

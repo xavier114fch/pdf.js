@@ -62,6 +62,7 @@ function initializePDFJS(callback) {
     'pdfjs-test/unit/encodings_spec',
     'pdfjs-test/unit/evaluator_spec',
     'pdfjs-test/unit/function_spec',
+    'pdfjs-test/unit/fetch_stream_spec',
     'pdfjs-test/unit/message_handler_spec',
     'pdfjs-test/unit/metadata_spec',
     'pdfjs-test/unit/murmurhash3_spec',
@@ -80,13 +81,13 @@ function initializePDFJS(callback) {
   ].map(function (moduleName) {
     return SystemJS.import(moduleName);
   })).then(function(modules) {
-    var displayApi = modules[0];
-    const GlobalWorkerOptions = modules[1].GlobalWorkerOptions;
-    var PDFNetworkStream = modules[2].PDFNetworkStream;
-    var PDFFetchStream = modules[3].PDFFetchStream;
-    const isNodeJS = modules[4];
+    const displayApi = modules[0];
+    const { GlobalWorkerOptions, } = modules[1];
+    const { PDFNetworkStream, } = modules[2];
+    const { PDFFetchStream, } = modules[3];
+    const { isNodeJS, } = modules[4];
 
-    if (isNodeJS()) {
+    if (isNodeJS) {
       throw new Error('The `gulp unittest` command cannot be used in ' +
                       'Node.js environments.');
     }

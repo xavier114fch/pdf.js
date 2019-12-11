@@ -25,7 +25,6 @@ var gulp = require('gulp');
 var postcss = require('gulp-postcss');
 var rename = require('gulp-rename');
 var replace = require('gulp-replace');
-var transform = require('gulp-transform');
 var mkdirp = require('mkdirp');
 var path = require('path');
 var rimraf = require('rimraf');
@@ -40,6 +39,7 @@ var webpack2 = require('webpack');
 var webpackStream = require('webpack-stream');
 var Vinyl = require('vinyl');
 var vfs = require('vinyl-fs');
+var through = require('through2');
 
 var BUILD_DIR = 'build/';
 var L10N_DIR = 'l10n/';
@@ -74,7 +74,7 @@ var config = JSON.parse(fs.readFileSync(CONFIG_FILE).toString());
 
 // Default Autoprefixer config used for generic, components, minified-pre
 var AUTOPREFIXER_CONFIG = {
-  browsers: [
+  overrideBrowserslist: [
     'last 2 versions',
     'Chrome >= 49', // Last supported on Windows XP
     'Firefox >= 52', // Last supported on Windows XP
@@ -101,6 +101,17 @@ var DEFINES = {
   IMAGE_DECODERS: false,
 };
 
+function transform(charEncoding, transformFunction) {
+  return through.obj(function(vinylFile, enc, done) {
+    var transformedFile = vinylFile.clone();
+    transformedFile.contents = Buffer.from(
+      transformFunction(transformedFile.contents),
+      charEncoding
+    );
+    done(null, transformedFile);
+  });
+}
+
 function safeSpawnSync(command, parameters, options) {
   // Execute all commands in a shell.
   options = options || {};
@@ -120,6 +131,16 @@ function safeSpawnSync(command, parameters, options) {
     process.exit(result.status);
   }
   return result;
+}
+
+function startNode(args, options) {
+  // Node.js decreased the maximum header size from 80 KB to 8 KB in newer
+  // releases, which is not sufficient for some of our reference test files
+  // (such as `issue6360.pdf`), so we need to restore this value. Note that
+  // this argument needs to be before all other arguments as it needs to be
+  // passed to the Node.js process itself and not to the script that it runs.
+  args.unshift('--max-http-header-size=80000');
+  return spawn('node', args, options);
 }
 
 function createStringSource(filename, content) {
@@ -174,8 +195,12 @@ function createWebpackConfig(defines, output) {
       rules: [
         {
           loader: 'babel-loader',
-          // babel is too slow
-          exclude: /src[\\\/]core[\\\/](glyphlist|unicode)/,
+          // `core-js` (see https://github.com/zloirock/core-js/issues/514),
+          // `web-streams-polyfill` (already using a transpiled file), and
+          // `src/core/{glyphlist,unicode}.js` (Babel is too slow for those)
+          // should be excluded from processing.
+          // eslint-disable-next-line max-len
+          exclude: /(node_modules[\\\/]core-js|node_modules[\\\/]web-streams-polyfill|src[\\\/]core[\\\/](glyphlist|unicode))/,
           options: {
             presets: skipBabel ? undefined : ['@babel/preset-env'],
             plugins: [
@@ -365,7 +390,7 @@ function getTempFile(prefix, suffix) {
 
 function createTestSource(testsName, bot) {
   var source = stream.Readable({ objectMode: true, });
-  source._read = function () {
+  source._read = function() {
     console.log();
     console.log('### Running ' + testsName + ' tests');
 
@@ -405,10 +430,11 @@ function createTestSource(testsName, bot) {
       args.push('--strictVerify');
     }
 
-    var testProcess = spawn('node', args, { cwd: TEST_DIR, stdio: 'inherit', });
+    var testProcess = startNode(args, { cwd: TEST_DIR, stdio: 'inherit', });
     testProcess.on('close', function (code) {
       source.push(null);
     });
+    return undefined;
   };
   return source;
 }
@@ -434,7 +460,7 @@ function makeRef(done, bot) {
     args.push('--noPrompts', '--strictVerify');
   }
   args.push('--browserManifestFile=' + PDF_BROWSERS);
-  var testProcess = spawn('node', args, { cwd: TEST_DIR, stdio: 'inherit', });
+  var testProcess = startNode(args, { cwd: TEST_DIR, stdio: 'inherit', });
   testProcess.on('close', function (code) {
     done();
   });
@@ -527,7 +553,7 @@ gulp.task('default_preferences-pre', function() {
     },
   };
   var preprocessor2 = require('./external/builder/preprocessor2.js');
-  var buildLib = merge([
+  return merge([
     gulp.src([
       'src/{display,shared}/*.js',
       '!src/shared/{cffStandardStrings,fonts_utils}.js',
@@ -539,11 +565,6 @@ gulp.task('default_preferences-pre', function() {
     ], { base: '.', }),
   ]).pipe(transform('utf8', preprocess))
     .pipe(gulp.dest(DEFAULT_PREFERENCES_DIR + 'lib/'));
-  return merge([
-    buildLib,
-    gulp.src('external/{streams,url}/*.js', { base: '.', })
-      .pipe(gulp.dest(DEFAULT_PREFERENCES_DIR)),
-  ]);
 });
 
 gulp.task('default_preferences', gulp.series('default_preferences-pre',
@@ -561,21 +582,15 @@ gulp.task('default_preferences', gulp.series('default_preferences-pre',
 
 gulp.task('locale', function () {
   var VIEWER_LOCALE_OUTPUT = 'web/locale/';
-  var METADATA_OUTPUT = 'extensions/firefox/';
-  var EXTENSION_LOCALE_OUTPUT = 'extensions/firefox/locale/';
 
   console.log();
   console.log('### Building localization files');
 
-  rimraf.sync(EXTENSION_LOCALE_OUTPUT);
-  mkdirp.sync(EXTENSION_LOCALE_OUTPUT);
   rimraf.sync(VIEWER_LOCALE_OUTPUT);
   mkdirp.sync(VIEWER_LOCALE_OUTPUT);
 
   var subfolders = fs.readdirSync(L10N_DIR);
   subfolders.sort();
-  var metadataContent = '';
-  var chromeManifestContent = '';
   var viewerOutput = '';
   var locales = [];
   for (var i = 0; i < subfolders.length; i++) {
@@ -589,34 +604,17 @@ gulp.task('locale', function () {
       continue;
     }
 
-    mkdirp.sync(EXTENSION_LOCALE_OUTPUT + '/' + locale);
     mkdirp.sync(VIEWER_LOCALE_OUTPUT + '/' + locale);
 
     locales.push(locale);
-
-    chromeManifestContent += 'locale  pdf.js  ' + locale + '  locale/' +
-                             locale + '/\n';
 
     if (checkFile(path + '/viewer.properties')) {
       viewerOutput += '[' + locale + ']\n' +
                       '@import url(' + locale + '/viewer.properties)\n\n';
     }
-
-    if (checkFile(path + '/metadata.inc')) {
-      var metadata = fs.readFileSync(path + '/metadata.inc').toString();
-      metadataContent += metadata;
-    }
   }
 
   return merge([
-    createStringSource('metadata.inc', metadataContent)
-      .pipe(gulp.dest(METADATA_OUTPUT)),
-    createStringSource('chrome.manifest.inc', chromeManifestContent)
-      .pipe(gulp.dest(METADATA_OUTPUT)),
-    gulp.src(L10N_DIR + '/{' + locales.join(',') + '}' +
-             '/{viewer,chrome}.properties', { base: L10N_DIR, })
-      .pipe(gulp.dest(EXTENSION_LOCALE_OUTPUT)),
-
     createStringSource('locale.properties', viewerOutput)
       .pipe(gulp.dest(VIEWER_LOCALE_OUTPUT)),
     gulp.src(L10N_DIR + '/{' + locales.join(',') + '}' +
@@ -707,7 +705,9 @@ gulp.task('generic', gulp.series('buildnumber', 'default_preferences', 'locale',
     preprocessHTML('web/viewer.html', defines)
         .pipe(gulp.dest(GENERIC_DIR + 'web')),
     preprocessCSS('web/viewer.css', 'generic', defines, true)
-        .pipe(postcss([autoprefixer(AUTOPREFIXER_CONFIG)]))
+        .pipe(postcss([
+          autoprefixer(AUTOPREFIXER_CONFIG)
+        ]))
         .pipe(gulp.dest(GENERIC_DIR + 'web')),
 
     gulp.src('web/compressed.tracemonkey-pldi-09.pdf')
@@ -733,7 +733,9 @@ gulp.task('components', gulp.series('buildnumber', function () {
     createComponentsBundle(defines).pipe(gulp.dest(COMPONENTS_DIR)),
     gulp.src(COMPONENTS_IMAGES).pipe(gulp.dest(COMPONENTS_DIR + 'images')),
     preprocessCSS('web/pdf_viewer.css', 'components', defines, true)
-        .pipe(postcss([autoprefixer(AUTOPREFIXER_CONFIG)]))
+        .pipe(postcss([
+          autoprefixer(AUTOPREFIXER_CONFIG)
+        ]))
         .pipe(gulp.dest(COMPONENTS_DIR)),
   ]);
 }));
@@ -773,7 +775,9 @@ gulp.task('minified-pre', gulp.series('buildnumber', 'default_preferences',
     preprocessHTML('web/viewer.html', defines)
         .pipe(gulp.dest(MINIFIED_DIR + 'web')),
     preprocessCSS('web/viewer.css', 'minified', defines, true)
-        .pipe(postcss([autoprefixer(AUTOPREFIXER_CONFIG)]))
+        .pipe(postcss([
+          autoprefixer(AUTOPREFIXER_CONFIG)
+        ]))
         .pipe(gulp.dest(MINIFIED_DIR + 'web')),
 
     gulp.src('web/compressed.tracemonkey-pldi-09.pdf')
@@ -844,7 +848,7 @@ function preprocessDefaultPreferences(content) {
 }
 
 gulp.task('mozcentral-pre', gulp.series('buildnumber', 'default_preferences',
-                                        'locale', function() {
+                                        function() {
   console.log();
   console.log('### Building mozilla-central extension');
   var defines = builder.merge(DEFINES, { MOZCENTRAL: true, SKIP_BABEL: true, });
@@ -875,11 +879,11 @@ gulp.task('mozcentral-pre', gulp.series('buildnumber', 'default_preferences',
         .pipe(gulp.dest(MOZCENTRAL_CONTENT_DIR + 'web')),
     preprocessCSS('web/viewer.css', 'mozcentral', defines, true)
         .pipe(postcss([
-            autoprefixer({ browsers: ['last 1 firefox versions'], })
+          autoprefixer({ overrideBrowserslist: ['last 1 firefox versions'], })
         ]))
         .pipe(gulp.dest(MOZCENTRAL_CONTENT_DIR + 'web')),
 
-    gulp.src(FIREFOX_EXTENSION_DIR + 'locale/en-US/*.properties')
+    gulp.src('l10n/en-US/*.properties')
         .pipe(gulp.dest(MOZCENTRAL_L10N_DIR)),
     gulp.src(FIREFOX_EXTENSION_DIR + 'README.mozilla')
         .pipe(replace(/\bPDFJSSCRIPT_VERSION\b/g, version))
@@ -925,7 +929,9 @@ gulp.task('chromium-pre', gulp.series('buildnumber', 'default_preferences',
     preprocessHTML('web/viewer.html', defines)
         .pipe(gulp.dest(CHROME_BUILD_CONTENT_DIR + 'web')),
     preprocessCSS('web/viewer.css', 'chrome', defines, true)
-        .pipe(postcss([autoprefixer({ browsers: ['chrome >= 49'], })]))
+        .pipe(postcss([
+          autoprefixer({ overrideBrowserslist: ['chrome >= 49'], })
+        ]))
         .pipe(gulp.dest(CHROME_BUILD_CONTENT_DIR + 'web')),
 
     gulp.src('LICENSE').pipe(gulp.dest(CHROME_BUILD_DIR)),
@@ -949,8 +955,6 @@ gulp.task('jsdoc', function (done) {
   var JSDOC_FILES = [
     'src/doc_helper.js',
     'src/display/api.js',
-    'src/shared/util.js',
-    'src/core/annotation.js'
   ];
 
   rimraf(JSDOC_BUILD_DIR, function () {
@@ -1021,7 +1025,7 @@ gulp.task('lib', gulp.series('buildnumber', 'default_preferences', function() {
   var licenseHeaderLibre =
     fs.readFileSync('./src/license_header_libre.js').toString();
   var preprocessor2 = require('./external/builder/preprocessor2.js');
-  var buildLib = merge([
+  return merge([
     gulp.src([
       'src/{core,display,shared}/*.js',
       '!src/shared/{cffStandardStrings,fonts_utils}.js',
@@ -1035,13 +1039,6 @@ gulp.task('lib', gulp.series('buildnumber', 'default_preferences', function() {
     gulp.src('test/unit/*.js', { base: '.', }),
   ]).pipe(transform('utf8', preprocess))
     .pipe(gulp.dest('build/lib/'));
-  return merge([
-    buildLib,
-    gulp.src('external/streams/streams-lib.js', { base: '.', })
-      .pipe(gulp.dest('build/')),
-    gulp.src('external/url/url-lib.js', { base: '.', })
-      .pipe(gulp.dest('build/')),
-  ]);
 }));
 
 gulp.task('publish', gulp.series('generic', function (done) {
@@ -1146,7 +1143,7 @@ gulp.task('baseline', function (done) {
 gulp.task('unittestcli', gulp.series('testing-pre', 'lib', function(done) {
   var options = ['node_modules/jasmine/bin/jasmine',
                  'JASMINE_CONFIG_PATH=test/unit/clitests.json'];
-  var jasmineProcess = spawn('node', options, { stdio: 'inherit', });
+  var jasmineProcess = startNode(options, { stdio: 'inherit', });
   jasmineProcess.on('close', function(code) {
     if (code !== 0) {
       done(new Error('Unit tests failed.'));
@@ -1163,7 +1160,7 @@ gulp.task('lint', gulp.series('default_preferences', function(done) {
   // Ensure that we lint the Firefox specific *.jsm files too.
   var options = ['node_modules/eslint/bin/eslint', '--ext', '.js,.jsm', '.',
                  '--report-unused-disable-directives'];
-  var esLintProcess = spawn('node', options, { stdio: 'inherit', });
+  var esLintProcess = startNode(options, { stdio: 'inherit', });
   esLintProcess.on('close', function (code) {
     if (code !== 0) {
       done(new Error('ESLint failed.'));
@@ -1246,9 +1243,10 @@ gulp.task('gh-pages-prepare', function () {
 gulp.task('wintersmith', function (done) {
   var wintersmith = require('wintersmith');
   var env = wintersmith('docs/config.json');
-  env.build(GH_PAGES_DIR, function (error) {
+  env.build(GH_PAGES_DIR, function(error) {
     if (error) {
-      return done(error);
+      done(error);
+      return;
     }
     replaceInFile(GH_PAGES_DIR + '/getting_started/index.html',
                   /STABLE_VERSION/g, config.stableVersion);
@@ -1333,6 +1331,7 @@ gulp.task('dist-pre', gulp.series('generic', 'components', 'image_decoders',
       'http': false,
       'https': false,
       'node-ensure': false,
+      'url': false,
       'zlib': false,
     },
     format: 'amd', // to not allow system.js to choose 'cjs'
@@ -1357,10 +1356,6 @@ gulp.task('dist-pre', gulp.series('generic', 'components', 'image_decoders',
     createStringSource('bower.json', JSON.stringify(bowerManifest, null, 2));
 
   return merge([
-    gulp.src('external/streams/streams-lib.js', { base: '.', })
-      .pipe(gulp.dest('build/dist/')),
-    gulp.src('external/url/url-lib.js', { base: '.', })
-      .pipe(gulp.dest('build/dist/')),
     packageJsonSrc.pipe(gulp.dest(DIST_DIR)),
     bowerJsonSrc.pipe(gulp.dest(DIST_DIR)),
     vfs.src('external/dist/**/*',

@@ -12,27 +12,34 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/* eslint no-var: error */
 
-const globalScope = require('./global_scope');
+// Skip compatibility checks for modern builds and if we already ran the module.
+if ((typeof PDFJSDev === 'undefined' || !PDFJSDev.test('SKIP_BABEL')) &&
+    (typeof globalThis === 'undefined' ||
+     !globalThis._pdfjsCompatibilityChecked)) {
 
-// Skip compatibility checks for the extensions and if we already ran
-// this module.
-if ((typeof PDFJSDev === 'undefined' ||
-     !PDFJSDev.test('FIREFOX || MOZCENTRAL')) &&
-    !globalScope._pdfjsCompatibilityChecked) {
+// Provides support for globalThis in legacy browsers.
+// Support: IE11/Edge, Opera
+if (typeof globalThis === 'undefined' || globalThis.Math !== Math) {
+  // eslint-disable-next-line no-global-assign
+  globalThis = require('core-js/es/global-this');
+}
+globalThis._pdfjsCompatibilityChecked = true;
 
-globalScope._pdfjsCompatibilityChecked = true;
-
-const isNodeJS = require('./is_node');
+const { isNodeJS, } = require('./is_node');
 
 const hasDOM = typeof window === 'object' && typeof document === 'object';
+const userAgent =
+  (typeof navigator !== 'undefined' && navigator.userAgent) || '';
+const isIE = /Trident/.test(userAgent);
 
 // Support: Node.js
 (function checkNodeBtoa() {
-  if (globalScope.btoa || !isNodeJS()) {
+  if (globalThis.btoa || !isNodeJS) {
     return;
   }
-  globalScope.btoa = function(chars) {
+  globalThis.btoa = function(chars) {
     // eslint-disable-next-line no-undef
     return Buffer.from(chars, 'binary').toString('base64');
   };
@@ -40,10 +47,10 @@ const hasDOM = typeof window === 'object' && typeof document === 'object';
 
 // Support: Node.js
 (function checkNodeAtob() {
-  if (globalScope.atob || !isNodeJS()) {
+  if (globalThis.atob || !isNodeJS) {
     return;
   }
-  globalScope.atob = function(input) {
+  globalThis.atob = function(input) {
     // eslint-disable-next-line no-undef
     return Buffer.from(input, 'base64').toString('binary');
   };
@@ -70,7 +77,7 @@ const hasDOM = typeof window === 'object' && typeof document === 'object';
 // one parameter, in legacy browsers.
 // Support: IE
 (function checkDOMTokenListAddRemove() {
-  if (!hasDOM || isNodeJS()) {
+  if (!hasDOM || isNodeJS) {
     return;
   }
   const div = document.createElement('div');
@@ -99,7 +106,7 @@ const hasDOM = typeof window === 'object' && typeof document === 'object';
 // "force" parameter, in legacy browsers.
 // Support: IE
 (function checkDOMTokenListToggle() {
-  if (!hasDOM || isNodeJS()) {
+  if (!hasDOM || isNodeJS) {
     return;
   }
   const div = document.createElement('div');
@@ -113,13 +120,33 @@ const hasDOM = typeof window === 'object' && typeof document === 'object';
   };
 })();
 
+// Provides support for window.history.{pushState, replaceState}, with the
+// `url` parameter set to `undefined`, without breaking the document URL.
+// Support: IE
+(function checkWindowHistoryPushStateReplaceState() {
+  if (!hasDOM || !isIE) {
+    return;
+  }
+  const OriginalPushState = window.history.pushState;
+  const OriginalReplaceState = window.history.replaceState;
+
+  window.history.pushState = function(state, title, url) {
+    const args = (url === undefined ? [state, title] : [state, title, url]);
+    OriginalPushState.apply(this, args);
+  };
+  window.history.replaceState = function(state, title, url) {
+    const args = (url === undefined ? [state, title] : [state, title, url]);
+    OriginalReplaceState.apply(this, args);
+  };
+})();
+
 // Provides support for String.prototype.startsWith in legacy browsers.
 // Support: IE, Chrome<41
 (function checkStringStartsWith() {
   if (String.prototype.startsWith) {
     return;
   }
-  require('core-js/fn/string/starts-with');
+  require('core-js/es/string/starts-with');
 })();
 
 // Provides support for String.prototype.endsWith in legacy browsers.
@@ -128,7 +155,7 @@ const hasDOM = typeof window === 'object' && typeof document === 'object';
   if (String.prototype.endsWith) {
     return;
   }
-  require('core-js/fn/string/ends-with');
+  require('core-js/es/string/ends-with');
 })();
 
 // Provides support for String.prototype.includes in legacy browsers.
@@ -137,7 +164,7 @@ const hasDOM = typeof window === 'object' && typeof document === 'object';
   if (String.prototype.includes) {
     return;
   }
-  require('core-js/fn/string/includes');
+  require('core-js/es/string/includes');
 })();
 
 // Provides support for Array.prototype.includes in legacy browsers.
@@ -146,7 +173,7 @@ const hasDOM = typeof window === 'object' && typeof document === 'object';
   if (Array.prototype.includes) {
     return;
   }
-  require('core-js/fn/array/includes');
+  require('core-js/es/array/includes');
 })();
 
 // Provides support for Array.from in legacy browsers.
@@ -155,7 +182,7 @@ const hasDOM = typeof window === 'object' && typeof document === 'object';
   if (Array.from) {
     return;
   }
-  require('core-js/fn/array/from');
+  require('core-js/es/array/from');
 })();
 
 // Provides support for Object.assign in legacy browsers.
@@ -164,7 +191,7 @@ const hasDOM = typeof window === 'object' && typeof document === 'object';
   if (Object.assign) {
     return;
   }
-  require('core-js/fn/object/assign');
+  require('core-js/es/object/assign');
 })();
 
 // Provides support for Math.log2 in legacy browsers.
@@ -173,7 +200,7 @@ const hasDOM = typeof window === 'object' && typeof document === 'object';
   if (Math.log2) {
     return;
   }
-  Math.log2 = require('core-js/fn/math/log2');
+  Math.log2 = require('core-js/es/math/log2');
 })();
 
 // Provides support for Number.isNaN in legacy browsers.
@@ -182,7 +209,7 @@ const hasDOM = typeof window === 'object' && typeof document === 'object';
   if (Number.isNaN) {
     return;
   }
-  Number.isNaN = require('core-js/fn/number/is-nan');
+  Number.isNaN = require('core-js/es/number/is-nan');
 })();
 
 // Provides support for Number.isInteger in legacy browsers.
@@ -191,7 +218,7 @@ const hasDOM = typeof window === 'object' && typeof document === 'object';
   if (Number.isInteger) {
     return;
   }
-  Number.isInteger = require('core-js/fn/number/is-integer');
+  Number.isInteger = require('core-js/es/number/is-integer');
 })();
 
 // Support: IE, Safari<11, Chrome<63
@@ -201,36 +228,50 @@ const hasDOM = typeof window === 'object' && typeof document === 'object';
     // need to be polyfilled for the IMAGE_DECODERS build target.
     return;
   }
-  if (globalScope.Promise && (globalScope.Promise.prototype &&
-                              globalScope.Promise.prototype.finally)) {
+  if (globalThis.Promise && (globalThis.Promise.prototype &&
+                             globalThis.Promise.prototype.finally)) {
     return;
   }
-  globalScope.Promise = require('core-js/fn/promise');
+  globalThis.Promise = require('core-js/es/promise/index');
+})();
+
+// Support: IE
+(function checkURL() {
+  if (typeof PDFJSDev !== 'undefined' && PDFJSDev.test('IMAGE_DECODERS')) {
+    // The current image decoders don't use the `URL` constructor, so it
+    // doesn't need to be polyfilled for the IMAGE_DECODERS build target.
+    return;
+  }
+  if (typeof PDFJSDev !== 'undefined' && !PDFJSDev.test('GENERIC')) {
+    // The `URL` constructor is assumed to be available in the extension builds.
+    return;
+  }
+  globalThis.URL = require('core-js/web/url');
 })();
 
 // Support: IE<11, Safari<8, Chrome<36
 (function checkWeakMap() {
-  if (globalScope.WeakMap) {
+  if (globalThis.WeakMap) {
     return;
   }
-  globalScope.WeakMap = require('core-js/fn/weak-map');
+  globalThis.WeakMap = require('core-js/es/weak-map/index');
 })();
 
 // Support: IE11
 (function checkWeakSet() {
-  if (globalScope.WeakSet) {
+  if (globalThis.WeakSet) {
     return;
   }
-  globalScope.WeakSet = require('core-js/fn/weak-set');
+  globalThis.WeakSet = require('core-js/es/weak-set/index');
 })();
 
 // Provides support for String.codePointAt in legacy browsers.
 // Support: IE11.
 (function checkStringCodePointAt() {
-  if (String.codePointAt) {
+  if (String.prototype.codePointAt) {
     return;
   }
-  String.codePointAt = require('core-js/fn/string/code-point-at');
+  require('core-js/es/string/code-point-at');
 })();
 
 // Provides support for String.fromCodePoint in legacy browsers.
@@ -239,15 +280,15 @@ const hasDOM = typeof window === 'object' && typeof document === 'object';
   if (String.fromCodePoint) {
     return;
   }
-  String.fromCodePoint = require('core-js/fn/string/from-code-point');
+  String.fromCodePoint = require('core-js/es/string/from-code-point');
 })();
 
 // Support: IE
 (function checkSymbol() {
-  if (globalScope.Symbol) {
+  if (globalThis.Symbol) {
     return;
   }
-  require('core-js/es6/symbol');
+  require('core-js/es/symbol/index');
 })();
 
 // Provides support for String.prototype.padStart in legacy browsers.
@@ -256,7 +297,7 @@ const hasDOM = typeof window === 'object' && typeof document === 'object';
   if (String.prototype.padStart) {
     return;
   }
-  require('core-js/fn/string/pad-start');
+  require('core-js/es/string/pad-start');
 })();
 
 // Provides support for String.prototype.padEnd in legacy browsers.
@@ -265,7 +306,7 @@ const hasDOM = typeof window === 'object' && typeof document === 'object';
   if (String.prototype.padEnd) {
     return;
   }
-  require('core-js/fn/string/pad-end');
+  require('core-js/es/string/pad-end');
 })();
 
 // Provides support for Object.values in legacy browsers.
@@ -274,7 +315,7 @@ const hasDOM = typeof window === 'object' && typeof document === 'object';
   if (Object.values) {
     return;
   }
-  Object.values = require('core-js/fn/object/values');
+  Object.values = require('core-js/es/object/values');
 })();
 
 }

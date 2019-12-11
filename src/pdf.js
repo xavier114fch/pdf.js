@@ -31,8 +31,8 @@ let pdfjsDisplayWorkerOptions = require('./display/worker_options.js');
 let pdfjsDisplayAPICompatibility = require('./display/api_compatibility.js');
 
 if (typeof PDFJSDev === 'undefined' || PDFJSDev.test('GENERIC')) {
-  const isNodeJS = require('./shared/is_node.js');
-  if (isNodeJS()) {
+  const { isNodeJS, } = require('./shared/is_node.js');
+  if (isNodeJS) {
     let PDFNodeStream = require('./display/node_stream.js').PDFNodeStream;
     pdfjsDisplayAPI.setPDFNetworkStreamFactory((params) => {
       return new PDFNodeStream(params);
@@ -107,13 +107,13 @@ exports.removeNullCharacters = pdfjsSharedUtil.removeNullCharacters;
 exports.shadow = pdfjsSharedUtil.shadow;
 exports.Util = pdfjsSharedUtil.Util;
 exports.ReadableStream = pdfjsSharedUtil.ReadableStream;
-exports.URL = pdfjsSharedUtil.URL;
 exports.RenderingCancelledException =
   pdfjsDisplayDisplayUtils.RenderingCancelledException;
 exports.getFilenameFromUrl = pdfjsDisplayDisplayUtils.getFilenameFromUrl;
 exports.LinkTarget = pdfjsDisplayDisplayUtils.LinkTarget;
 exports.addLinkAttributes = pdfjsDisplayDisplayUtils.addLinkAttributes;
 exports.loadScript = pdfjsDisplayDisplayUtils.loadScript;
+exports.PDFDateString = pdfjsDisplayDisplayUtils.PDFDateString;
 exports.GlobalWorkerOptions = pdfjsDisplayWorkerOptions.GlobalWorkerOptions;
 exports.apiCompatibilityParams =
   pdfjsDisplayAPICompatibility.apiCompatibilityParams;

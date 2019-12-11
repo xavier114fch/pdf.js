@@ -15,8 +15,9 @@
 /* eslint no-var: error */
 
 import {
-  assert, FormatError, info, isArrayBuffer, isBool, isNum, isSpace, isString,
-  OPS, shadow, stringToBytes, stringToPDFString, Util, warn
+  assert, bytesToString, FormatError, info, InvalidPDFException, isArrayBuffer,
+  isArrayEqual, isBool, isNum, isSpace, isString, OPS, shadow, stringToBytes,
+  stringToPDFString, Util, warn
 } from '../shared/util';
 import { Catalog, ObjectLoader, XRef } from './obj';
 import { Dict, isDict, isName, isStream, Ref } from './primitives';
@@ -54,13 +55,15 @@ class Page {
     this.evaluatorOptions = pdfManager.evaluatorOptions;
     this.resourcesPromise = null;
 
-    const uniquePrefix = `p${this.pageIndex}_`;
     const idCounters = {
       obj: 0,
     };
     this.idFactory = {
       createObjId() {
-        return uniquePrefix + (++idCounters.obj);
+        return `p${pageIndex}_${++idCounters.obj}`;
+      },
+      getDocId() {
+        return `g_${pdfManager.docId}`;
       },
     };
   }
@@ -92,24 +95,28 @@ class Page {
                   this._getInheritableProperty('Resources') || Dict.empty);
   }
 
-  get mediaBox() {
-    const mediaBox = this._getInheritableProperty('MediaBox',
-                                                  /* getArray = */ true);
-    // Reset invalid media box to letter size.
-    if (!Array.isArray(mediaBox) || mediaBox.length !== 4) {
-      return shadow(this, 'mediaBox', LETTER_SIZE_MEDIABOX);
+  _getBoundingBox(name) {
+    const box = this._getInheritableProperty(name, /* getArray = */ true);
+
+    if (Array.isArray(box) && box.length === 4) {
+      if ((box[2] - box[0]) !== 0 && (box[3] - box[1]) !== 0) {
+        return box;
+      }
+      warn(`Empty /${name} entry.`);
     }
-    return shadow(this, 'mediaBox', mediaBox);
+    return null;
+  }
+
+  get mediaBox() {
+    // Reset invalid media box to letter size.
+    return shadow(this, 'mediaBox',
+                  this._getBoundingBox('MediaBox') || LETTER_SIZE_MEDIABOX);
   }
 
   get cropBox() {
-    const cropBox = this._getInheritableProperty('CropBox',
-                                                 /* getArray = */ true);
     // Reset invalid crop box to media box.
-    if (!Array.isArray(cropBox) || cropBox.length !== 4) {
-      return shadow(this, 'cropBox', this.mediaBox);
-    }
-    return shadow(this, 'cropBox', cropBox);
+    return shadow(this, 'cropBox',
+                  this._getBoundingBox('CropBox') || this.mediaBox);
   }
 
   get userUnit() {
@@ -125,13 +132,19 @@ class Page {
     // "The crop, bleed, trim, and art boxes should not ordinarily
     // extend beyond the boundaries of the media box. If they do, they are
     // effectively reduced to their intersection with the media box."
-    const mediaBox = this.mediaBox, cropBox = this.cropBox;
-    if (mediaBox === cropBox) {
-      return shadow(this, 'view', mediaBox);
+    const { cropBox, mediaBox, } = this;
+    let view;
+    if (cropBox === mediaBox || isArrayEqual(cropBox, mediaBox)) {
+      view = mediaBox;
+    } else {
+      const box = Util.intersect(cropBox, mediaBox);
+      if (box && ((box[2] - box[0]) !== 0 && (box[3] - box[1]) !== 0)) {
+        view = box;
+      } else {
+        warn('Empty /CropBox and /MediaBox intersection.');
+      }
     }
-
-    const intersection = Util.intersect(cropBox, mediaBox);
-    return shadow(this, 'view', intersection || mediaBox);
+    return shadow(this, 'view', view || mediaBox);
   }
 
   get rotate() {
@@ -182,7 +195,7 @@ class Page {
     });
   }
 
-  getOperatorList({ handler, task, intent, renderInteractiveForms, }) {
+  getOperatorList({ handler, sink, task, intent, renderInteractiveForms, }) {
     const contentStreamPromise = this.pdfManager.ensure(this,
                                                         'getContentStream');
     const resourcesPromise = this.loadResources([
@@ -195,7 +208,6 @@ class Page {
     ]);
 
     const partialEvaluator = new PartialEvaluator({
-      pdfManager: this.pdfManager,
       xref: this.xref,
       handler,
       pageIndex: this.pageIndex,
@@ -208,7 +220,7 @@ class Page {
 
     const dataPromises = Promise.all([contentStreamPromise, resourcesPromise]);
     const pageListPromise = dataPromises.then(([contentStream]) => {
-      const opList = new OperatorList(intent, handler, this.pageIndex);
+      const opList = new OperatorList(intent, sink, this.pageIndex);
 
       handler.send('StartRenderPage', {
         transparency: partialEvaluator.hasBlendModes(this.resources),
@@ -232,7 +244,7 @@ class Page {
         function([pageOpList, annotations]) {
       if (annotations.length === 0) {
         pageOpList.flush(true);
-        return pageOpList;
+        return { length: pageOpList.totalLength, };
       }
 
       // Collect the operator list promises for the annotations. Each promise
@@ -252,7 +264,7 @@ class Page {
         }
         pageOpList.addOp(OPS.endAnnotations, []);
         pageOpList.flush(true);
-        return pageOpList;
+        return { length: pageOpList.totalLength, };
       });
     });
   }
@@ -270,7 +282,6 @@ class Page {
     const dataPromises = Promise.all([contentStreamPromise, resourcesPromise]);
     return dataPromises.then(([contentStream]) => {
       const partialEvaluator = new PartialEvaluator({
-        pdfManager: this.pdfManager,
         xref: this.xref,
         handler,
         pageIndex: this.pageIndex,
@@ -337,20 +348,11 @@ const FINGERPRINT_FIRST_BYTES = 1024;
 const EMPTY_FINGERPRINT = '\x00\x00\x00\x00\x00\x00\x00' +
                           '\x00\x00\x00\x00\x00\x00\x00\x00\x00';
 
-function find(stream, needle, limit, backwards) {
-  const pos = stream.pos;
-  const end = stream.end;
-  if (pos + limit > end) {
-    limit = end - pos;
-  }
+function find(stream, needle, limit, backwards = false) {
+  assert(limit > 0, 'The "limit" must be a positive integer.');
 
-  const strBuf = [];
-  for (let i = 0; i < limit; ++i) {
-    strBuf.push(String.fromCharCode(stream.getByte()));
-  }
-  const str = strBuf.join('');
+  const str = bytesToString(stream.peekBytes(limit));
 
-  stream.pos = pos;
   const index = backwards ? str.lastIndexOf(needle) : str.indexOf(needle);
   if (index === -1) {
     return false;
@@ -360,10 +362,7 @@ function find(stream, needle, limit, backwards) {
 }
 
 /**
- * The `PDFDocument` class holds all the data of the PDF file. There exists
- * one `PDFDocument` object on the main thread and one object for each worker.
- * If no worker support is enabled, two `PDFDocument` objects are created on
- * the main thread.
+ * The `PDFDocument` class holds all the (worker-thread) data of the PDF file.
  */
 class PDFDocument {
   constructor(pdfManager, arg) {
@@ -376,7 +375,8 @@ class PDFDocument {
       throw new Error('PDFDocument: Unknown argument type');
     }
     if (stream.length <= 0) {
-      throw new Error('PDFDocument: Stream must have data');
+      throw new InvalidPDFException(
+        'The PDF file is empty, i.e. its size is zero bytes.');
     }
 
     this.pdfManager = pdfManager;
@@ -451,7 +451,7 @@ class PDFDocument {
       // Find the end of the first object.
       stream.reset();
       if (find(stream, 'endobj', 1024)) {
-        startXRef = stream.pos + 6;
+        startXRef = (stream.pos + 6) - stream.start;
       }
     } else {
       // Find `startxref` by checking backwards from the end of the file.
@@ -607,27 +607,23 @@ class PDFDocument {
         idArray[0] !== EMPTY_FINGERPRINT) {
       hash = stringToBytes(idArray[0]);
     } else {
-      if (this.stream.ensureRange) {
-        this.stream.ensureRange(0,
-          Math.min(FINGERPRINT_FIRST_BYTES, this.stream.end));
-      }
-      hash = calculateMD5(this.stream.bytes.subarray(0,
-        FINGERPRINT_FIRST_BYTES), 0, FINGERPRINT_FIRST_BYTES);
+      hash = calculateMD5(this.stream.getByteRange(0, FINGERPRINT_FIRST_BYTES),
+                          0, FINGERPRINT_FIRST_BYTES);
     }
 
-    let fingerprint = '';
+    const fingerprintBuf = [];
     for (let i = 0, ii = hash.length; i < ii; i++) {
       const hex = hash[i].toString(16);
-      fingerprint += (hex.length === 1 ? '0' + hex : hex);
+      fingerprintBuf.push(hex.padStart(2, '0'));
     }
-    return shadow(this, 'fingerprint', fingerprint);
+    return shadow(this, 'fingerprint', fingerprintBuf.join(''));
   }
 
   _getLinearizationPage(pageIndex) {
     const { catalog, linearization, } = this;
     assert(linearization && linearization.pageFirst === pageIndex);
 
-    const ref = new Ref(linearization.objectNumberFirst, 0);
+    const ref = Ref.get(linearization.objectNumberFirst, 0);
     return this.xref.fetchAsync(ref).then((obj) => {
       // Ensure that the object that was found is actually a Page dictionary.
       if (isDict(obj, 'Page') ||
@@ -669,13 +665,13 @@ class PDFDocument {
   }
 
   checkFirstPage() {
-    return this.getPage(0).catch((reason) => {
+    return this.getPage(0).catch(async (reason) => {
       if (reason instanceof XRefEntryException) {
         // Clear out the various caches to ensure that we haven't stored any
         // inconsistent and/or incorrect state, since that could easily break
         // subsequent `this.getPage` calls.
         this._pagePromises.length = 0;
-        this.cleanup();
+        await this.cleanup();
 
         throw new XRefParseException();
       }

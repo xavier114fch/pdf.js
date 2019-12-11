@@ -223,7 +223,7 @@ class PDFFindController {
   }
 
   /**
-   * @return {string} The (current) normalized search query.
+   * @type {string} The (current) normalized search query.
    */
   get _query() {
     if (this._state.query !== this._rawQuery) {
@@ -252,9 +252,9 @@ class PDFFindController {
         // over matches at the top/bottom of pages thus making them completely
         // inaccessible when there's multiple pages visible in the viewer.
         if (pageNumber >= 1 && pageNumber <= linkService.pagesCount &&
-            linkService.page !== pageNumber && linkService.isPageVisible &&
+            pageNumber !== linkService.page &&
             !linkService.isPageVisible(pageNumber)) {
-          break;
+          return true;
         }
         return false;
       case 'findhighlightallchange':

@@ -14,8 +14,9 @@
  */
 
 import { assert, CMapCompressionType } from '../../src/shared/util';
-import isNodeJS from '../../src/shared/is_node';
+import { isNodeJS } from '../../src/shared/is_node';
 import { isRef } from '../../src/core/primitives';
+import { Page } from '../../src/core/document';
 
 class DOMFileReaderFactory {
   static async fetch(params) {
@@ -50,7 +51,7 @@ const TEST_PDFS_PATH = {
 
 function buildGetDocumentParams(filename, options) {
   let params = Object.create(null);
-  if (isNodeJS()) {
+  if (isNodeJS) {
     params.url = TEST_PDFS_PATH.node + filename;
   } else {
     params.url = new URL(TEST_PDFS_PATH.dom + filename, window.location).href;
@@ -158,6 +159,18 @@ class XRefMock {
   }
 }
 
+function createIdFactory(pageIndex) {
+  const page = new Page({
+    pdfManager: {
+      get docId() {
+        return 'd0';
+      },
+    },
+    pageIndex,
+  });
+  return page.idFactory;
+}
+
 export {
   DOMFileReaderFactory,
   NodeFileReaderFactory,
@@ -166,4 +179,5 @@ export {
   XRefMock,
   buildGetDocumentParams,
   TEST_PDFS_PATH,
+  createIdFactory,
 };

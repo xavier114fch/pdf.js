@@ -14,19 +14,19 @@
  */
 
 import {
-  bytesToString, createPromiseCapability, createValidAbsoluteUrl, FormatError,
-  info, InvalidPDFException, isBool, isNum, isString, PermissionFlag, shadow,
-  stringToPDFString, stringToUTF8String, unreachable, warn
+  assert, bytesToString, createPromiseCapability, createValidAbsoluteUrl,
+  FormatError, info, InvalidPDFException, isBool, isNum, isString,
+  PermissionFlag, shadow, stringToPDFString, stringToUTF8String, unreachable,
+  warn
 } from '../shared/util';
 import {
-  Dict, isCmd, isDict, isName, isRef, isRefsEqual, isStream, Ref, RefSet,
-  RefSetCache
+  clearPrimitiveCaches, Cmd, Dict, isCmd, isDict, isName, isRef, isRefsEqual,
+  isStream, Ref, RefSet, RefSetCache
 } from './primitives';
 import { Lexer, Parser } from './parser';
 import {
   MissingDataException, toRomanNumerals, XRefEntryException, XRefParseException
 } from './core_utils';
-import { ChunkedStream } from './chunked_stream';
 import { CipherTransformFactory } from './crypto';
 import { ColorSpace } from './colorspace';
 
@@ -143,6 +143,7 @@ class Catalog {
       const title = outlineDict.get('Title');
       const flags = outlineDict.get('F') || 0;
       const color = outlineDict.getArray('C');
+      const count = outlineDict.get('Count');
       let rgbColor = blackColor;
 
       // We only need to parse the color when it's valid, and non-default.
@@ -158,7 +159,7 @@ class Catalog {
         newWindow: data.newWindow,
         title: stringToPDFString(title),
         color: rgbColor,
-        count: outlineDict.get('Count'),
+        count: Number.isInteger(count) ? count : undefined,
         bold: !!(flags & 2),
         italic: !!(flags & 1),
         items: [],
@@ -265,6 +266,7 @@ class Catalog {
     } else if (this.catDict.has('Dests')) { // Simple destination dictionary.
       return this.catDict.get('Dests');
     }
+    return undefined;
   }
 
   get pageLabels() {
@@ -376,6 +378,27 @@ class Catalog {
     return pageLabels;
   }
 
+  get pageLayout() {
+    const obj = this.catDict.get('PageLayout');
+    // Purposely use a non-standard default value, rather than 'SinglePage', to
+    // allow differentiating between `undefined` and /SinglePage since that does
+    // affect the Scroll mode (continuous/non-continuous) used in Adobe Reader.
+    let pageLayout = '';
+
+    if (isName(obj)) {
+      switch (obj.name) {
+        case 'SinglePage':
+        case 'OneColumn':
+        case 'TwoColumnLeft':
+        case 'TwoColumnRight':
+        case 'TwoPageLeft':
+        case 'TwoPageRight':
+          pageLayout = obj.name;
+      }
+    }
+    return shadow(this, 'pageLayout', pageLayout);
+  }
+
   get pageMode() {
     const obj = this.catDict.get('PageMode');
     let pageMode = 'UseNone'; // Default value.
@@ -392,6 +415,136 @@ class Catalog {
       }
     }
     return shadow(this, 'pageMode', pageMode);
+  }
+
+  get viewerPreferences() {
+    const ViewerPreferencesValidators = {
+      HideToolbar: isBool,
+      HideMenubar: isBool,
+      HideWindowUI: isBool,
+      FitWindow: isBool,
+      CenterWindow: isBool,
+      DisplayDocTitle: isBool,
+      NonFullScreenPageMode: isName,
+      Direction: isName,
+      ViewArea: isName,
+      ViewClip: isName,
+      PrintArea: isName,
+      PrintClip: isName,
+      PrintScaling: isName,
+      Duplex: isName,
+      PickTrayByPDFSize: isBool,
+      PrintPageRange: Array.isArray,
+      NumCopies: Number.isInteger,
+    };
+
+    const obj = this.catDict.get('ViewerPreferences');
+    const prefs = Object.create(null);
+
+    if (isDict(obj)) {
+      for (const key in ViewerPreferencesValidators) {
+        if (!obj.has(key)) {
+          continue;
+        }
+        const value = obj.get(key);
+        // Make sure the (standard) value conforms to the specification.
+        if (!ViewerPreferencesValidators[key](value)) {
+          info(`Bad value in ViewerPreferences for "${key}".`);
+          continue;
+        }
+        let prefValue;
+
+        switch (key) {
+          case 'NonFullScreenPageMode':
+            switch (value.name) {
+              case 'UseNone':
+              case 'UseOutlines':
+              case 'UseThumbs':
+              case 'UseOC':
+                prefValue = value.name;
+                break;
+              default:
+                prefValue = 'UseNone';
+            }
+            break;
+          case 'Direction':
+            switch (value.name) {
+              case 'L2R':
+              case 'R2L':
+                prefValue = value.name;
+                break;
+              default:
+                prefValue = 'L2R';
+            }
+            break;
+          case 'ViewArea':
+          case 'ViewClip':
+          case 'PrintArea':
+          case 'PrintClip':
+            switch (value.name) {
+              case 'MediaBox':
+              case 'CropBox':
+              case 'BleedBox':
+              case 'TrimBox':
+              case 'ArtBox':
+                prefValue = value.name;
+                break;
+              default:
+                prefValue = 'CropBox';
+            }
+            break;
+          case 'PrintScaling':
+            switch (value.name) {
+              case 'None':
+              case 'AppDefault':
+                prefValue = value.name;
+                break;
+              default:
+                prefValue = 'AppDefault';
+            }
+            break;
+          case 'Duplex':
+            switch (value.name) {
+              case 'Simplex':
+              case 'DuplexFlipShortEdge':
+              case 'DuplexFlipLongEdge':
+                prefValue = value.name;
+                break;
+              default:
+                prefValue = 'None';
+            }
+            break;
+          case 'PrintPageRange':
+            const length = value.length;
+            if (length % 2 !== 0) { // The number of elements must be even.
+              break;
+            }
+            const isValid = value.every((page, i, arr) => {
+              return (Number.isInteger(page) && page > 0) &&
+                     (i === 0 || page >= arr[i - 1]) && page <= this.numPages;
+            });
+            if (isValid) {
+              prefValue = value;
+            }
+            break;
+          case 'NumCopies':
+            if (value > 0) {
+              prefValue = value;
+            }
+            break;
+          default:
+            assert(typeof value === 'boolean');
+            prefValue = value;
+        }
+
+        if (prefValue !== undefined) {
+          prefs[key] = prefValue;
+        } else {
+          info(`Bad value in ViewerPreferences for "${key}".`);
+        }
+      }
+    }
+    return shadow(this, 'viewerPreferences', prefs);
   }
 
   get openActionDestination() {
@@ -509,6 +662,7 @@ class Catalog {
   }
 
   cleanup() {
+    clearPrimitiveCaches();
     this.pageKidsCountCache.clear();
 
     const promises = [];
@@ -517,9 +671,8 @@ class Catalog {
     });
 
     return Promise.all(promises).then((translatedFonts) => {
-      for (let i = 0, ii = translatedFonts.length; i < ii; i++) {
-        const font = translatedFonts[i].dict;
-        delete font.translated;
+      for (const { dict, } of translatedFonts) {
+        delete dict.translated;
       }
       this.fontCache.clear();
       this.builtInCMapCache.clear();
@@ -708,8 +861,8 @@ class Catalog {
    * @property {Dict} destDict - The dictionary containing the destination.
    * @property {Object} resultObj - The object where the parsed destination
    *   properties will be placed.
-   * @property {string} docBaseUrl - (optional) The document base URL that is
-   *   used when attempting to recover valid absolute URLs from relative ones.
+   * @property {string} [docBaseUrl] - The document base URL that is used when
+   *   attempting to recover valid absolute URLs from relative ones.
    */
 
   /**
@@ -888,11 +1041,10 @@ var XRef = (function XRefClosure() {
     this.pdfManager = pdfManager;
     this.entries = [];
     this.xrefstms = Object.create(null);
-    // prepare the XRef cache
-    this.cache = [];
+    this._cacheMap = new Map(); // Prepare the XRef cache.
     this.stats = {
-      streamTypes: [],
-      fontTypes: [],
+      streamTypes: Object.create(null),
+      fontTypes: Object.create(null),
     };
   }
 
@@ -1045,10 +1197,15 @@ var XRef = (function XRefClosure() {
           entry.gen = parser.getObj();
           var type = parser.getObj();
 
-          if (isCmd(type, 'f')) {
-            entry.free = true;
-          } else if (isCmd(type, 'n')) {
-            entry.uncompressed = true;
+          if (type instanceof Cmd) {
+            switch (type.cmd) {
+              case 'f':
+                entry.free = true;
+                break;
+              case 'n':
+                entry.uncompressed = true;
+                break;
+            }
           }
 
           // Validate entry obj
@@ -1256,7 +1413,7 @@ var XRef = (function XRefClosure() {
           position += skipUntil(buffer, position, startxrefBytes);
         } else if ((m = objRegExp.exec(token))) {
           const num = m[1] | 0, gen = m[2] | 0;
-          if (typeof this.entries[num] === 'undefined') {
+          if (!this.entries[num] || this.entries[num].gen === gen) {
             this.entries[num] = {
               offset: position - stream.start,
               gen,
@@ -1322,8 +1479,12 @@ var XRef = (function XRefClosure() {
       let trailerDict;
       for (i = 0, ii = trailers.length; i < ii; ++i) {
         stream.pos = trailers[i];
-        var parser = new Parser(new Lexer(stream), /* allowStreams = */ true,
-                                /* xref = */ this, /* recoveryMode = */ true);
+        const parser = new Parser({
+          lexer: new Lexer(stream),
+          xref: this,
+          allowStreams: true,
+          recoveryMode: true,
+        });
         var obj = parser.getObj();
         if (!isCmd(obj, 'trailer')) {
           continue;
@@ -1358,7 +1519,7 @@ var XRef = (function XRefClosure() {
         return trailerDict;
       }
       // nothing helps
-      throw new InvalidPDFException('Invalid PDF structure');
+      throw new InvalidPDFException('Invalid PDF structure.');
     },
 
     readXRef: function XRef_readXRef(recoveryMode) {
@@ -1381,7 +1542,11 @@ var XRef = (function XRefClosure() {
 
           stream.pos = startXRef + stream.start;
 
-          var parser = new Parser(new Lexer(stream), true, this);
+          const parser = new Parser({
+            lexer: new Lexer(stream),
+            xref: this,
+            allowStreams: true,
+          });
           var obj = parser.getObj();
           var dict;
 
@@ -1444,7 +1609,7 @@ var XRef = (function XRefClosure() {
       }
 
       if (recoveryMode) {
-        return;
+        return undefined;
       }
       throw new XRefParseException();
     },
@@ -1458,19 +1623,23 @@ var XRef = (function XRefClosure() {
     },
 
     fetchIfRef: function XRef_fetchIfRef(obj, suppressEncryption) {
-      if (!isRef(obj)) {
-        return obj;
+      if (obj instanceof Ref) {
+        return this.fetch(obj, suppressEncryption);
       }
-      return this.fetch(obj, suppressEncryption);
+      return obj;
     },
 
     fetch: function XRef_fetch(ref, suppressEncryption) {
-      if (!isRef(ref)) {
+      if (!(ref instanceof Ref)) {
         throw new Error('ref object is not a reference');
       }
-      var num = ref.num;
-      if (num in this.cache) {
-        var cacheEntry = this.cache[num];
+      const num = ref.num;
+
+      // The XRef cache is populated with objects which are obtained through
+      // `Parser.getObj`, and indirectly via `Lexer.getObj`. Neither of these
+      // methods should ever return `undefined` (note the `assert` calls below).
+      const cacheEntry = this._cacheMap.get(num);
+      if (cacheEntry !== undefined) {
         // In documents with Object Streams, it's possible that cached `Dict`s
         // have not been assigned an `objId` yet (see e.g. issue3115r.pdf).
         if (cacheEntry instanceof Dict && !cacheEntry.objId) {
@@ -1478,12 +1647,11 @@ var XRef = (function XRefClosure() {
         }
         return cacheEntry;
       }
+      let xrefEntry = this.getEntry(num);
 
-      var xrefEntry = this.getEntry(num);
-
-      // the referenced entry can be free
-      if (xrefEntry === null) {
-        return (this.cache[num] = null);
+      if (xrefEntry === null) { // The referenced entry can be free.
+        this._cacheMap.set(num, xrefEntry);
+        return xrefEntry;
       }
 
       if (xrefEntry.uncompressed) {
@@ -1507,18 +1675,16 @@ var XRef = (function XRefClosure() {
       }
       var stream = this.stream.makeSubStream(xrefEntry.offset +
                                              this.stream.start);
-      var parser = new Parser(new Lexer(stream), true, this);
+      const parser = new Parser({
+        lexer: new Lexer(stream),
+        xref: this,
+        allowStreams: true,
+      });
       var obj1 = parser.getObj();
       var obj2 = parser.getObj();
       var obj3 = parser.getObj();
 
-      if (!Number.isInteger(obj1)) {
-        obj1 = parseInt(obj1, 10);
-      }
-      if (!Number.isInteger(obj2)) {
-        obj2 = parseInt(obj2, 10);
-      }
-      if (obj1 !== num || obj2 !== gen || !isCmd(obj3)) {
+      if (obj1 !== num || obj2 !== gen || !(obj3 instanceof Cmd)) {
         throw new XRefEntryException(`Bad (uncompressed) XRef entry: ${ref}`);
       }
       if (obj3.cmd !== 'obj') {
@@ -1537,52 +1703,69 @@ var XRef = (function XRefClosure() {
         xrefEntry = parser.getObj();
       }
       if (!isStream(xrefEntry)) {
-        this.cache[num] = xrefEntry;
+        if (typeof PDFJSDev === 'undefined' ||
+            PDFJSDev.test('!PRODUCTION || TESTING')) {
+          assert(xrefEntry !== undefined,
+                 'fetchUncompressed: The "xrefEntry" cannot be undefined.');
+        }
+        this._cacheMap.set(num, xrefEntry);
       }
       return xrefEntry;
     },
 
     fetchCompressed(ref, xrefEntry, suppressEncryption = false) {
-      var tableOffset = xrefEntry.offset;
-      var stream = this.fetch(new Ref(tableOffset, 0));
+      const tableOffset = xrefEntry.offset;
+      const stream = this.fetch(Ref.get(tableOffset, 0));
       if (!isStream(stream)) {
         throw new FormatError('bad ObjStm stream');
       }
-      var first = stream.dict.get('First');
-      var n = stream.dict.get('N');
+      const first = stream.dict.get('First');
+      const n = stream.dict.get('N');
       if (!Number.isInteger(first) || !Number.isInteger(n)) {
         throw new FormatError(
           'invalid first and n parameters for ObjStm stream');
       }
-      var parser = new Parser(new Lexer(stream), false, this);
-      parser.allowStreams = true;
-      var i, entries = [], num, nums = [];
+      const parser = new Parser({
+        lexer: new Lexer(stream),
+        xref: this,
+        allowStreams: true,
+      });
+      const nums = new Array(n);
       // read the object numbers to populate cache
-      for (i = 0; i < n; ++i) {
-        num = parser.getObj();
+      for (let i = 0; i < n; ++i) {
+        const num = parser.getObj();
         if (!Number.isInteger(num)) {
           throw new FormatError(
             `invalid object number in the ObjStm stream: ${num}`);
         }
-        nums.push(num);
-        var offset = parser.getObj();
+        const offset = parser.getObj();
         if (!Number.isInteger(offset)) {
           throw new FormatError(
             `invalid object offset in the ObjStm stream: ${offset}`);
         }
+        nums[i] = num;
       }
+      const entries = new Array(n);
       // read stream objects for cache
-      for (i = 0; i < n; ++i) {
-        entries.push(parser.getObj());
+      for (let i = 0; i < n; ++i) {
+        const obj = parser.getObj();
+        entries[i] = obj;
         // The ObjStm should not contain 'endobj'. If it's present, skip over it
         // to support corrupt PDFs (fixes issue 5241, bug 898610, bug 1037816).
-        if (isCmd(parser.buf1, 'endobj')) {
+        if ((parser.buf1 instanceof Cmd) && parser.buf1.cmd === 'endobj') {
           parser.shift();
         }
-        num = nums[i];
-        var entry = this.entries[num];
+        if (isStream(obj)) {
+          continue;
+        }
+        const num = nums[i], entry = this.entries[num];
         if (entry && entry.offset === tableOffset && entry.gen === i) {
-          this.cache[num] = entries[i];
+          if (typeof PDFJSDev === 'undefined' ||
+              PDFJSDev.test('!PRODUCTION || TESTING')) {
+            assert(obj !== undefined,
+                   'fetchCompressed: The "obj" cannot be undefined.');
+          }
+          this._cacheMap.set(num, obj);
         }
       }
       xrefEntry = entries[xrefEntry.gen];
@@ -1593,10 +1776,10 @@ var XRef = (function XRefClosure() {
     },
 
     async fetchIfRefAsync(obj, suppressEncryption) {
-      if (!isRef(obj)) {
-        return obj;
+      if (obj instanceof Ref) {
+        return this.fetchAsync(obj, suppressEncryption);
       }
-      return this.fetchAsync(obj, suppressEncryption);
+      return obj;
     },
 
     async fetchAsync(ref, suppressEncryption) {
@@ -1865,13 +2048,13 @@ var FileSpec = (function FileSpecClosure() {
  */
 let ObjectLoader = (function() {
   function mayHaveChildren(value) {
-    return isRef(value) || isDict(value) || Array.isArray(value) ||
-           isStream(value);
+    return (value instanceof Ref) || (value instanceof Dict) ||
+           Array.isArray(value) || isStream(value);
   }
 
   function addChildren(node, nodesToVisit) {
-    if (isDict(node) || isStream(node)) {
-      let dict = isDict(node) ? node : node.dict;
+    if ((node instanceof Dict) || isStream(node)) {
+      let dict = (node instanceof Dict) ? node : node.dict;
       let dictKeys = dict.getKeys();
       for (let i = 0, ii = dictKeys.length; i < ii; i++) {
         let rawValue = dict.getRaw(dictKeys[i]);
@@ -1894,17 +2077,15 @@ let ObjectLoader = (function() {
     this.keys = keys;
     this.xref = xref;
     this.refSet = null;
-    this.capability = null;
   }
 
   ObjectLoader.prototype = {
-    load() {
-      this.capability = createPromiseCapability();
-      // Don't walk the graph if all the data is already loaded.
-      if (!(this.xref.stream instanceof ChunkedStream) ||
-          this.xref.stream.getMissingChunks().length === 0) {
-        this.capability.resolve();
-        return this.capability.promise;
+    async load() {
+      // Don't walk the graph if all the data is already loaded; note that only
+      // `ChunkedStream` instances have a `allChunksLoaded` method.
+      if (!this.xref.stream.allChunksLoaded ||
+          this.xref.stream.allChunksLoaded()) {
+        return undefined;
       }
 
       let { keys, dict, } = this;
@@ -1918,12 +2099,10 @@ let ObjectLoader = (function() {
           nodesToVisit.push(rawValue);
         }
       }
-
-      this._walk(nodesToVisit);
-      return this.capability.promise;
+      return this._walk(nodesToVisit);
     },
 
-    _walk(nodesToVisit) {
+    async _walk(nodesToVisit) {
       let nodesToRevisit = [];
       let pendingRequests = [];
       // DFS walk of the object graph.
@@ -1931,7 +2110,7 @@ let ObjectLoader = (function() {
         let currentNode = nodesToVisit.pop();
 
         // Only references or chunked streams can cause missing data exceptions.
-        if (isRef(currentNode)) {
+        if (currentNode instanceof Ref) {
           // Skip nodes that have already been visited.
           if (this.refSet.has(currentNode)) {
             continue;
@@ -1952,7 +2131,7 @@ let ObjectLoader = (function() {
           let foundMissingData = false;
           for (let i = 0, ii = baseStreams.length; i < ii; i++) {
             let stream = baseStreams[i];
-            if (stream.getMissingChunks && stream.getMissingChunks().length) {
+            if (stream.allChunksLoaded && !stream.allChunksLoaded()) {
               foundMissingData = true;
               pendingRequests.push({ begin: stream.start, end: stream.end, });
             }
@@ -1966,22 +2145,21 @@ let ObjectLoader = (function() {
       }
 
       if (pendingRequests.length) {
-        this.xref.stream.manager.requestRanges(pendingRequests).then(() => {
-          for (let i = 0, ii = nodesToRevisit.length; i < ii; i++) {
-            let node = nodesToRevisit[i];
-            // Remove any reference nodes from the current `RefSet` so they
-            // aren't skipped when we revist them.
-            if (isRef(node)) {
-              this.refSet.remove(node);
-            }
+        await this.xref.stream.manager.requestRanges(pendingRequests);
+
+        for (let i = 0, ii = nodesToRevisit.length; i < ii; i++) {
+          let node = nodesToRevisit[i];
+          // Remove any reference nodes from the current `RefSet` so they
+          // aren't skipped when we revist them.
+          if (node instanceof Ref) {
+            this.refSet.remove(node);
           }
-          this._walk(nodesToRevisit);
-        }, this.capability.reject);
-        return;
+        }
+        return this._walk(nodesToRevisit);
       }
       // Everything is loaded.
       this.refSet = null;
-      this.capability.resolve();
+      return undefined;
     },
   };
 

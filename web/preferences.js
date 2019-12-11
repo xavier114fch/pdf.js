@@ -23,15 +23,8 @@ function getDefaultPreferences() {
       defaultPreferences = new Promise(function(resolve, reject) {
         if (typeof SystemJS === 'object') {
           SystemJS.import('./app_options').then(resolve, reject);
-        } else if (typeof require === 'function') {
-          try {
-            resolve(require('./app_options.js'));
-          } catch (ex) {
-            reject(ex);
-          }
         } else {
-          reject(new Error(
-            'SystemJS or CommonJS must be used to load AppOptions.'));
+          reject(new Error('SystemJS must be used to load AppOptions.'));
         }
       }).then(function({ AppOptions, OptionKind, }) {
         return AppOptions.getAll(OptionKind.PREFERENCE);
@@ -83,8 +76,8 @@ class BasePreferences {
   /**
    * Stub function for writing preferences to storage.
    * @param {Object} prefObj The preferences that should be written to storage.
-   * @return {Promise} A promise that is resolved when the preference values
-   *                   have been written.
+   * @returns {Promise} A promise that is resolved when the preference values
+   *                    have been written.
    */
   async _writeToStorage(prefObj) {
     throw new Error('Not implemented: _writeToStorage');
@@ -93,8 +86,8 @@ class BasePreferences {
   /**
    * Stub function for reading preferences from storage.
    * @param {Object} prefObj The preferences that should be read from storage.
-   * @return {Promise} A promise that is resolved with an {Object} containing
-   *                   the preferences that have been read.
+   * @returns {Promise} A promise that is resolved with an {Object} containing
+   *                    the preferences that have been read.
    */
   async _readFromStorage(prefObj) {
     throw new Error('Not implemented: _readFromStorage');
@@ -102,8 +95,8 @@ class BasePreferences {
 
   /**
    * Reset the preferences to their default values and update storage.
-   * @return {Promise} A promise that is resolved when the preference values
-   *                   have been reset.
+   * @returns {Promise} A promise that is resolved when the preference values
+   *                    have been reset.
    */
   async reset() {
     await this._initializedPromise;
@@ -115,8 +108,8 @@ class BasePreferences {
    * Set the value of a preference.
    * @param {string} name The name of the preference that should be changed.
    * @param {boolean|number|string} value The new value of the preference.
-   * @return {Promise} A promise that is resolved when the value has been set,
-   *                   provided that the preference exists and the types match.
+   * @returns {Promise} A promise that is resolved when the value has been set,
+   *                    provided that the preference exists and the types match.
    */
   async set(name, value) {
     await this._initializedPromise;
@@ -149,8 +142,8 @@ class BasePreferences {
   /**
    * Get the value of a preference.
    * @param {string} name The name of the preference whose value is requested.
-   * @return {Promise} A promise that is resolved with a {boolean|number|string}
-   *                   containing the value of the preference.
+   * @returns {Promise} A promise resolved with a {boolean|number|string}
+   *                    containing the value of the preference.
    */
   async get(name) {
     await this._initializedPromise;
@@ -170,8 +163,8 @@ class BasePreferences {
 
   /**
    * Get the values of all preferences.
-   * @return {Promise} A promise that is resolved with an {Object} containing
-   *                   the values of all preferences.
+   * @returns {Promise} A promise that is resolved with an {Object} containing
+   *                    the values of all preferences.
    */
   async getAll() {
     await this._initializedPromise;

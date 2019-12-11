@@ -19,7 +19,9 @@
  * license.
  */
 
-import { FormatError, isSpace, stringToBytes } from '../shared/util';
+import {
+  FormatError, isSpace, stringToBytes, unreachable
+} from '../shared/util';
 import { isDict } from './primitives';
 
 var Stream = (function StreamClosure() {
@@ -84,7 +86,9 @@ var Stream = (function StreamClosure() {
     },
     peekByte: function Stream_peekByte() {
       var peekedByte = this.getByte();
-      this.pos--;
+      if (peekedByte !== -1) {
+        this.pos--;
+      }
       return peekedByte;
     },
     peekBytes(length, forceClamped = false) {
@@ -92,6 +96,17 @@ var Stream = (function StreamClosure() {
       this.pos -= bytes.length;
       return bytes;
     },
+
+    getByteRange(begin, end) {
+      if (begin < 0) {
+        begin = 0;
+      }
+      if (end > this.end) {
+        end = this.end;
+      }
+      return this.bytes.subarray(begin, end);
+    },
+
     skip: function Stream_skip(n) {
       if (!n) {
         n = 1;
@@ -221,7 +236,9 @@ var DecodeStream = (function DecodeStreamClosure() {
     },
     peekByte: function DecodeStream_peekByte() {
       var peekedByte = this.getByte();
-      this.pos--;
+      if (peekedByte !== -1) {
+        this.pos--;
+      }
       return peekedByte;
     },
     peekBytes(length, forceClamped = false) {
@@ -236,6 +253,11 @@ var DecodeStream = (function DecodeStreamClosure() {
       }
       return new Stream(this.buffer, start, length, dict);
     },
+
+    getByteRange(begin, end) {
+      unreachable('Should not call DecodeStream.getByteRange');
+    },
+
     skip: function DecodeStream_skip(n) {
       if (!n) {
         n = 1;
@@ -558,21 +580,19 @@ var FlateStream = (function FlateStreamClosure() {
       this.codeBuf = 0;
       this.codeSize = 0;
 
-      var bufferLength = this.bufferLength;
-      buffer = this.ensureBuffer(bufferLength + blockLen);
-      var end = bufferLength + blockLen;
+      const bufferLength = this.bufferLength, end = bufferLength + blockLen;
+      buffer = this.ensureBuffer(end);
       this.bufferLength = end;
+
       if (blockLen === 0) {
         if (str.peekByte() === -1) {
           this.eof = true;
         }
       } else {
-        for (var n = bufferLength; n < end; ++n) {
-          if ((b = str.getByte()) === -1) {
-            this.eof = true;
-            break;
-          }
-          buffer[n] = b;
+        const block = str.getBytes(blockLen);
+        buffer.set(block, bufferLength);
+        if (block.length < blockLen) {
+          this.eof = true;
         }
       }
       return;

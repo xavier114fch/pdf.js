@@ -15,8 +15,8 @@
 /* eslint no-var: error */
 
 import {
-  assert, CMapCompressionType, removeNullCharacters, stringToBytes,
-  unreachable, URL, Util, warn
+  assert, BaseException, CMapCompressionType, isString, removeNullCharacters,
+  stringToBytes, Util, warn
 } from '../shared/util';
 
 const DEFAULT_LINK_REL = 'noopener noreferrer nofollow';
@@ -160,22 +160,26 @@ class DOMSVGFactory {
  * @property {Array} viewBox - The xMin, yMin, xMax and yMax coordinates.
  * @property {number} scale - The scale of the viewport.
  * @property {number} rotation - The rotation, in degrees, of the viewport.
- * @property {number} offsetX - (optional) The horizontal, i.e. x-axis, offset.
- *   The default value is `0`.
- * @property {number} offsetY - (optional) The vertical, i.e. y-axis, offset.
- *   The default value is `0`.
- * @property {boolean} dontFlip - (optional) If true, the y-axis will not be
- *   flipped. The default value is `false`.
+ * @property {number} [offsetX] - The horizontal, i.e. x-axis, offset. The
+ *   default value is `0`.
+ * @property {number} [offsetY] - The vertical, i.e. y-axis, offset. The
+ *   default value is `0`.
+ * @property {boolean} [dontFlip] - If true, the y-axis will not be flipped.
+ *   The default value is `false`.
  */
 
 /**
  * @typedef {Object} PageViewportCloneParameters
- * @property {number} scale - (optional) The scale, overriding the one in the
- *   cloned viewport. The default value is `this.scale`.
- * @property {number} rotation - (optional) The rotation, in degrees, overriding
- *   the one in the cloned viewport. The default value is `this.rotation`.
- * @property {boolean} dontFlip - (optional) If true, the x-axis will not be
- *   flipped. The default value is `false`.
+ * @property {number} [scale] - The scale, overriding the one in the cloned
+ *   viewport. The default value is `this.scale`.
+ * @property {number} [rotation] - The rotation, in degrees, overriding the one
+ *   in the cloned viewport. The default value is `this.rotation`.
+ * @property {number} [offsetX] - The horizontal, i.e. x-axis, offset.
+ *   The default value is `this.offsetX`.
+ * @property {number} [offsetY] - The vertical, i.e. y-axis, offset.
+ *   The default value is `this.offsetY`.
+ * @property {boolean} [dontFlip] - If true, the x-axis will not be flipped.
+ *   The default value is `false`.
  */
 
 /**
@@ -251,17 +255,17 @@ class PageViewport {
 
   /**
    * Clones viewport, with optional additional properties.
-   * @param {PageViewportCloneParameters} - (optional)
-   * @return {PageViewport} Cloned viewport.
+   * @param {PageViewportCloneParameters} [params]
+   * @returns {PageViewport} Cloned viewport.
    */
-  clone({ scale = this.scale, rotation = this.rotation,
-          dontFlip = false, } = {}) {
+  clone({ scale = this.scale, rotation = this.rotation, offsetX = this.offsetX,
+          offsetY = this.offsetY, dontFlip = false, } = {}) {
     return new PageViewport({
       viewBox: this.viewBox.slice(),
       scale,
       rotation,
-      offsetX: this.offsetX,
-      offsetY: this.offsetY,
+      offsetX,
+      offsetY,
       dontFlip,
     });
   }
@@ -271,7 +275,7 @@ class PageViewport {
    * converting PDF location into canvas pixel coordinates.
    * @param {number} x - The x-coordinate.
    * @param {number} y - The y-coordinate.
-   * @return {Object} Object containing `x` and `y` properties of the
+   * @returns {Object} Object containing `x` and `y` properties of the
    *   point in the viewport coordinate space.
    * @see {@link convertToPdfPoint}
    * @see {@link convertToViewportRectangle}
@@ -283,8 +287,8 @@ class PageViewport {
   /**
    * Converts PDF rectangle to the viewport coordinates.
    * @param {Array} rect - The xMin, yMin, xMax and yMax coordinates.
-   * @return {Array} Array containing corresponding coordinates of the rectangle
-   *   in the viewport coordinate space.
+   * @returns {Array} Array containing corresponding coordinates of the
+   *   rectangle in the viewport coordinate space.
    * @see {@link convertToViewportPoint}
    */
   convertToViewportRectangle(rect) {
@@ -298,7 +302,7 @@ class PageViewport {
    * for converting canvas pixel location into PDF one.
    * @param {number} x - The x-coordinate.
    * @param {number} y - The y-coordinate.
-   * @return {Object} Object containing `x` and `y` properties of the
+   * @returns {Object} Object containing `x` and `y` properties of the
    *   point in the PDF coordinate space.
    * @see {@link convertToViewportPoint}
    */
@@ -307,18 +311,12 @@ class PageViewport {
   }
 }
 
-const RenderingCancelledException = (function RenderingCancelledException() {
-  function RenderingCancelledException(msg, type) {
-    this.message = msg;
+class RenderingCancelledException extends BaseException {
+  constructor(msg, type) {
+    super(msg);
     this.type = type;
   }
-
-  RenderingCancelledException.prototype = new Error();
-  RenderingCancelledException.prototype.name = 'RenderingCancelledException';
-  RenderingCancelledException.constructor = RenderingCancelledException;
-
-  return RenderingCancelledException;
-})();
+}
 
 const LinkTarget = {
   NONE: 0, // Default value.
@@ -328,22 +326,16 @@ const LinkTarget = {
   TOP: 4,
 };
 
-const LinkTargetStringMap = [
-  '',
-  '_self',
-  '_blank',
-  '_parent',
-  '_top',
-];
-
 /**
  * @typedef ExternalLinkParameters
  * @typedef {Object} ExternalLinkParameters
  * @property {string} url - An absolute URL.
- * @property {LinkTarget} target - (optional) The link target.
- *   The default value is `LinkTarget.NONE`.
- * @property {string} rel - (optional) The link relationship.
- *   The default value is `DEFAULT_LINK_REL`.
+ * @property {LinkTarget} [target] - The link target. The default value is
+ *   `LinkTarget.NONE`.
+ * @property {string} [rel] - The link relationship. The default value is
+ *   `DEFAULT_LINK_REL`.
+ * @property {boolean} [enabled] - Whether the link should be enabled. The
+ *   default value is true.
  */
 
 /**
@@ -351,17 +343,41 @@ const LinkTargetStringMap = [
  * @param {HTMLLinkElement} link - The link element.
  * @param {ExternalLinkParameters} params
  */
-function addLinkAttributes(link, { url, target, rel, } = {}) {
-  link.href = link.title = (url ? removeNullCharacters(url) : '');
+function addLinkAttributes(link, { url, target, rel, enabled = true, } = {}) {
+  assert(url && typeof url === 'string',
+         'addLinkAttributes: A valid "url" parameter must provided.');
 
-  if (url) {
-    const LinkTargetValues = Object.values(LinkTarget);
-    const targetIndex =
-      LinkTargetValues.includes(target) ? target : LinkTarget.NONE;
-    link.target = LinkTargetStringMap[targetIndex];
-
-    link.rel = (typeof rel === 'string' ? rel : DEFAULT_LINK_REL);
+  const urlNullRemoved = removeNullCharacters(url);
+  if (enabled) {
+    link.href = link.title = urlNullRemoved;
+  } else {
+    link.href = '';
+    link.title = `Disabled: ${urlNullRemoved}`;
+    link.onclick = () => {
+      return false;
+    };
   }
+
+  let targetStr = ''; // LinkTarget.NONE
+  switch (target) {
+    case LinkTarget.NONE:
+      break;
+    case LinkTarget.SELF:
+      targetStr = '_self';
+      break;
+    case LinkTarget.BLANK:
+      targetStr = '_blank';
+      break;
+    case LinkTarget.PARENT:
+      targetStr = '_parent';
+      break;
+    case LinkTarget.TOP:
+      targetStr = '_top';
+      break;
+  }
+  link.target = targetStr;
+
+  link.rel = (typeof rel === 'string' ? rel : DEFAULT_LINK_REL);
 }
 
 // Gets the file name from a given URL.
@@ -374,28 +390,21 @@ function getFilenameFromUrl(url) {
 }
 
 class StatTimer {
-  constructor(enable = true) {
-    this.enabled = !!enable;
+  constructor() {
     this.started = Object.create(null);
     this.times = [];
   }
 
   time(name) {
-    if (!this.enabled) {
-      return;
-    }
     if (name in this.started) {
-      warn('Timer is already running for ' + name);
+      warn(`Timer is already running for ${name}`);
     }
     this.started[name] = Date.now();
   }
 
   timeEnd(name) {
-    if (!this.enabled) {
-      return;
-    }
     if (!(name in this.started)) {
-      warn('Timer has not been started for ' + name);
+      warn(`Timer has not been started for ${name}`);
     }
     this.times.push({
       'name': name,
@@ -408,7 +417,7 @@ class StatTimer {
 
   toString() {
     // Find the longest name for padding purposes.
-    let out = '', longest = 0;
+    let outBuf = [], longest = 0;
     for (const time of this.times) {
       const name = time.name;
       if (name.length > longest) {
@@ -417,31 +426,9 @@ class StatTimer {
     }
     for (const time of this.times) {
       const duration = time.end - time.start;
-      out += `${time.name.padEnd(longest)} ${duration}ms\n`;
+      outBuf.push(`${time.name.padEnd(longest)} ${duration}ms\n`);
     }
-    return out;
-  }
-}
-
-/**
- * Helps avoid having to initialize {StatTimer} instances, e.g. one for every
- * page, in cases where the collected stats are not actually being used.
- * This (dummy) class can thus, since all its methods are `static`, be directly
- * shared between multiple call-sites without the need to be initialized first.
- *
- * NOTE: This must implement the same interface as {StatTimer}.
- */
-class DummyStatTimer {
-  constructor() {
-    unreachable('Cannot initialize DummyStatTimer.');
-  }
-
-  static time(name) {}
-
-  static timeEnd(name) {}
-
-  static toString() {
-    return '';
+    return outBuf.join('');
   }
 }
 
@@ -491,6 +478,91 @@ function releaseImageResources(img) {
   img.removeAttribute('src');
 }
 
+let pdfDateStringRegex;
+
+class PDFDateString {
+ /**
+  * Convert a PDF date string to a JavaScript `Date` object.
+  *
+  * The PDF date string format is described in section 7.9.4 of the official
+  * PDF 32000-1:2008 specification. However, in the PDF 1.7 reference (sixth
+  * edition) Adobe describes the same format including a trailing apostrophe.
+  * This syntax in incorrect, but Adobe Acrobat creates PDF files that contain
+  * them. We ignore all apostrophes as they are not necessary for date parsing.
+  *
+  * Moreover, Adobe Acrobat doesn't handle changing the date to universal time
+  * and doesn't use the user's time zone (effectively ignoring the HH' and mm'
+  * parts of the date string).
+  *
+  * @param {string} input
+  * @returns {Date|null}
+  */
+  static toDateObject(input) {
+    if (!input || !isString(input)) {
+      return null;
+    }
+
+    // Lazily initialize the regular expression.
+    if (!pdfDateStringRegex) {
+      pdfDateStringRegex = new RegExp(
+        '^D:' + // Prefix (required)
+        '(\\d{4})' + // Year (required)
+        '(\\d{2})?' + // Month (optional)
+        '(\\d{2})?' + // Day (optional)
+        '(\\d{2})?' + // Hour (optional)
+        '(\\d{2})?' + // Minute (optional)
+        '(\\d{2})?' + // Second (optional)
+        '([Z|+|-])?' + // Universal time relation (optional)
+        '(\\d{2})?' + // Offset hour (optional)
+        '\'?' + // Splitting apostrophe (optional)
+        '(\\d{2})?' + // Offset minute (optional)
+        '\'?' // Trailing apostrophe (optional)
+      );
+    }
+
+    // Optional fields that don't satisfy the requirements from the regular
+    // expression (such as incorrect digit counts or numbers that are out of
+    // range) will fall back the defaults from the specification.
+    const matches = pdfDateStringRegex.exec(input);
+    if (!matches) {
+      return null;
+    }
+
+    // JavaScript's `Date` object expects the month to be between 0 and 11
+    // instead of 1 and 12, so we have to correct for that.
+    const year = parseInt(matches[1], 10);
+    let month = parseInt(matches[2], 10);
+    month = (month >= 1 && month <= 12) ? month - 1 : 0;
+    let day = parseInt(matches[3], 10);
+    day = (day >= 1 && day <= 31) ? day : 1;
+    let hour = parseInt(matches[4], 10);
+    hour = (hour >= 0 && hour <= 23) ? hour : 0;
+    let minute = parseInt(matches[5], 10);
+    minute = (minute >= 0 && minute <= 59) ? minute : 0;
+    let second = parseInt(matches[6], 10);
+    second = (second >= 0 && second <= 59) ? second : 0;
+    const universalTimeRelation = matches[7] || 'Z';
+    let offsetHour = parseInt(matches[8], 10);
+    offsetHour = (offsetHour >= 0 && offsetHour <= 23) ? offsetHour : 0;
+    let offsetMinute = parseInt(matches[9], 10) || 0;
+    offsetMinute = (offsetMinute >= 0 && offsetMinute <= 59) ? offsetMinute : 0;
+
+    // Universal time relation 'Z' means that the local time is equal to the
+    // universal time, whereas the relations '+'/'-' indicate that the local
+    // time is later respectively earlier than the universal time. Every date
+    // is normalized to universal time.
+    if (universalTimeRelation === '-') {
+      hour += offsetHour;
+      minute += offsetMinute;
+    } else if (universalTimeRelation === '+') {
+      hour -= offsetHour;
+      minute -= offsetMinute;
+    }
+
+    return new Date(Date.UTC(year, month, day, hour, minute, second));
+  }
+}
+
 export {
   PageViewport,
   RenderingCancelledException,
@@ -502,10 +574,10 @@ export {
   DOMCMapReaderFactory,
   DOMSVGFactory,
   StatTimer,
-  DummyStatTimer,
   isFetchSupported,
   isValidFetchUrl,
   loadScript,
   deprecated,
   releaseImageResources,
+  PDFDateString,
 };

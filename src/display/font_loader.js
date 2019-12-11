@@ -64,7 +64,7 @@ class BaseFontLoader {
   async bind(font) {
     // Add the font to the DOM only once; skip if the font is already loaded.
     if (font.attached || font.missingFile) {
-      return;
+      return undefined;
     }
     font.attached = true;
 
@@ -83,7 +83,7 @@ class BaseFontLoader {
           throw ex;
         }
       }
-      return; // The font was, asynchronously, loaded.
+      return undefined; // The font was, asynchronously, loaded.
     }
 
     // !this.isFontLoadingAPISupported
@@ -92,28 +92,29 @@ class BaseFontLoader {
       this.insertRule(rule);
 
       if (this.isSyncFontLoadingSupported) {
-        return; // The font was, synchronously, loaded.
+        return undefined; // The font was, synchronously, loaded.
       }
       return new Promise((resolve) => {
         const request = this._queueLoadingCallback(resolve);
         this._prepareFontLoadEvent([rule], [font], request);
       });
     }
+    return undefined;
   }
 
   _queueLoadingCallback(callback) {
     unreachable('Abstract method `_queueLoadingCallback`.');
   }
 
-  get isFontLoadingAPISupported() {
+  get isFontLoadingAPISupported() { // eslint-disable-line getter-return
     unreachable('Abstract method `isFontLoadingAPISupported`.');
   }
 
-  get isSyncFontLoadingSupported() {
+  get isSyncFontLoadingSupported() { // eslint-disable-line getter-return
     unreachable('Abstract method `isSyncFontLoadingSupported`.');
   }
 
-  get _loadTestFont() {
+  get _loadTestFont() { // eslint-disable-line getter-return
     unreachable('Abstract method `_loadTestFont`.');
   }
 

@@ -7,6 +7,7 @@
   "plugins": [
     "import",
     "mozilla",
+    "no-unsanitized",
     "unicorn",
   ],
 
@@ -18,6 +19,7 @@
   },
 
   "globals": {
+    "globalThis": false,
     "PDFJSDev": false,
     "exports": false,
     "SystemJS": false,
@@ -28,13 +30,18 @@
     "import/no-unresolved": "error",
     "mozilla/avoid-removeChild": "error",
     "mozilla/use-includes-instead-of-indexOf": "error",
+    "no-unsanitized/method": "error",
+    "no-unsanitized/property": "error",
     "unicorn/no-array-instanceof": "error",
 
     // Possible errors
     "for-direction": "error",
+    "getter-return": "error",
+    "no-async-promise-executor": "error",
     "no-cond-assign": ["error", "except-parens"],
     "no-constant-condition": ["error", { "checkLoops": false, }],
     "no-dupe-args": "error",
+    "no-dupe-else-if": "error",
     "no-dupe-keys": "error",
     "no-duplicate-case": "error",
     "no-empty": ["error", { "allowEmptyCatch": true, }],
@@ -47,6 +54,7 @@
     "no-irregular-whitespace": "error",
     "no-obj-calls": "error",
     "no-regex-spaces": "error",
+    "no-setter-return": "error",
     "no-sparse-arrays": "error",
     "no-unexpected-multiline": "error",
     "no-unreachable": "error",
@@ -56,7 +64,11 @@
     "valid-typeof": ["error", { "requireStringLiterals": true, }],
 
     // Best Practices
-    "accessor-pairs": ["error", { "setWithoutGet": true, }],
+    "accessor-pairs": ["error", {
+      "setWithoutGet": true,
+      "enforceForClassMembers": true,
+    }],
+    "consistent-return": "error",
     "curly": ["error", "all"],
     "eqeqeq": ["error", "always"],
     "no-caller": "error",
@@ -82,6 +94,7 @@
     "no-octal-escape": "error",
     "no-octal": "error",
     "no-redeclare": "error",
+    "no-return-await": "error",
     "no-self-assign": "error",
     "no-self-compare": "error",
     "no-throw-literal": "error",
@@ -90,6 +103,7 @@
     "no-useless-call": "error",
     "no-useless-catch": "error",
     "no-useless-concat": "error",
+    "no-useless-return": "error",
     "prefer-promise-reject-errors": "error",
     "wrap-iife": ["error", "any"],
     "yoda": ["error", "never", {
@@ -106,14 +120,6 @@
     "no-restricted-globals": ["error",
       {
         "name": "ReadableStream",
-        "message": "Import it from `src/shared/util.js` or `pdfjsLib` instead; outside of the `/src` and `/web` folders, the rule may be disabled as needed. ",
-      },
-      {
-        "name": "URL",
-        "message": "Import it from `src/shared/util.js` or `pdfjsLib` instead; outside of the `/src` and `/web` folders, the rule may be disabled as needed. ",
-      },
-      {
-        "name": "WritableStream",
         "message": "Import it from `src/shared/util.js` or `pdfjsLib` instead; outside of the `/src` and `/web` folders, the rule may be disabled as needed. ",
       },
     ],
@@ -196,6 +202,7 @@
     "object-shorthand": ["error", "always", {
       "avoidQuotes": true,
     }],
+    "prefer-const": "off",
     "rest-spread-spacing": ["error", "never"],
     "sort-imports": ["error", {
       "ignoreCase": true,

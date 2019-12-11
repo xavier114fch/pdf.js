@@ -15,7 +15,7 @@
 
 import { CSS_UNITS, NullL10n } from './ui_utils';
 import { PDFPrintServiceFactory, PDFViewerApplication } from './app';
-import { URL } from 'pdfjs-lib';
+import { AppOptions } from './app_options';
 
 let activeService = null;
 let overlayManager = null;
@@ -26,7 +26,7 @@ function renderPage(activeServiceOnEntry, pdfDocument, pageNumber, size) {
   let scratchCanvas = activeService.scratchCanvas;
 
   // The size of the canvas in pixels for printing.
-  const PRINT_RESOLUTION = 150;
+  const PRINT_RESOLUTION = AppOptions.get('printResolution') || 150;
   const PRINT_UNITS = PRINT_RESOLUTION / 72.0;
   scratchCanvas.width = Math.floor(size.width * PRINT_UNITS);
   scratchCanvas.height = Math.floor(size.height * PRINT_UNITS);
@@ -73,7 +73,7 @@ PDFPrintService.prototype = {
   layout() {
     this.throwIfInactive();
 
-    let body = document.querySelector('body');
+    const body = document.querySelector('body');
     body.setAttribute('data-pdfjsprinting', true);
 
     let hasEqualPageSizes = this.pagesOverview.every(function(size) {
@@ -113,6 +113,10 @@ PDFPrintService.prototype = {
       return;
     }
     this.printContainer.textContent = '';
+
+    const body = document.querySelector('body');
+    body.removeAttribute('data-pdfjsprinting');
+
     if (this.pageStyleSheet) {
       this.pageStyleSheet.remove();
       this.pageStyleSheet = null;
@@ -269,37 +273,22 @@ function renderProgress(index, total, l10n) {
   });
 }
 
-let hasAttachEvent = !!document.attachEvent;
-
 window.addEventListener('keydown', function(event) {
   // Intercept Cmd/Ctrl + P in all browsers.
   // Also intercept Cmd/Ctrl + Shift + P in Chrome and Opera
   if (event.keyCode === /* P= */ 80 && (event.ctrlKey || event.metaKey) &&
       !event.altKey && (!event.shiftKey || window.chrome || window.opera)) {
     window.print();
-    if (hasAttachEvent) {
-      // Only attachEvent can cancel Ctrl + P dialog in IE <=10
-      // attachEvent is gone in IE11, so the dialog will re-appear in IE11.
-      return;
-    }
+
+    // The (browser) print dialog cannot be prevented from being shown in IE11.
     event.preventDefault();
     if (event.stopImmediatePropagation) {
       event.stopImmediatePropagation();
     } else {
       event.stopPropagation();
     }
-    return;
   }
 }, true);
-if (hasAttachEvent) {
-  document.attachEvent('onkeydown', function(event) {
-    event = event || window.event;
-    if (event.keyCode === /* P= */ 80 && event.ctrlKey) {
-      event.keyCode = 0;
-      return false;
-    }
-  });
-}
 
 if ('onbeforeprint' in window) {
   // Do not propagate before/afterprint events when they are not triggered

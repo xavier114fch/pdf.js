@@ -732,7 +732,7 @@ var Font = (function FontClosure() {
    * private use area. This is done to avoid issues with various problematic
    * unicode areas where either a glyph won't be drawn or is deformed by a
    * shaper.
-   * @return {Object} Two properties:
+   * @returns {Object} Two properties:
    * 'toFontChar' - maps original char codes(the value that will be read
    * from commands such as show text) to the char codes that will be used in the
    * font that we build
@@ -1203,10 +1203,10 @@ var Font = (function FontClosure() {
       this.remeasure = Object.keys(this.widths).length > 0;
       if (isStandardFont && type === 'CIDFontType2' &&
           this.cidEncoding.startsWith('Identity-')) {
-        var GlyphMapForStandardFonts = getGlyphMapForStandardFonts();
+        const GlyphMapForStandardFonts = getGlyphMapForStandardFonts();
         // Standard fonts might be embedded as CID font without glyph mapping.
         // Building one based on GlyphMapForStandardFonts.
-        var map = [];
+        const map = [];
         for (charCode in GlyphMapForStandardFonts) {
           map[+charCode] = GlyphMapForStandardFonts[charCode];
         }
@@ -1247,7 +1247,8 @@ var Font = (function FontClosure() {
                                           getGlyphsUnicode(),
                                           this.differences);
       } else {
-        var glyphsUnicodeMap = getGlyphsUnicode();
+        const glyphsUnicodeMap = getGlyphsUnicode();
+        const map = [];
         this.toUnicode.forEach((charCode, unicodeCharCode) => {
           if (!this.composite) {
             var glyphName = (this.differences[charCode] ||
@@ -1257,8 +1258,20 @@ var Font = (function FontClosure() {
               unicodeCharCode = unicode;
             }
           }
-          this.toFontChar[charCode] = unicodeCharCode;
+          map[+charCode] = unicodeCharCode;
         });
+
+        // Attempt to improve the glyph mapping for (some) composite fonts that
+        // appear to lack meaningful ToUnicode data.
+        if (this.composite && this.toUnicode instanceof IdentityToUnicodeMap) {
+          if (/Verdana/i.test(name)) { // Fixes issue11242_reduced.pdf
+            const GlyphMapForStandardFonts = getGlyphMapForStandardFonts();
+            for (charCode in GlyphMapForStandardFonts) {
+              map[+charCode] = GlyphMapForStandardFonts[charCode];
+            }
+          }
+        }
+        this.toFontChar = map;
       }
       this.loadedName = fontName.split('-')[0];
       this.fontType = getFontType(type, subtype);
@@ -1606,7 +1619,8 @@ var Font = (function FontClosure() {
         };
       }
 
-      function sanitizeMetrics(font, header, metrics, numGlyphs) {
+      function sanitizeMetrics(font, header, metrics, numGlyphs,
+                               dupFirstEntry) {
         if (!header) {
           if (metrics) {
             metrics.data = null;
@@ -1649,6 +1663,11 @@ var Font = (function FontClosure() {
           // the use of |numMissing * 2| when initializing the typed array.
           var entries = new Uint8Array(metrics.length + numMissing * 2);
           entries.set(metrics.data);
+          if (dupFirstEntry) {
+            // Set the sidebearing value of the duplicated glyph.
+            entries[metrics.length] = metrics.data[2];
+            entries[metrics.length + 1] = metrics.data[3];
+          }
           metrics.data = entries;
         }
       }
@@ -1811,10 +1830,9 @@ var Font = (function FontClosure() {
         }
         // The first glyph is duplicated.
         var numGlyphsOut = dupFirstEntry ? numGlyphs + 1 : numGlyphs;
-        var locaData = loca.data;
         var locaDataSize = itemSize * (1 + numGlyphsOut);
         // Resize loca table to account for duplicated glyph.
-        locaData = new Uint8Array(locaDataSize);
+        var locaData = new Uint8Array(locaDataSize);
         locaData.set(loca.data.subarray(0, locaDataSize));
         loca.data = locaData;
         // removing the invalid glyphs
@@ -2366,7 +2384,8 @@ var Font = (function FontClosure() {
 
       // Ensure the hmtx table contains the advance width and
       // sidebearings information for numGlyphs in the maxp table
-      sanitizeMetrics(font, tables['hhea'], tables['hmtx'], numGlyphsOut);
+      sanitizeMetrics(font, tables['hhea'], tables['hmtx'], numGlyphsOut,
+                      dupFirstEntry);
 
       if (!tables['head']) {
         throw new FormatError('Required "head" table is not found');
@@ -3193,7 +3212,7 @@ var Type1Font = (function Type1FontClosure() {
     var eexecBlock = getEexecBlock(file, eexecBlockLength);
     var eexecBlockParser = new Type1Parser(eexecBlock.stream, true,
                                            SEAC_ANALYSIS_ENABLED);
-    var data = eexecBlockParser.extractFontProgram();
+    var data = eexecBlockParser.extractFontProgram(properties);
     for (var info in data.properties) {
       properties[info] = data.properties[info];
     }
@@ -3438,19 +3457,21 @@ var CFFFont = (function CFFFontClosure() {
 
       if (properties.composite) {
         charCodeToGlyphId = Object.create(null);
+        let charCode;
         if (cff.isCIDFont) {
           // If the font is actually a CID font then we should use the charset
           // to map CIDs to GIDs.
           for (glyphId = 0; glyphId < charsets.length; glyphId++) {
             var cid = charsets[glyphId];
-            var charCode = properties.cMap.charCodeOf(cid);
+            charCode = properties.cMap.charCodeOf(cid);
             charCodeToGlyphId[charCode] = glyphId;
           }
         } else {
           // If it is NOT actually a CID font then CIDs should be mapped
           // directly to GIDs.
           for (glyphId = 0; glyphId < cff.charStrings.count; glyphId++) {
-            charCodeToGlyphId[glyphId] = glyphId;
+            charCode = properties.cMap.charCodeOf(glyphId);
+            charCodeToGlyphId[charCode] = glyphId;
           }
         }
         return charCodeToGlyphId;
