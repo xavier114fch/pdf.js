@@ -87,6 +87,9 @@
 !issue11150_reduced.pdf
 !issue11242_reduced.pdf
 !issue11279.pdf
+!issue11362.pdf
+!issue11578_reduced.pdf
+!issue11651.pdf
 !bad-PageLabels.pdf
 !decodeACSuccessive.pdf
 !filled-background.pdf
@@ -109,11 +112,13 @@
 !issue9949.pdf
 !bug1308536.pdf
 !bug1337429.pdf
+!bug1606566.pdf
 !issue5564_reduced.pdf
 !canvas.pdf
 !bug1132849.pdf
 !issue6894.pdf
 !issue5804.pdf
+!Pages-tree-refs.pdf
 !ShowText-ShadingPattern.pdf
 !complex_ttf_font.pdf
 !issue3694_reduced.pdf
@@ -138,6 +143,7 @@
 !issue6621.pdf
 !issue6286.pdf
 !issue1055r.pdf
+!issue11713.pdf
 !issue1293r.pdf
 !issue1655r.pdf
 !issue6541.pdf
@@ -167,6 +173,7 @@
 !issue3405r.pdf
 !issue7339_reduced.pdf
 !issue3438.pdf
+!issue11403_reduced.pdf
 !issue2074.pdf
 !scan-bad.pdf
 !bug847420.pdf
@@ -200,6 +207,7 @@
 !bug1011159.pdf
 !issue5734.pdf
 !issue4875.pdf
+!issue11740_reduced.pdf
 !issue4881.pdf
 !issue5994.pdf
 !issue6151.pdf
@@ -248,6 +256,7 @@
 !bug903856.pdf
 !bug850854.pdf
 !bug866395.pdf
+!issue11718_reduced.pdf
 !bug1027533.pdf
 !bug1028735.pdf
 !bug1046314.pdf
@@ -282,6 +291,7 @@
 !issue2537r.pdf
 !bug946506.pdf
 !issue3885.pdf
+!issue11697_reduced.pdf
 !bug859204.pdf
 !annotation-tx.pdf
 !annotation-tx2.pdf
@@ -294,6 +304,7 @@
 !issue4573.pdf
 !issue4722.pdf
 !issue4800.pdf
+!issue11477_reduced.pdf
 !text_clip_cff_cid.pdf
 !issue4801.pdf
 !issue5334.pdf
@@ -350,6 +361,8 @@
 !operator-in-TJ-array.pdf
 !issue7878.pdf
 !font_ascent_descent.pdf
+!issue11442_reduced.pdf
+!issue11549_reduced.pdf
 !issue8097_reduced.pdf
 !transparent.pdf
 !xobject-image.pdf
@@ -359,3 +372,4 @@
 !issue9972-3.pdf
 !tiling-pattern-box.pdf
 !tiling-pattern-large-steps.pdf
+!issue11555.pdf
