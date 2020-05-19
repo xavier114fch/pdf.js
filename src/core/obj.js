@@ -271,7 +271,7 @@ class Catalog {
         dests[name] = fetchDestination(names[name]);
       }
     } else if (obj instanceof Dict) {
-      obj.forEach(function(key, value) {
+      obj.forEach(function (key, value) {
         if (value) {
           dests[key] = fetchDestination(value);
         }
@@ -479,7 +479,7 @@ class Catalog {
     };
 
     const obj = this.catDict.get("ViewerPreferences");
-    const prefs = Object.create(null);
+    let prefs = null;
 
     if (isDict(obj)) {
       for (const key in ViewerPreferencesValidators) {
@@ -578,11 +578,18 @@ class Catalog {
             }
             break;
           default:
-            assert(typeof value === "boolean");
+            if (typeof value !== "boolean") {
+              throw new FormatError(
+                `viewerPreferences - expected a boolean value for: ${key}`
+              );
+            }
             prefValue = value;
         }
 
         if (prefValue !== undefined) {
+          if (!prefs) {
+            prefs = Object.create(null);
+          }
           prefs[key] = prefValue;
         } else {
           info(`Bad value in ViewerPreferences for "${key}".`);
@@ -693,7 +700,7 @@ class Catalog {
 
   fontFallback(id, handler) {
     const promises = [];
-    this.fontCache.forEach(function(promise) {
+    this.fontCache.forEach(function (promise) {
       promises.push(promise);
     });
 
@@ -712,7 +719,7 @@ class Catalog {
     this.pageKidsCountCache.clear();
 
     const promises = [];
-    this.fontCache.forEach(function(promise) {
+    this.fontCache.forEach(function (promise) {
       promises.push(promise);
     });
 
@@ -754,7 +761,7 @@ class Catalog {
           }
           visitedNodes.put(currentNode);
 
-          xref.fetchAsync(currentNode).then(function(obj) {
+          xref.fetchAsync(currentNode).then(function (obj) {
             if (isDict(obj, "Page") || (isDict(obj) && !obj.has("Kids"))) {
               if (pageIndex === currentPageIndex) {
                 // Cache the Page reference, since it can *greatly* improve
@@ -849,7 +856,7 @@ class Catalog {
 
       return xref
         .fetchAsync(kidRef)
-        .then(function(node) {
+        .then(function (node) {
           if (
             isRefsEqual(kidRef, pageRef) &&
             !isDict(node, "Page") &&
@@ -868,7 +875,7 @@ class Catalog {
           parentRef = node.getRaw("Parent");
           return node.getAsync("Parent");
         })
-        .then(function(parent) {
+        .then(function (parent) {
           if (!parent) {
             return null;
           }
@@ -877,7 +884,7 @@ class Catalog {
           }
           return parent.getAsync("Kids");
         })
-        .then(function(kids) {
+        .then(function (kids) {
           if (!kids) {
             return null;
           }
@@ -894,7 +901,7 @@ class Catalog {
               break;
             }
             kidPromises.push(
-              xref.fetchAsync(kid).then(function(obj) {
+              xref.fetchAsync(kid).then(function (obj) {
                 if (!isDict(obj)) {
                   throw new FormatError("Kid node must be a dictionary.");
                 }
@@ -910,7 +917,7 @@ class Catalog {
           if (!found) {
             throw new FormatError("Kid reference not found in parent's kids.");
           }
-          return Promise.all(kidPromises).then(function() {
+          return Promise.all(kidPromises).then(function () {
             return [total, parentRef];
           });
         });
@@ -918,7 +925,7 @@ class Catalog {
 
     let total = 0;
     function next(ref) {
-      return pagesBeforeRef(ref).then(function(args) {
+      return pagesBeforeRef(ref).then(function (args) {
         if (!args) {
           return total;
         }
@@ -1069,9 +1076,7 @@ class Catalog {
             const URL_OPEN_METHODS = ["app.launchURL", "window.open"];
             const regex = new RegExp(
               "^\\s*(" +
-                URL_OPEN_METHODS.join("|")
-                  .split(".")
-                  .join("\\.") +
+                URL_OPEN_METHODS.join("|").split(".").join("\\.") +
                 ")\\((?:'|\")([^'\"]*)(?:'|\")(?:,\\s*(\\w+)\\)|\\))",
               "i"
             );
@@ -2186,7 +2191,7 @@ var FileSpec = (function FileSpecClosure() {
  * that have references to the catalog or other pages since that will cause the
  * entire PDF document object graph to be traversed.
  */
-const ObjectLoader = (function() {
+const ObjectLoader = (function () {
   function mayHaveChildren(value) {
     return (
       value instanceof Ref ||

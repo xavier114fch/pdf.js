@@ -67,7 +67,10 @@ class PDFNodeStream {
   }
 
   getFullReader() {
-    assert(!this._fullRequestReader);
+    assert(
+      !this._fullRequestReader,
+      "PDFNodeStream.getFullReader can only be called once."
+    );
     this._fullRequestReader = this.isFsUrl
       ? new PDFNodeStreamFsFullReader(this)
       : new PDFNodeStreamFullReader(this);
@@ -91,7 +94,7 @@ class PDFNodeStream {
     }
 
     const readers = this._rangeRequestReaders.slice(0);
-    readers.forEach(function(reader) {
+    readers.forEach(function (reader) {
       reader.cancel(reason);
     });
   }
@@ -376,7 +379,7 @@ class PDFNodeStreamRangeReader extends BaseRangeReader {
       }
       this._httpHeaders[property] = value;
     }
-    this._httpHeaders["Range"] = `bytes=${start}-${end - 1}`;
+    this._httpHeaders.Range = `bytes=${start}-${end - 1}`;
 
     const handleResponse = response => {
       if (response.statusCode === 404) {

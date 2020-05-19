@@ -228,15 +228,11 @@ class PDFLinkService {
       if ("search" in params) {
         this.eventBus.dispatch("findfromurlhash", {
           source: this,
-          query: params["search"].replace(/"/g, ""),
-          phraseSearch: params["phrase"] === "true",
+          query: params.search.replace(/"/g, ""),
+          phraseSearch: params.phrase === "true",
         });
       }
       // borrowing syntax from "Parameters for Opening PDF Files"
-      if ("nameddest" in params) {
-        this.navigateTo(params.nameddest);
-        return;
-      }
       if ("page" in params) {
         pageNumber = params.page | 0 || 1;
       }
@@ -307,6 +303,11 @@ class PDFLinkService {
           source: this,
           mode: params.pagemode,
         });
+      }
+      // Ensure that this parameter is *always* handled last, in order to
+      // guarantee that it won't be overridden (e.g. by the "page" parameter).
+      if ("nameddest" in params) {
+        this.navigateTo(params.nameddest);
       }
     } else {
       // Named (or explicit) destination.

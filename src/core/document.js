@@ -282,7 +282,7 @@ class Page {
           resources: this.resources,
           operatorList: opList,
         })
-        .then(function() {
+        .then(function () {
           return opList;
         });
     });
@@ -290,7 +290,7 @@ class Page {
     // Fetch the page's annotations and add their operator lists to the
     // page's operator list to render them.
     return Promise.all([pageListPromise, this._parsedAnnotations]).then(
-      function([pageOpList, annotations]) {
+      function ([pageOpList, annotations]) {
         if (annotations.length === 0) {
           pageOpList.flush(true);
           return { length: pageOpList.totalLength };
@@ -302,16 +302,20 @@ class Page {
         for (const annotation of annotations) {
           if (isAnnotationRenderable(annotation, intent)) {
             opListPromises.push(
-              annotation.getOperatorList(
-                partialEvaluator,
-                task,
-                renderInteractiveForms
-              )
+              annotation
+                .getOperatorList(partialEvaluator, task, renderInteractiveForms)
+                .catch(function (reason) {
+                  warn(
+                    "getOperatorList - ignoring annotation data during " +
+                      `"${task.name}" task: "${reason}".`
+                  );
+                  return null;
+                })
             );
           }
         }
 
-        return Promise.all(opListPromises).then(function(opLists) {
+        return Promise.all(opListPromises).then(function (opLists) {
           pageOpList.addOp(OPS.beginAnnotations, []);
           for (const opList of opLists) {
             pageOpList.addOpList(opList);
@@ -366,7 +370,7 @@ class Page {
   }
 
   getAnnotationsData(intent) {
-    return this._parsedAnnotations.then(function(annotations) {
+    return this._parsedAnnotations.then(function (annotations) {
       const annotationsData = [];
       for (let i = 0, ii = annotations.length; i < ii; i++) {
         if (!intent || isAnnotationRenderable(annotations[i], intent)) {
@@ -389,30 +393,24 @@ class Page {
     const parsedAnnotations = this.pdfManager
       .ensure(this, "annotations")
       .then(() => {
-        const annotationRefs = this.annotations;
         const annotationPromises = [];
-        for (let i = 0, ii = annotationRefs.length; i < ii; i++) {
+        for (const annotationRef of this.annotations) {
           annotationPromises.push(
             AnnotationFactory.create(
               this.xref,
-              annotationRefs[i],
+              annotationRef,
               this.pdfManager,
               this.idFactory
-            )
+            ).catch(function (reason) {
+              warn(`_parsedAnnotations: "${reason}".`);
+              return null;
+            })
           );
         }
 
-        return Promise.all(annotationPromises).then(
-          function(annotations) {
-            return annotations.filter(function isDefined(annotation) {
-              return !!annotation;
-            });
-          },
-          function(reason) {
-            warn(`_parsedAnnotations: "${reason}".`);
-            return [];
-          }
-        );
+        return Promise.all(annotationPromises).then(function (annotations) {
+          return annotations.filter(annotation => !!annotation);
+        });
       });
 
     return shadow(this, "_parsedAnnotations", parsedAnnotations);
@@ -725,10 +723,10 @@ class PDFDocument {
             continue;
           }
 
-          if (!docInfo["Custom"]) {
-            docInfo["Custom"] = Object.create(null);
+          if (!docInfo.Custom) {
+            docInfo.Custom = Object.create(null);
           }
-          docInfo["Custom"][key] = customValue;
+          docInfo.Custom[key] = customValue;
         }
       }
     }
@@ -763,7 +761,15 @@ class PDFDocument {
 
   _getLinearizationPage(pageIndex) {
     const { catalog, linearization } = this;
-    assert(linearization && linearization.pageFirst === pageIndex);
+    if (
+      typeof PDFJSDev === "undefined" ||
+      PDFJSDev.test("!PRODUCTION || TESTING")
+    ) {
+      assert(
+        linearization && linearization.pageFirst === pageIndex,
+        "_getLinearizationPage - invalid pageIndex argument."
+      );
+    }
 
     const ref = Ref.get(linearization.objectNumberFirst, 0);
     return this.xref
