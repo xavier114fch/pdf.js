@@ -13,7 +13,6 @@
  * limitations under the License.
  */
 
-import { apiCompatibilityParams } from "pdfjs-lib";
 import { viewerCompatibilityParams } from "./viewer_compatibility.js";
 
 const OptionKind = {
@@ -66,6 +65,11 @@ const defaultOptions = {
     value: false,
     kind: OptionKind.VIEWER + OptionKind.PREFERENCE,
   },
+  enableScripting: {
+    /** @type {boolean} */
+    value: false,
+    kind: OptionKind.VIEWER + OptionKind.PREFERENCE,
+  },
   enableWebGL: {
     /** @type {boolean} */
     value: false,
@@ -107,7 +111,7 @@ const defaultOptions = {
   },
   pdfBugEnabled: {
     /** @type {boolean} */
-    value: false,
+    value: typeof PDFJSDev === "undefined" || !PDFJSDev.test("PRODUCTION"),
     kind: OptionKind.VIEWER + OptionKind.PREFERENCE,
   },
   printResolution: {
@@ -122,7 +126,7 @@ const defaultOptions = {
   },
   renderInteractiveForms: {
     /** @type {boolean} */
-    value: false,
+    value: true,
     kind: OptionKind.VIEWER + OptionKind.PREFERENCE,
   },
   sidebarViewOnLoad: {
@@ -173,12 +177,6 @@ const defaultOptions = {
     /** @type {boolean} */
     value: false,
     kind: OptionKind.API + OptionKind.PREFERENCE,
-  },
-  disableCreateObjectURL: {
-    /** @type {boolean} */
-    value: false,
-    compatibility: apiCompatibilityParams.disableCreateObjectURL,
-    kind: OptionKind.API,
   },
   disableFontFace: {
     /** @type {boolean} */

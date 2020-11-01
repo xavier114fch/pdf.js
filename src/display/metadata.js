@@ -13,8 +13,8 @@
  * limitations under the License.
  */
 
-import { assert } from "../shared/util.js";
-import { SimpleXMLParser } from "./xml_parser.js";
+import { assert, objectFromEntries } from "../shared/util.js";
+import { SimpleXMLParser } from "../shared/xml_parser.js";
 
 class Metadata {
   constructor(data) {
@@ -118,11 +118,7 @@ class Metadata {
   }
 
   getAll() {
-    const obj = Object.create(null);
-    for (const [key, value] of this._metadataMap) {
-      obj[key] = value;
-    }
-    return obj;
+    return objectFromEntries(this._metadataMap);
   }
 
   has(name) {

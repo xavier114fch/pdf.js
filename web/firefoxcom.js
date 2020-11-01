@@ -88,10 +88,6 @@ const FirefoxCom = (function FirefoxComClosure() {
 })();
 
 class DownloadManager {
-  constructor(options) {
-    this.disableCreateObjectURL = false;
-  }
-
   downloadUrl(url, filename) {
     FirefoxCom.request("download", {
       originalUrl: url,
@@ -119,7 +115,7 @@ class DownloadManager {
     );
   }
 
-  download(blob, url, filename) {
+  download(blob, url, filename, sourceEventType = "download") {
     const blobUrl = URL.createObjectURL(blob);
     const onResponse = err => {
       if (err && this.onerror) {
@@ -134,6 +130,7 @@ class DownloadManager {
         blobUrl,
         originalUrl: url,
         filename,
+        sourceEventType,
       },
       onResponse
     );
@@ -235,6 +232,17 @@ class MozL10n {
   }
 })();
 
+(function listenSaveEvent() {
+  const handleEvent = function ({ type, detail }) {
+    if (!PDFViewerApplication.initialized) {
+      return;
+    }
+    PDFViewerApplication.eventBus.dispatch(type, { source: window });
+  };
+
+  window.addEventListener("save", handleEvent);
+})();
+
 class FirefoxComDataRangeTransport extends PDFDataRangeTransport {
   requestDataRange(begin, end) {
     FirefoxCom.request("requestDataRange", { begin, end });
@@ -243,6 +251,20 @@ class FirefoxComDataRangeTransport extends PDFDataRangeTransport {
   abort() {
     // Sync call to ensure abort is really started.
     FirefoxCom.requestSync("abortLoading", null);
+  }
+}
+
+class FirefoxScripting {
+  static createSandbox(data) {
+    FirefoxCom.requestSync("createSandbox", data);
+  }
+
+  static dispatchEventInSandbox(event, sandboxID) {
+    FirefoxCom.requestSync("dispatchEventInSandbox", event);
+  }
+
+  static destroySandbox() {
+    FirefoxCom.requestSync("destroySandbox", null);
   }
 }
 
@@ -325,7 +347,7 @@ class FirefoxExternalServices extends DefaultExternalServices {
   }
 
   static createDownloadManager(options) {
-    return new DownloadManager(options);
+    return new DownloadManager();
   }
 
   static createPreferences() {
@@ -336,6 +358,10 @@ class FirefoxExternalServices extends DefaultExternalServices {
     const mozL10n = document.mozL10n;
     // TODO refactor mozL10n.setExternalLocalizerServices
     return new MozL10n(mozL10n);
+  }
+
+  static get scripting() {
+    return FirefoxScripting;
   }
 
   static get supportsIntegratedFind() {

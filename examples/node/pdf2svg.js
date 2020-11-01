@@ -16,6 +16,10 @@ require("./domstubs.js").setStubs(global);
 // Run `gulp dist-install` to generate 'pdfjs-dist' npm package files.
 var pdfjsLib = require("pdfjs-dist/es5/build/pdf.js");
 
+// Some PDFs need external cmaps.
+var CMAP_URL = "../../node_modules/pdfjs-dist/cmaps/";
+var CMAP_PACKED = true;
+
 // Loading file from file system into typed array
 var pdfPath = process.argv[2] || "../../web/compressed.tracemonkey-pldi-09.pdf";
 var data = new Uint8Array(fs.readFileSync(pdfPath));
@@ -86,10 +90,9 @@ function writeSvgToFile(svgElement, filePath) {
 // callback.
 var loadingTask = pdfjsLib.getDocument({
   data: data,
+  cMapUrl: CMAP_URL,
+  cMapPacked: CMAP_PACKED,
   fontExtraProperties: true,
-  // Try to export JPEG images directly if they don't need any further
-  // processing.
-  nativeImageDecoderSupport: pdfjsLib.NativeImageDecoding.DISPLAY,
 });
 loadingTask.promise
   .then(function (doc) {

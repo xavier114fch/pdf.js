@@ -12,7 +12,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/* eslint no-var: error */
 
 import {
   AbortException,
@@ -25,6 +24,12 @@ import {
   validateRangeRequestCapabilities,
   validateResponseStatus,
 } from "./network_utils.js";
+
+if (typeof PDFJSDev !== "undefined" && PDFJSDev.test("MOZCENTRAL")) {
+  throw new Error(
+    'Module "./fetch_stream.js" shall not be used with MOZCENTRAL builds.'
+  );
+}
 
 function createFetchOptions(headers, withCredentials, abortController) {
   return {
@@ -237,13 +242,20 @@ class PDFFetchStreamRangeReader {
         this._withCredentials,
         this._abortController
       )
-    ).then(response => {
-      if (!validateResponseStatus(response.status)) {
-        throw createResponseStatusError(response.status, url);
-      }
-      this._readCapability.resolve();
-      this._reader = response.body.getReader();
-    });
+    )
+      .then(response => {
+        if (!validateResponseStatus(response.status)) {
+          throw createResponseStatusError(response.status, url);
+        }
+        this._readCapability.resolve();
+        this._reader = response.body.getReader();
+      })
+      .catch(reason => {
+        if (reason && reason.name === "AbortError") {
+          return;
+        }
+        throw reason;
+      });
 
     this.onProgress = null;
   }

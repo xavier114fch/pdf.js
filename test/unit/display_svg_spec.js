@@ -14,11 +14,9 @@
  */
 /* globals __non_webpack_require__ */
 
-import { setStubs, unsetStubs } from "../../examples/node/domstubs.js";
 import { buildGetDocumentParams } from "./test_utils.js";
 import { getDocument } from "../../src/display/api.js";
 import { isNodeJS } from "../../src/shared/is_node.js";
-import { NativeImageDecoding } from "../../src/shared/util.js";
 import { SVGGraphics } from "../../src/display/svg.js";
 
 const XLINK_NS = "http://www.w3.org/1999/xlink";
@@ -42,8 +40,8 @@ function withZlib(isZlibRequired, callback) {
     return callback();
   }
 
-  var zlib = __non_webpack_require__("zlib");
-  var deflateSync = zlib.deflateSync;
+  const zlib = __non_webpack_require__("zlib");
+  const deflateSync = zlib.deflateSync;
   zlib.deflateSync = disabledDeflateSync;
   function disabledDeflateSync() {
     throw new Error("zlib.deflateSync is explicitly disabled for testing.");
@@ -53,20 +51,16 @@ function withZlib(isZlibRequired, callback) {
       zlib.deflateSync = deflateSync;
     }
   }
-  var promise = callback();
+  const promise = callback();
   promise.then(restoreDeflateSync, restoreDeflateSync);
   return promise;
 }
 
 describe("SVGGraphics", function () {
-  var loadingTask;
-  var page;
+  let loadingTask;
+  let page;
   beforeAll(function (done) {
-    loadingTask = getDocument(
-      buildGetDocumentParams("xobject-image.pdf", {
-        nativeImageDecoderSupport: NativeImageDecoding.DISPLAY,
-      })
-    );
+    loadingTask = getDocument(buildGetDocumentParams("xobject-image.pdf"));
     loadingTask.promise.then(function (doc) {
       doc.getPage(1).then(function (firstPage) {
         page = firstPage;
@@ -80,33 +74,39 @@ describe("SVGGraphics", function () {
 
   describe("paintImageXObject", function () {
     function getSVGImage() {
-      var svgGfx;
+      let svgGfx;
       return page
         .getOperatorList()
         .then(function (opList) {
-          var forceDataSchema = true;
+          const forceDataSchema = true;
           svgGfx = new SVGGraphics(page.commonObjs, page.objs, forceDataSchema);
           return svgGfx.loadDependencies(opList);
         })
         .then(function () {
-          var svgImg;
+          let svgImg;
           // A mock to steal the svg:image element from paintInlineImageXObject.
-          var elementContainer = {
+          const elementContainer = {
             appendChild(element) {
               svgImg = element;
             },
           };
 
           // This points to the XObject image in xobject-image.pdf.
-          var xobjectObjId = "img_p0_1";
+          const xobjectObjId = "img_p0_1";
           if (isNodeJS) {
+            const { setStubs } = __non_webpack_require__(
+              "../../examples/node/domstubs.js"
+            );
             setStubs(global);
           }
           try {
-            var imgData = svgGfx.objs.get(xobjectObjId);
+            const imgData = svgGfx.objs.get(xobjectObjId);
             svgGfx.paintInlineImageXObject(imgData, elementContainer);
           } finally {
             if (isNodeJS) {
+              const { unsetStubs } = __non_webpack_require__(
+                "../../examples/node/domstubs.js"
+              );
               unsetStubs(global);
             }
           }
@@ -118,10 +118,10 @@ describe("SVGGraphics", function () {
       function testFunc() {
         __non_webpack_require__("zlib");
       }
-      // Verifies that the script loader replaces __non_webpack_require__ with
-      // require.
-      expect(testFunc.toString()).toMatch(/\srequire\(["']zlib["']\)/);
       if (isNodeJS) {
+        // Verifies that the script loader replaces __non_webpack_require__ with
+        // require.
+        expect(testFunc.toString()).toMatch(/\srequire\(["']zlib["']\)/);
         expect(testFunc).not.toThrow();
       } else {
         // require not defined, require('zlib') not a module, etc.
@@ -138,7 +138,7 @@ describe("SVGGraphics", function () {
           expect(svgImg.nodeName).toBe("svg:image");
           expect(svgImg.getAttributeNS(null, "width")).toBe("200px");
           expect(svgImg.getAttributeNS(null, "height")).toBe("100px");
-          var imgUrl = svgImg.getAttributeNS(XLINK_NS, "href");
+          const imgUrl = svgImg.getAttributeNS(XLINK_NS, "href");
           // forceDataSchema = true, so the generated URL should be a data:-URL.
           expect(imgUrl).toMatch(/^data:image\/png;base64,/);
           // Test whether the generated image has a reasonable file size.
@@ -156,7 +156,7 @@ describe("SVGGraphics", function () {
           expect(svgImg.nodeName).toBe("svg:image");
           expect(svgImg.getAttributeNS(null, "width")).toBe("200px");
           expect(svgImg.getAttributeNS(null, "height")).toBe("100px");
-          var imgUrl = svgImg.getAttributeNS(XLINK_NS, "href");
+          const imgUrl = svgImg.getAttributeNS(XLINK_NS, "href");
           expect(imgUrl).toMatch(/^data:image\/png;base64,/);
           // The size of our naively generated PNG file is excessive :(
           expect(imgUrl.length).toBe(80246);
